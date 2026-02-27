@@ -159,22 +159,27 @@ Be SPECIFIC. Use actual data from the search results. NOT generic statements. Fo
     task: ResearchTask,
     onProgress?: (msg: string) => void
   ): Promise<SearcherAgentReport> => {
-    onProgress?.(`\nAGENT: Researching "${task.description}"\n`);
+    onProgress?.(`\n🔍 AGENT TASK: ${task.task}\n`);
+    onProgress?.(`   📌 Goal: ${task.description}\n`);
 
     // Step 1: Generate search queries
-    onProgress?.(`  Generating search queries...`);
+    onProgress?.(`   ⚙️  Generating search queries...`);
     const queries = await generateSearchQueries(task);
-    onProgress?.(`  Created ${queries.length} search queries`);
+    onProgress?.(`   ✓ Created ${queries.length} queries\n`);
+
+    // Show keywords being researched
+    const keywords = queries.map(q => q.split(' ').slice(0, 3).join(' ')).slice(0, 5);
+    onProgress?.(`   📚 Keywords: ${keywords.join(' • ')}\n`);
 
     // Step 2: Execute searches (hits SearXNG placeholder or mock)
-    onProgress?.(`\n  Browsing: ${queries.slice(0, 2).join(", ")}...`);
+    onProgress?.(`   🌐 Browsing sources...\n`);
     const searchResults = await batchSearch(queries);
-    onProgress?.(`  Search complete\n`);
+    onProgress?.(`   ✓ Found ${searchResults.length} results\n`);
 
     // Step 3: Summarize findings
-    onProgress?.(`  Analyzing findings...`);
+    onProgress?.(`   📊 Analyzing findings into key points...`);
     const summary = await summarizeFindings(task, searchResults);
-    onProgress?.(`  Summary complete\n`);
+    onProgress?.(`   ✓ Analysis complete\n`);
 
     return {
       task: task.task,
@@ -285,25 +290,30 @@ CRITICAL: Be strategically SPECIFIC. Not just what competitors do, but WHY they 
     brainModel: string = 'gpt-oss:20b',
     searcherModel: string = 'glm-4.7-flash:q4_K_M'
   ): Promise<string> => {
-    onProgress?.(`\nRESEARCH BRAIN: Starting strategic analysis for "${campaign.brand}"\n`);
-    onProgress?.(`Target: ${campaign.targetAudience}\nGoal: ${campaign.marketingGoal}\n`);
+    onProgress?.(`\n════════════════════════════════════════════════\n`);
+    onProgress?.(`RESEARCH PHASE: Strategic Intelligence Gathering\n`);
+    onProgress?.(`════════════════════════════════════════════════\n`);
+    onProgress?.(`🎯 Brand: ${campaign.brand}\n`);
+    onProgress?.(`👥 Target: ${campaign.targetAudience}\n`);
+    onProgress?.(`🎯 Goal: ${campaign.marketingGoal}\n\n`);
 
     // Step 1: Research brain decides what to investigate
-    onProgress?.(`\nAnalyzing research needs...`);
+    onProgress?.(`📍 STEP 1: Analyzing research needs...\n`);
     const tasks = await analyzeResearchNeeds(campaign, brainModel);
 
     if (tasks.length === 0) {
-      onProgress?.(`\nNo research tasks identified.`);
+      onProgress?.(`❌ No research tasks identified.`);
       return 'No research tasks identified.';
     }
 
-    onProgress?.(`Identified ${tasks.length} research areas:\n`);
+    onProgress?.(`✓ Identified ${tasks.length} research areas:\n`);
     tasks.forEach((t, i) => {
-      onProgress?.(`  ${i + 1}. ${t.description}`);
+      onProgress?.(`  [${i + 1}] ${t.task}: ${t.description}\n`);
     });
 
     // Step 2: Deploy searcher agents (runs in parallel for speed)
-    onProgress?.(`\nDeploying ${tasks.length} searcher agents (running in parallel)...\n`);
+    onProgress?.(`\n📍 STEP 2: Deploying ${tasks.length} searcher agents...\n`);
+    onProgress?.(`⚡ Running in parallel for maximum speed\n\n`);
     const agentReports = await Promise.all(
       tasks.map((task) =>
         deploySearcherAgent(task, (msg) => {
@@ -312,12 +322,14 @@ CRITICAL: Be strategically SPECIFIC. Not just what competitors do, but WHY they 
       )
     );
 
-    onProgress?.(`\n\nSynthesizing all findings into STRATEGIC BRIEF...\n`);
+    onProgress?.(`\n\n📍 STEP 3: Synthesizing findings into STRATEGIC BRIEF...\n`);
 
     // Step 3: Brain synthesizes all findings
     const strategicBrief = await synthesizeResearch(campaign, agentReports, brainModel);
 
-    onProgress?.(`\nRESEARCH COMPLETE\n`);
+    onProgress?.(`\n════════════════════════════════════════════════\n`);
+    onProgress?.(`✓ RESEARCH COMPLETE - Ready for Taste Stage\n`);
+    onProgress?.(`════════════════════════════════════════════════\n\n`);
     return strategicBrief;
   };
 
