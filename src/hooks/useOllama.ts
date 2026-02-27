@@ -73,7 +73,7 @@ export function useOllama() {
         onError?: (error: Error) => void;
       }
     ) => {
-      const { model = 'qwen3:8b', signal, onChunk, onError } = options || {};
+      const { model = 'mistral', signal, onChunk, onError } = options || {};
       setIsLoading(true);
       setError(null);
 

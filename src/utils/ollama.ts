@@ -1,4 +1,4 @@
-const OLLAMA_HOST = process.env.VITE_OLLAMA_HOST || 'http://localhost:11434';
+const OLLAMA_HOST = import.meta.env.VITE_OLLAMA_HOST || 'http://100.74.135.83:11434';
 const OLLAMA_API = `${OLLAMA_HOST}/api/generate`;
 
 export interface OllamaOptions {
@@ -110,7 +110,7 @@ export const ollamaService = {
   async generate(
     prompt: string,
     systemPrompt: string,
-    model: string = 'qwen3:8b'
+    model: string = 'mistral'
   ): Promise<string> {
     return this.generateStream(prompt, systemPrompt, { model });
   },

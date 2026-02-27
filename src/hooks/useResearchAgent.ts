@@ -195,7 +195,6 @@ Be SPECIFIC. Use actual data from the search results. NOT generic statements. Fo
       .map(
         (r) => `
 RESEARCH AREA: ${r.task}
-RESEARCH GOAL: ${r.description}
 FINDINGS:
 ${r.summary}
 `
