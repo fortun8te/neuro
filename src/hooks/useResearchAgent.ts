@@ -26,8 +26,9 @@ export function useResearchAgent() {
   /**
    * Research Brain: Analyzes campaign and decides what research is needed
    * Returns list of research tasks to deploy agents for
+   * Uses gpt-oss:20b for strategic thinking
    */
-  const analyzeResearchNeeds = async (campaign: Campaign): Promise<ResearchTask[]> => {
+  const analyzeResearchNeeds = async (campaign: Campaign, brainModel: string = 'gpt-oss:20b'): Promise<ResearchTask[]> => {
     const prompt = `You are a strategic research director. Given this campaign, identify EXACTLY what research tasks are needed to build competitive intelligence.
 
 Campaign:
@@ -60,7 +61,7 @@ Example tasks:
 Return ONLY the JSON array, no other text. Be strategic - think about what you NEED to know to create winning positioning.`;
 
     try {
-      const result = await generate(prompt, '', {});
+      const result = await generate(prompt, '', { model: brainModel });
       const jsonMatch = result.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
         return JSON.parse(jsonMatch[0]);
@@ -189,7 +190,8 @@ Be SPECIFIC. Use actual data from the search results. NOT generic statements. Fo
    */
   const synthesizeResearch = async (
     campaign: Campaign,
-    reports: SearcherAgentReport[]
+    reports: SearcherAgentReport[],
+    brainModel: string = 'gpt-oss:20b'
   ): Promise<string> => {
     const reportsSummary = reports
       .map(
@@ -265,7 +267,7 @@ Using these findings, generate a STRATEGIC INTELLIGENCE BRIEF with these section
 CRITICAL: Be strategically SPECIFIC. Not just what competitors do, but WHY they do it and what they CAN'T claim. This is your strategic wedge.`;
 
     try {
-      const result = await generate(prompt, '', {});
+      const result = await generate(prompt, '', { model: brainModel });
       return result;
     } catch (err) {
       console.error('Error synthesizing research:', err);
@@ -275,17 +277,20 @@ CRITICAL: Be strategically SPECIFIC. Not just what competitors do, but WHY they 
 
   /**
    * Main Research Flow: Brain -> Agents -> Synthesis
+   * Uses gpt-oss:20b for strategic brain & synthesis, glm-4.7-flash for searcher agents
    */
   const executeResearch = async (
     campaign: Campaign,
-    onProgress?: (msg: string) => void
+    onProgress?: (msg: string) => void,
+    brainModel: string = 'gpt-oss:20b',
+    searcherModel: string = 'glm-4.7-flash:q4_K_M'
   ): Promise<string> => {
     onProgress?.(`\nRESEARCH BRAIN: Starting strategic analysis for "${campaign.brand}"\n`);
     onProgress?.(`Target: ${campaign.targetAudience}\nGoal: ${campaign.marketingGoal}\n`);
 
     // Step 1: Research brain decides what to investigate
     onProgress?.(`\nAnalyzing research needs...`);
-    const tasks = await analyzeResearchNeeds(campaign);
+    const tasks = await analyzeResearchNeeds(campaign, brainModel);
 
     if (tasks.length === 0) {
       onProgress?.(`\nNo research tasks identified.`);
@@ -310,7 +315,7 @@ CRITICAL: Be strategically SPECIFIC. Not just what competitors do, but WHY they 
     onProgress?.(`\n\nSynthesizing all findings into STRATEGIC BRIEF...\n`);
 
     // Step 3: Brain synthesizes all findings
-    const strategicBrief = await synthesizeResearch(campaign, agentReports);
+    const strategicBrief = await synthesizeResearch(campaign, agentReports, brainModel);
 
     onProgress?.(`\nRESEARCH COMPLETE\n`);
     return strategicBrief;
