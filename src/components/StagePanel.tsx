@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Cycle, StageName } from '../types';
 import { useTheme } from '../context/ThemeContext';
 import { ResearchOutput } from './ResearchOutput';
+import { ModelOutputDebug } from './ModelOutputDebug';
 
 const STAGE_DESCRIPTIONS: Record<StageName, string> = {
   research: 'Researching market, competitors, and audience insights',
@@ -111,6 +112,17 @@ export function StagePanel({ cycle, isRunning }: StagePanelProps) {
                   </div>
                 ))}
               </div>
+            )}
+
+            {/* Model output debug info */}
+            {stageData.rawOutput && (
+              <ModelOutputDebug
+                rawOutput={stageData.rawOutput}
+                model={stageData.model}
+                tokensUsed={stageData.tokensUsed}
+                processingTime={stageData.processingTime}
+                stageName={currentStage}
+              />
             )}
           </div>
         ) : (

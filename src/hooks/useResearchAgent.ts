@@ -14,6 +14,14 @@ interface SearcherAgentReport {
   summary: string;
 }
 
+interface ResearchResult {
+  processedOutput: string;
+  rawOutput: string;
+  model: string;
+  tokensUsed?: number;
+  processingTime?: number;
+}
+
 /**
  * Research Brain - Orchestrates the multi-agent research process
  * 1. Decides what to research
@@ -289,7 +297,8 @@ CRITICAL: Be strategically SPECIFIC. Not just what competitors do, but WHY they 
     onProgress?: (msg: string) => void,
     brainModel: string = 'gpt-oss:20b',
     searcherModel: string = 'lfm2.5-thinking:latest'
-  ): Promise<string> => {
+  ): Promise<ResearchResult> => {
+    const startTime = Date.now();
     onProgress?.(`\n────────────────────────────────────────────────\n`);
     onProgress?.(`RESEARCH PHASE: Strategic Intelligence Gathering\n`);
     onProgress?.(`────────────────────────────────────────────────\n\n`);
@@ -304,7 +313,12 @@ CRITICAL: Be strategically SPECIFIC. Not just what competitors do, but WHY they 
 
     if (tasks.length === 0) {
       onProgress?.(`ERROR: No research tasks identified.`);
-      return 'No research tasks identified.';
+      return {
+        processedOutput: 'No research tasks identified.',
+        rawOutput: 'No research tasks identified.',
+        model: brainModel,
+        processingTime: Date.now() - startTime,
+      };
     }
 
     onProgress?.(`Identified ${tasks.length} research areas:\n`);
@@ -331,7 +345,15 @@ CRITICAL: Be strategically SPECIFIC. Not just what competitors do, but WHY they 
     onProgress?.(`\n────────────────────────────────────────────────\n`);
     onProgress?.(`RESEARCH COMPLETE - Ready for Taste Stage\n`);
     onProgress?.(`────────────────────────────────────────────────\n\n`);
-    return strategicBrief;
+
+    const processingTime = Date.now() - startTime;
+
+    return {
+      processedOutput: strategicBrief,
+      rawOutput: strategicBrief,
+      model: brainModel,
+      processingTime,
+    };
   };
 
   return {

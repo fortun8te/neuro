@@ -81,7 +81,7 @@ export function useCycleLoop() {
           // Use the new multi-agent research system
           // Brain (analysis) uses gpt-oss:20b for strategic thinking
           // Searchers use lfm2.5-thinking for fast execution
-          result = await executeResearch(
+          const researchResult = await executeResearch(
             campaign,
             (msg) => {
               // Update output in real-time as agents report
@@ -91,6 +91,11 @@ export function useCycleLoop() {
             'gpt-oss:20b',        // Brain: strategic analysis & synthesis
             'lfm2.5-thinking:latest' // Searchers: fast query execution
           );
+
+          result = researchResult.processedOutput;
+          stage.rawOutput = researchResult.rawOutput;
+          stage.model = researchResult.model;
+          stage.processingTime = researchResult.processingTime;
         } else {
           let prompt = '';
           if (stageName === 'taste') {
@@ -113,10 +118,17 @@ export function useCycleLoop() {
           abortControllerRef.current = new AbortController();
 
           // Generate using Ollama with stage-specific model
+          const stageStartTime = Date.now();
+          const modelForStage = getModelForStage(stageName);
           result = await generate(prompt, systemPrompt, {
-            model: getModelForStage(stageName),
+            model: modelForStage,
             signal: abortControllerRef.current.signal,
           });
+
+          // Capture metadata for this stage
+          stage.model = modelForStage;
+          stage.processingTime = Date.now() - stageStartTime;
+          stage.rawOutput = result;
         }
 
         stage.agentOutput = result;

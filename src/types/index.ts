@@ -7,6 +7,10 @@ export type SystemStatus = 'idle' | 'running' | 'paused' | 'error';
 export interface StageData {
   status: StageStatus;
   agentOutput: string;
+  rawOutput?: string;
+  model?: string;
+  tokensUsed?: number;
+  processingTime?: number;
   artifacts: any[];
   startedAt: number | null;
   completedAt: number | null;
