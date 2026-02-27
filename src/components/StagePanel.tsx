@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Cycle, StageName } from '../types';
 import { useTheme } from '../context/ThemeContext';
+import { ResearchOutput } from './ResearchOutput';
 
 const STAGE_DESCRIPTIONS: Record<StageName, string> = {
   research: 'Researching market, competitors, and audience insights',
@@ -100,13 +101,17 @@ export function StagePanel({ cycle, isRunning }: StagePanelProps) {
             )}
 
             {/* Main output with better formatting */}
-            <div className={`${isDarkMode ? 'text-zinc-200' : 'text-zinc-900'}`}>
-              {stageData.agentOutput.split('\n').map((line, idx) => (
-                <div key={idx} className={`${line.startsWith('§') ? `${isDarkMode ? 'text-cyan-400' : 'text-cyan-600'} font-semibold` : ''}`}>
-                  {line.startsWith('§') ? line.substring(1) : line || <span className={placeholderTextClass}>.</span>}
-                </div>
-              ))}
-            </div>
+            {currentStage === 'research' ? (
+              <ResearchOutput output={stageData.agentOutput} isDarkMode={isDarkMode} />
+            ) : (
+              <div className={`${isDarkMode ? 'text-zinc-200' : 'text-zinc-900'}`}>
+                {stageData.agentOutput.split('\n').map((line, idx) => (
+                  <div key={idx} className={`${line.startsWith('§') ? `${isDarkMode ? 'text-cyan-400' : 'text-cyan-600'} font-semibold` : ''}`}>
+                    {line.startsWith('§') ? line.substring(1) : line || <span className={placeholderTextClass}>.</span>}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
           <span className={placeholderTextClass}>
