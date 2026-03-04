@@ -24,29 +24,62 @@ const DEFAULT_PRESET = {
     name: 'Upfront.',
     website: 'www.upfront.nl',
     socials: 'instagram.com/upfront.skincare | tiktok.com/@upfrontskincare',
-    description: 'Clean, transparent skincare brand combining Dutch herbal traditions with modern science',
+    description: 'Clean, transparent skincare brand combining Dutch herbal traditions with modern science. Every ingredient is traceable, every claim is backed by data.',
     industry: 'Beauty / Clean Beauty / Skincare',
-    positioning: 'The transparent skincare brand that puts ingredient integrity first',
-    tone: 'Honest, educational, friendly but not patronizing, data-backed',
-    colors: 'Sage green + cream + charcoal',
-    fonts: 'Inter (modern, clean), Courier for technical',
+    positioning: 'The transparent skincare brand that puts ingredient integrity first — for people tired of being lied to by the beauty industry',
+    tone: 'Honest, educational, friendly but never patronizing, data-backed. Example: "We tested 50 formulas before settling on this one" instead of vague marketing speak',
+    colors: 'Sage green (trust/growth) + cream (approachability) + charcoal (authority)',
+    fonts: 'Inter for body (modern, clean), Courier for technical specs (credibility)',
+    personality: 'The Scientist Friend — approachable, nerdy about ingredients, always explains WHY, never talks down to you',
+    bigEnemy: 'Greenwashing brands that hide toxic ingredients behind buzzwords like "natural" and "clean" while using cheap fillers',
+    brandWhy: 'Because customers were being systematically lied to about ingredients, and we believe radical transparency can fix the beauty industry',
+    categoryBeliefs: '1) "Natural = ineffective" (Myth: we prove plant-based can outperform synthetic) 2) "Premium = unaffordable" (Myth: cost-per-use is €0.65) 3) "Skincare needs 10 steps" (Myth: minimal routine works better)',
   },
   audience: {
     name: 'Emma, The Conscious Skeptic',
     ageRange: '32-38',
-    location: 'Europe (Netherlands, Belgium, Germany, UK)',
-    income: '$50k-200k household',
-    job: 'Senior product manager',
-    painPoints: 'Confusing ingredients, greenwashing, wasted money, sensitive reactions',
-    values: 'Transparency, efficacy, sustainability, self-care, evidence-based',
-    platforms: 'Instagram, TikTok, Pinterest, YouTube, Reddit',
-    buyingBehavior: 'Heavy research, reads reviews carefully, checks ingredients, impulse buys rarely',
-    trustFactors: 'Third-party sourcing, dermatologist recommendations, customer testimonials, published data',
+    location: 'Europe (Netherlands, Belgium, Germany, UK) — cold climate means different skincare needs',
+    income: '€50k-200k household',
+    job: 'Senior product manager at a tech company — analytical, research-driven mindset',
+    painPoints: '1) Confusing/misleading ingredient lists (biggest pain — daily frustration) 2) Wasted money on products that dont work (€200+/year lost) 3) Sensitive skin reactions from harsh chemicals 4) Greenwashing guilt — bought "clean" products that werent',
+    values: 'Transparency (reads every label), Efficacy (wants proof not promises), Sustainability (checks sourcing), Evidence-based decisions',
+    platforms: 'Instagram (3hrs/day, discovery + research), TikTok (1hr, trends), Reddit r/SkincareAddiction (30min, deep research), YouTube (product reviews), Pinterest (mood boards)',
+    buyingBehavior: 'Heavy researcher: reads 10+ reviews before buying, checks ingredient lists on CosDNA, follows dermatologists on IG, impulse buys almost never, trusts peer reviews over influencers',
+    trustFactors: '1) Third-party lab testing with published results 2) Dermatologist endorsements (specific names, not generic) 3) Long-term customer testimonials with photos 4) Transparent supply chain documentation',
+    identityShift: 'From "skeptic burned too many times" → "someone who finally found a brand worthy of trust with my skin"',
+    mustBelieve: 'Natural ingredients CAN be as effective as synthetic ones — this is the non-negotiable conviction',
+    dayInLife: 'Wake 6:30am, morning workout, work 8-6, dinner 7pm, skincare routine 9:30pm (her "me time"), reads reviews in bed, sleep by 11pm',
+    purchaseHistory: 'Tried CeraVe (too basic, no excitement), Korean brands (too complex, 10 steps), The Ordinary (cheap but inconsistent results), drunk elephant (overpriced for what it is)',
+    psychographicTriggers: 'Responds to: data/proof, before-after photos, ingredient breakdowns, "no BS" messaging. Turns off: influencer shills, vague claims, pink tax, "miracle" language',
   },
-  goal: 'Drive trial conversions among skeptical clean beauty seekers, establish category authority, build loyalty',
-  budget: '$15k/month',
-  timeline: 'Q1: awareness | Q2: trial | Q3-Q4: retention',
-  kpis: 'Conversion rate 3%+ | CAC $25-35 | Repeat purchase 40%+ | AOV $65+',
+  product: {
+    name: 'Vitamin C Brightening Serum 30ml (aka "The Glow Serum")',
+    category: 'Skincare → Serums → Brightening',
+    description: 'Stabilized L-ascorbic acid serum (15%) with hyaluronic acid and ferulic acid complex in a lightweight formula that absorbs in 60 seconds',
+    problemSolved: 'Hyperpigmentation from sun damage and post-acne marks — not just "dull skin" but visible, measurable discoloration',
+    features: ['Stabilized L-ascorbic acid 15%', 'Hyaluronic acid 2%', 'Ferulic acid complex', 'Glass dropper bottle, recyclable', 'No fragrance, no parabens, no sulfates'],
+    emotionalBenefits: 'Confidence without makeup, not hiding spots anymore, feeling like youre "glowing" naturally, reclaiming your skin identity',
+    resultTimeline: 'Week 1: Hydration boost + glow | Week 2: Fine lines soften | Week 4: Visible brightness | Week 8: 40% spot reduction (clinically measured)',
+    pricing: '€65 (€0.65/use × 100 uses per bottle) — competitor X costs €80 for 10% concentration',
+    usp: 'Only product combining L-ascorbic acid with ferulic acid at research-proven 15% ratio. Most competitors are 10% or use unstable forms',
+    guarantee: '60-day money-back guarantee, no questions asked',
+  },
+  competitive: {
+    mainCompetitors: '1) The Ordinary (biggest threat — cheap, ingredient-focused) 2) Drunk Elephant (premium positioning overlap) 3) Paula\'s Choice (science-backed messaging overlap)',
+    yourAdvantage: '1) Only transparent full-supply-chain documentation 2) Higher concentration at lower cost-per-use 3) Clinically tested with published results (competitors dont publish)',
+    marketGap: 'No brand owns the "radically transparent + scientifically proven + affordable premium" intersection',
+  },
+  messaging: {
+    coreMessage: 'Get visible results in 2 weeks with ingredients you can actually trace back to their source',
+    objections: '1) "Will it work?" → 92% saw improvement in 8-week study 2) "Too expensive?" → €0.65/use, cheaper than a coffee 3) "Is it really natural?" → Full supply chain published on every product page 4) "How long?" → Noticeable in 2 weeks, significant in 8',
+    linguisticPatterns: '"finally something that works", "no more hiding spots", "my skin feels alive again", "I actually understand whats in this"',
+    avoidLanguage: '"Miracle", "anti-aging" (loaded), "chemical-free" (everything is chemicals), "girl boss", generic "self-care" without specifics',
+    contentFormats: 'Before/after carousels (highest engagement), ingredient breakdown reels, "lab day" behind-the-scenes, dermatologist Q&A, customer video testimonials',
+  },
+  goal: 'Drive trial conversions among skeptical clean beauty seekers, establish category authority as the "transparent brand", build 40%+ repeat purchase loyalty',
+  budget: '€15k/month — 40% Instagram, 35% TikTok, 25% YouTube',
+  timeline: 'Q1: awareness + education (ingredient content) | Q2: trial conversions (sampling + guarantees) | Q3-Q4: retention + referral program',
+  kpis: 'Conversion rate 3%+ | CAC €25-35 | Repeat purchase 40%+ | AOV €65+ | NPS 70+',
 };
 
 const FORM_SECTIONS = [
@@ -700,9 +733,9 @@ export function CampaignSelector() {
       preset.brand.name,
       preset.audience.name,
       goalStr,
-      'Premium skincare product with natural, transparent ingredients',
-      ['Clean formula', 'Transparent ingredients', 'Dermatologist tested'],
-      'Premium pricing'
+      preset.product.description,
+      preset.product.features,
+      preset.product.pricing
     );
     message.success('Preset campaign created!');
   };
@@ -824,7 +857,7 @@ export function CampaignSelector() {
           </div>
           {campaign && (
             <button
-              onClick={clearCampaign}
+              onClick={() => clearCampaign()}
               className={`pb-3 font-medium text-sm uppercase tracking-wide transition-colors ${
                 isDarkMode
                   ? 'text-zinc-500 hover:text-zinc-300 border-b-2 border-transparent hover:border-zinc-500'

@@ -47,7 +47,7 @@ export function ControlPanel() {
         <div className="flex gap-2">
           {!isRunning && !isPaused && (
             <button
-              onClick={startCycle}
+              onClick={() => startCycle()}
               className={`border px-4 py-1.5 text-xs font-mono font-bold uppercase tracking-widest transition-colors ${
                 isDarkMode
                   ? 'border-zinc-700 text-white hover:border-white hover:bg-white hover:text-black'
@@ -59,7 +59,7 @@ export function ControlPanel() {
           )}
           {isRunning && (
             <button
-              onClick={pauseCycle}
+              onClick={() => pauseCycle()}
               className={`border px-4 py-1.5 text-xs font-mono font-bold uppercase tracking-widest transition-colors ${
                 isDarkMode
                   ? 'border-zinc-700 text-white hover:border-white'
@@ -72,7 +72,7 @@ export function ControlPanel() {
           {isPaused && (
             <>
               <button
-                onClick={resumeCycle}
+                onClick={() => resumeCycle()}
                 className={`px-4 py-1.5 text-xs font-mono font-bold uppercase tracking-widest transition-colors ${
                   isDarkMode
                     ? 'bg-white text-black hover:bg-zinc-200'
@@ -82,7 +82,7 @@ export function ControlPanel() {
                 Resume
               </button>
               <button
-                onClick={stopCycle}
+                onClick={() => stopCycle()}
                 className={`border px-4 py-1.5 text-xs font-mono font-bold uppercase tracking-widest transition-colors ${
                   isDarkMode
                     ? 'border-red-700 text-red-400 hover:border-red-500'
@@ -96,7 +96,7 @@ export function ControlPanel() {
 
           {campaign && (
             <button
-              onClick={clearCampaign}
+              onClick={() => clearCampaign()}
               className={`border px-4 py-1.5 text-xs font-mono font-bold uppercase tracking-widest transition-colors ${
                 isDarkMode
                   ? 'border-red-800 text-red-400 hover:border-red-600 hover:bg-red-950/30'

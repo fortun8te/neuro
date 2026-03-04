@@ -1,6 +1,4 @@
 import { useState, useRef, useEffect } from 'react';
-import { Button, Input, message, Spin } from 'antd';
-import { SendOutlined } from '@ant-design/icons';
 import { useTheme } from '../context/ThemeContext';
 import { ollamaService } from '../utils/ollama';
 
@@ -32,60 +30,129 @@ interface QuickChatBuilderProps {
   onComplete: (formData: FormDataFromChat) => void;
 }
 
-const SYSTEM_PROMPT = `You are an intelligent ad campaign builder. Your job is to gather essential campaign info through smart conversation.
+const SYSTEM_PROMPT = `You are a research strategist using the Zakaria Framework. Your job is to systematically understand EXACTLY why people buy, using a 4-layer research system. You ask ONE question at a time, progressively deeper, building a complete understanding.
 
-CORE RULES:
-1. Ask ONE question at a time - never ask multiple things
-2. Be concise and direct - no corporate fluff
-3. Ask smart contextual questions based on previous answers
-4. Keep mental track of what you've learned and ask next logical questions
-5. When you have 6-7 solid answers from different areas: Output "READY_TO_BUILD" on new line
-6. After READY_TO_BUILD, show what you extracted with JSON
+ZAKARIA 4-LAYER SYSTEM:
 
-QUESTION FLOW (ask in this order, but skip if already answered):
-- Brand identity: What's your brand? → What's the main product/service? → What industry?
-- Positioning: How would you position this? (What makes it different?)
-- Target audience: Who's your target customer? (Name or persona type)
-- Problem/Solution: What problem does it solve? → What's the price point?
-- Goals: What's the main marketing goal? → What platforms?
+LAYER 1: AVATAR RESEARCH (Understand the person)
+Questions to uncover:
+- Current situation (What's their life like RIGHT NOW? What pain points exist daily?)
+- Desired situation (What do they WANT to achieve/become?)
+- Day-to-day struggles (What frustrates them most?)
+- Previous attempts (What have they tried to solve this? Why didn't it work?)
+- Their attitude/personality (How do they view the world?)
+- Content consumption (What do they read/watch/follow?)
+- Exactly what they care about most
 
-EXTRACTION CHECKLIST (extract and show all you know):
-You're building: {"brandName":"...", "productName":"...", "industry":"...", "positioning":"...", "personaName":"...", "problemSolved":"...", "pricing":"...", "primaryPlatforms":"...", "marketingGoal":"..."}
+LAYER 2: PROBLEM RESEARCH (Understand the mechanism)
+Questions to uncover:
+- Root cause analysis (Why does the problem exist? Scientific explanation?)
+- How the problem develops (Is it gradual or sudden?)
+- Why it persists (What makes it hard to fix?)
+- Authority/expert explanation (What would a doctor/expert say?)
+- Medical/technical understanding (The mechanism behind the problem)
 
-After EACH user message, ask ONE follow-up based on what you know. Be smart about it:
-- If they said "skincare brand, targets women", next ask about positioning or target age
-- If they gave product + brand, ask about the problem it solves
-- If they gave positioning, ask about specific target customer
-- Connect dots between answers
+LAYER 3: SOLUTION RESEARCH (Understand why solutions work)
+Questions to uncover:
+- How does the solution work? (Specific mechanism)
+- Why it addresses the root cause (Not just symptoms)
+- Why it's different from failed attempts
+- Logical pathway from solution → result
+- What makes this solution work when others failed
 
-User just said: {USER_MESSAGE}
+LAYER 4: PRODUCT RESEARCH (Map specific features to deep desires)
+Questions to uncover:
+- What features does the product have?
+- Which feature solves which pain point?
+- What's the DEEPEST desire this satisfies?
+- Why does this specific feature matter most?
 
-OUTPUT FORMAT:
-1. ONE sentence acknowledgment of what they said
-2. ONE direct follow-up question (based on what's missing or needs detail)
-3. ONLY when you have 6+ solid answers across different areas, add:
-   READY_TO_BUILD
-   {"brandName":"[extracted]", "productName":"[extracted]", "industry":"[extracted]", "positioning":"[extracted]", "personaName":"[extracted]", "problemSolved":"[extracted]", "pricing":"[extracted]", "primaryPlatforms":"[extracted]", "marketingGoal":"[extracted]"}`;
+DEEP DESIRE MAPPING PRINCIPLE:
+Surface problem ≠ Real desire
+
+Example: "Stop hair loss" (surface) → "Confidence/Attractiveness/Dating success" (deep)
+Example: "Better air quality" (surface) → "Be a good mother/Protect kids/Peace of mind" (deep)
+
+YOUR CONVERSATION FLOW:
+1. Start by understanding their CURRENT SITUATION (pain/problems)
+2. Ask about DESIRED SITUATION (what they want instead)
+3. Probe MAGNITUDE OF DESIRE (How much do they want this? Scale of 1-10?)
+4. Explore PREVIOUS ATTEMPTS (What have they tried? Why didn't it work?)
+5. Dig into ROOT CAUSE (Why does the problem exist at the biological/mechanical level?)
+6. Understand the SOLUTION MECHANISM (How would solving the root cause help?)
+7. Map FEATURES TO DESIRES (Not "this product has X" but "this feature gives you Y which makes you feel Z")
+8. Identify OBJECTIONS (What doubts prevent them from buying? Handle each one)
+9. Uncover DEEP DESIRE (What identity/status/transformation are they really after?)
+
+CRITICAL PRINCIPLE: People don't buy products. They buy fulfillment of desires.
+
+TONE:
+- Curious, not pushy
+- Dig deeper on vague answers ("better quality" → "what specifically? Better in what way?")
+- Make them articulate WHY things matter
+- Connect their answers to deeper psychological needs
+- Be conversational but probing
+
+RULES:
+1. ONE question at a time
+2. Never accept surface answers — always dig 2-3 levels deeper
+3. Each answer reveals what to ask next
+4. NEVER say "I have enough info" — the user decides when to stop
+5. Extract exact language they use (buzzwords, pain descriptors)
+6. Always look for the emotional/identity component behind the surface problem
+
+REMEMBER: Understanding WHY people buy = ability to sell ANY product to the right person`;
+
+const EXTRACTION_PROMPT = `You are a data extraction tool. Read the conversation below and extract ALL campaign information into a JSON object.
+
+CONVERSATION:
+{CONVERSATION}
+
+Extract into this exact JSON format (use empty string "" for anything not mentioned):
+{"brandName":"","productName":"","industry":"","positioning":"","personaName":"","age":"","painPoints":"","productCategory":"","problemSolved":"","pricing":"","primaryPlatforms":"","marketingGoal":"","marketingBudget":"","website":""}
+
+Rules:
+- Extract ONLY what was explicitly stated or strongly implied
+- For personaName, create a short persona description from what was discussed
+- For painPoints, combine all mentioned pain points
+- For positioning, synthesize from the conversation
+- Output ONLY the JSON object, nothing else`;
 
 export function QuickChatBuilder({ messages, setMessages, onComplete }: QuickChatBuilderProps) {
   const { isDarkMode } = useTheme();
   const [userInput, setUserInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
   const [formData, setFormData] = useState<FormDataFromChat>({});
   const [showForm, setShowForm] = useState(false);
-  const [extractionPreview, setExtractionPreview] = useState<FormDataFromChat>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const messageQueueRef = useRef<string[]>([]);
 
-  // Auto-scroll to bottom
+  // Count user messages to know when to show Build button
+  const userMessageCount = messages.filter((m) => m.type === 'user').length;
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, []);
+
   const handleSendMessage = async () => {
     if (!userInput.trim()) return;
 
-    // Add user message
+    // If already loading, queue the message
+    if (isLoading) {
+      messageQueueRef.current.push(userInput);
+      setUserInput('');
+      return;
+    }
+
     const newMessages = [
       ...messages,
       { type: 'user' as const, content: userInput },
@@ -95,41 +162,40 @@ export function QuickChatBuilder({ messages, setMessages, onComplete }: QuickCha
     setIsLoading(true);
 
     try {
-      // Build context for AI
       const conversationContext = newMessages
         .map((m) => `${m.type === 'user' ? 'User' : 'AI'}: ${m.content}`)
         .join('\n\n');
 
-      const prompt = `${conversationContext}
+      const prompt = `${conversationContext}\n\nNow respond as the strategist. Acknowledge briefly, then ask ONE deeper question. Never suggest you have enough info.`;
 
-Now respond as the AI campaign builder. Ask the next smart question or if we have enough info, output READY_TO_BUILD.`;
-
-      // Add placeholder message for streaming
+      // Add empty AI message for streaming
       setMessages((prev) => [
         ...prev,
-        { type: 'ai' as const, content: '🧠 Thinking...' },
+        { type: 'ai' as const, content: '' },
       ]);
 
-      // Call Ollama with streaming and real-time UI updates
       let aiResponse = '';
-
       abortControllerRef.current = new AbortController();
+
       await ollamaService.generateStream(
         prompt,
         SYSTEM_PROMPT,
         {
-          model: 'mistral:latest',
+          model: 'gpt-oss:20b',
+          temperature: 0.9,
           onChunk: (chunk) => {
             aiResponse += chunk;
-            // Livestream: Update message in real-time as chunks arrive
+            // Strip any JSON or READY_TO_BUILD the model might hallucinate
+            const cleanDisplay = aiResponse
+              .replace(/READY_TO_BUILD/gi, '')
+              .replace(/```json[\s\S]*?```/g, '')
+              .replace(/\{[^{}]*"brandName"[^{}]*\}/g, '')
+              .trim();
             setMessages((prev) => {
               const updated = [...prev];
               const lastIdx = updated.length - 1;
               if (updated[lastIdx]?.type === 'ai') {
-                updated[lastIdx] = {
-                  type: 'ai' as const,
-                  content: aiResponse,
-                };
+                updated[lastIdx] = { type: 'ai' as const, content: cleanDisplay };
               }
               return updated;
             });
@@ -138,70 +204,18 @@ Now respond as the AI campaign builder. Ask the next smart question or if we hav
         }
       );
 
-      // Check if ready to build
-      if (aiResponse.includes('READY_TO_BUILD')) {
-        // Extract JSON from response
-        try {
-          const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            const extracted = JSON.parse(jsonMatch[0]);
-            setFormData(extracted);
-            setShowForm(true);
-
-            // Clean up the streaming message and show confirmation
-            const cleanResponse = aiResponse
-              .replace(/READY_TO_BUILD/g, '')
-              .replace(/\{[\s\S]*\}/, '')
-              .trim();
-
-            setMessages((prev) => {
-              const updated = [...prev];
-              const lastIdx = updated.length - 1;
-              updated[lastIdx] = {
-                type: 'ai' as const,
-                content: cleanResponse || `Great! I've gathered all the info. Review and confirm below:`,
-              };
-              return updated;
-            });
-          }
-        } catch (e) {
-          // JSON parse error, keep the streaming response
-          console.error('JSON parse error:', e);
-        }
-      } else {
-        // Regular response - streaming is already updating the UI
-        // Try to extract partial JSON for preview
-        try {
-          const jsonMatch = aiResponse.match(/\{[\s\S]*?\}/);
-          if (jsonMatch) {
-            const partial = JSON.parse(jsonMatch[0]);
-            setExtractionPreview((prev) => ({ ...prev, ...partial }));
-          }
-        } catch (e) {
-          // Silent fail for partial extraction attempts
-        }
-      }
-
       setIsLoading(false);
     } catch (error) {
-      const errorMsg =
-        error instanceof Error ? error.message : 'Failed to generate response';
-      console.error('❌ QuickChat error:', error);
-
-      // Show error in UI
-      const errorDisplay = errorMsg.includes('CORS')
-        ? 'Ollama connection blocked (CORS). Check if http://localhost:11434 is accessible.'
-        : errorMsg.includes('connection')
-        ? 'Cannot connect to Ollama at localhost:11434. Is it running? (ollama serve)'
-        : errorMsg;
+      const errorMsg = error instanceof Error ? error.message : 'Failed to generate';
+      console.error('QuickChat error:', error);
 
       setMessages((prev) => {
         const updated = [...prev];
         const lastIdx = updated.length - 1;
-        if (updated[lastIdx]?.type === 'ai' && updated[lastIdx].content === '🧠 Thinking...') {
+        if (updated[lastIdx]?.type === 'ai') {
           updated[lastIdx] = {
             type: 'ai' as const,
-            content: `❌ Error: ${errorDisplay}\n\nTroubleshoot:\n1. Is Ollama running? (ollama serve)\n2. Check http://localhost:11434/api/tags\n3. Refresh this page and try again`,
+            content: `Error: ${errorMsg}`,
           };
         }
         return updated;
@@ -210,191 +224,252 @@ Now respond as the AI campaign builder. Ask the next smart question or if we hav
     }
   };
 
+  // Process queued messages after AI generation completes
+  useEffect(() => {
+    if (!isLoading && messageQueueRef.current.length > 0) {
+      const nextMessage = messageQueueRef.current.shift();
+      if (nextMessage) {
+        setUserInput(nextMessage);
+        // Delay to ensure state is updated
+        const timer = setTimeout(() => {
+          setUserInput((current) => {
+            if (current.trim()) {
+              // Trigger send by updating a dummy dependency
+              handleSendMessage();
+            }
+            return current;
+          });
+        }, 50);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isLoading]);
+
+  const handleBuildCampaign = async () => {
+    setIsExtracting(true);
+
+    try {
+      const conversationContext = messages
+        .map((m) => `${m.type === 'user' ? 'User' : 'AI'}: ${m.content}`)
+        .join('\n\n');
+
+      const prompt = EXTRACTION_PROMPT.replace('{CONVERSATION}', conversationContext);
+
+      let extractionResponse = '';
+      abortControllerRef.current = new AbortController();
+
+      await ollamaService.generateStream(
+        prompt,
+        'You are a JSON extraction tool. Output ONLY valid JSON.',
+        {
+          model: 'gpt-oss:20b',
+          temperature: 0.9,
+          onChunk: (chunk) => {
+            extractionResponse += chunk;
+          },
+          signal: abortControllerRef.current.signal,
+        }
+      );
+
+      // Parse the extracted JSON
+      const jsonMatch = extractionResponse.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const extracted = JSON.parse(jsonMatch[0]);
+        setFormData(extracted);
+        setShowForm(true);
+      } else {
+        console.error('No JSON found in extraction response');
+        // Fallback: show empty form
+        setFormData({});
+        setShowForm(true);
+      }
+    } catch (error) {
+      console.error('Extraction error:', error);
+      // Show form anyway so user can fill manually
+      setFormData({});
+      setShowForm(true);
+    }
+
+    setIsExtracting(false);
+  };
+
+  const handleCancel = () => {
+    abortControllerRef.current?.abort();
+    setIsLoading(false);
+    setIsExtracting(false);
+  };
+
   const handleEditField = (key: string, value: string) => {
     setFormData((prev) => ({ ...prev, [key]: value }));
   };
 
+  const handleBackToChat = () => {
+    setShowForm(false);
+    setFormData({});
+  };
+
   const handleStartCampaign = () => {
-    if (!formData.brandName && !formData.productName) {
-      message.error('Please fill in at least brand name or product name');
-      return;
-    }
+    if (!formData.brandName && !formData.productName) return;
     onComplete(formData);
   };
 
-  const handleCancel = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    setIsLoading(false);
-  };
+  const borderClass = isDarkMode ? 'border-zinc-800' : 'border-zinc-200';
+  const secondaryText = isDarkMode ? 'text-zinc-500' : 'text-zinc-400';
 
   return (
-    <div
-      className={`space-y-4 max-h-[600px] flex flex-col ${
-        isDarkMode ? 'bg-zinc-900' : 'bg-white'
-      }`}
-    >
-      {/* Chat Messages */}
-      <div
-        className={`flex-1 overflow-y-auto space-y-3 p-4 border rounded ${
-          isDarkMode
-            ? 'border-zinc-700 bg-zinc-800'
-            : 'border-zinc-200 bg-zinc-50'
-        }`}
-      >
+    <div className="flex flex-col h-[500px]">
+      {/* Messages */}
+      <div className={`flex-1 overflow-y-auto border ${borderClass} p-4 space-y-4`}>
+        {messages.length === 0 && (
+          <p className={`font-mono text-xs ${secondaryText} text-center pt-8`}>
+            Describe your brand or product to get started.
+          </p>
+        )}
+
         {messages.map((msg, idx) => (
-          <div
-            key={idx}
-            className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
-            <div
-              className={`max-w-xs px-4 py-2 rounded-lg ${
+          <div key={idx} className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[85%] ${msg.type === 'user' ? 'text-right' : 'text-left'}`}>
+              <span className={`font-mono text-[10px] uppercase tracking-widest ${secondaryText} block mb-1`}>
+                {msg.type === 'user' ? 'You' : 'Agent'}
+              </span>
+              <div className={`font-mono text-xs leading-relaxed whitespace-pre-wrap ${
                 msg.type === 'user'
-                  ? isDarkMode
-                    ? 'bg-blue-900 text-white'
-                    : 'bg-blue-100 text-black'
-                  : isDarkMode
-                  ? 'bg-zinc-700 text-white'
-                  : 'bg-zinc-200 text-black'
-              }`}
-            >
-              <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                  ? isDarkMode ? 'text-white' : 'text-black'
+                  : isDarkMode ? 'text-zinc-300' : 'text-zinc-700'
+              }`}>
+                {msg.content || (
+                  <span className={`${secondaryText} animate-pulse`}>...</span>
+                )}
+              </div>
             </div>
           </div>
         ))}
-        {isLoading && (
+
+        {isExtracting && (
           <div className="flex justify-start">
-            <Spin size="small" />
+            <div className="text-left">
+              <span className={`font-mono text-[10px] uppercase tracking-widest ${secondaryText} block mb-1`}>
+                System
+              </span>
+              <div className={`font-mono text-xs ${secondaryText} animate-pulse`}>
+                Extracting campaign data from conversation...
+              </div>
+            </div>
           </div>
         )}
+
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Form Preview (shown when chat is done) */}
+      {/* Form Preview */}
       {showForm && (
-        <div
-          className={`border rounded p-4 space-y-3 max-h-64 overflow-y-auto ${
-            isDarkMode
-              ? 'border-zinc-700 bg-zinc-700'
-              : 'border-zinc-200 bg-zinc-100'
-          }`}
-        >
-          <p className="font-semibold text-sm">Review & Edit:</p>
-
+        <div className={`border ${borderClass} p-4 space-y-2 max-h-52 overflow-y-auto`}>
+          <div className="flex items-center justify-between">
+            <span className={`font-mono text-[10px] uppercase tracking-widest ${secondaryText}`}>Review & Edit</span>
+            <button
+              onClick={handleBackToChat}
+              className={`font-mono text-[10px] uppercase tracking-widest ${
+                isDarkMode ? 'text-zinc-500 hover:text-zinc-300' : 'text-zinc-400 hover:text-zinc-600'
+              } transition-colors`}
+            >
+              ← Back to chat
+            </button>
+          </div>
           {[
-            { key: 'brandName', label: 'Brand Name', placeholder: 'e.g., Upfront' },
-            {
-              key: 'industry',
-              label: 'Industry',
-              placeholder: 'e.g., Beauty, SaaS',
-            },
-            {
-              key: 'productName',
-              label: 'Product Name',
-              placeholder: 'e.g., Vitamin C Serum',
-            },
-            {
-              key: 'positioning',
-              label: 'Positioning',
-              placeholder: 'What makes you different?',
-            },
-            {
-              key: 'personaName',
-              label: 'Target Persona',
-              placeholder: 'e.g., Emma, 32-38',
-            },
-            {
-              key: 'problemSolved',
-              label: 'Problem Solved',
-              placeholder: 'e.g., Hyperpigmentation',
-            },
-            {
-              key: 'pricing',
-              label: 'Price Point',
-              placeholder: 'e.g., €50-80',
-            },
-            {
-              key: 'primaryPlatforms',
-              label: 'Platforms',
-              placeholder: 'e.g., Instagram, TikTok, YouTube',
-            },
-            {
-              key: 'marketingGoal',
-              label: 'Marketing Goal',
-              placeholder: 'e.g., Drive conversions',
-            },
-          ].map(({ key, label, placeholder }) => (
-            <div key={key} className="space-y-1">
-              <label className="text-xs font-semibold">{label}</label>
-              <Input
-                placeholder={placeholder}
+            { key: 'brandName', label: 'Brand' },
+            { key: 'industry', label: 'Industry' },
+            { key: 'productName', label: 'Product' },
+            { key: 'productCategory', label: 'Category' },
+            { key: 'positioning', label: 'Positioning' },
+            { key: 'personaName', label: 'Persona' },
+            { key: 'age', label: 'Age' },
+            { key: 'painPoints', label: 'Pain Points' },
+            { key: 'problemSolved', label: 'Problem' },
+            { key: 'pricing', label: 'Price' },
+            { key: 'primaryPlatforms', label: 'Platforms' },
+            { key: 'marketingGoal', label: 'Goal' },
+            { key: 'marketingBudget', label: 'Budget' },
+            { key: 'website', label: 'Website' },
+          ].map(({ key, label }) => (
+            <div key={key} className="flex items-center gap-2">
+              <span className={`font-mono text-[10px] uppercase tracking-widest w-24 shrink-0 ${secondaryText}`}>{label}</span>
+              <input
+                className={`flex-1 font-mono text-xs px-2 py-1 border ${borderClass} bg-transparent outline-none focus:border-white transition-colors ${
+                  isDarkMode ? 'text-white' : 'text-black'
+                }`}
                 value={formData[key as keyof FormDataFromChat] || ''}
                 onChange={(e) => handleEditField(key, e.target.value)}
-                size="small"
               />
             </div>
           ))}
         </div>
       )}
 
-      {/* Extraction Preview */}
-      {!showForm && Object.keys(extractionPreview).length > 0 && (
-        <div
-          className={`text-xs p-2 rounded border ${
-            isDarkMode
-              ? 'border-zinc-600 bg-zinc-800 text-zinc-300'
-              : 'border-zinc-300 bg-zinc-100 text-zinc-700'
-          }`}
-        >
-          <p className="font-semibold mb-1">📋 Capturing:</p>
-          <p className="font-mono">
-            {Object.entries(extractionPreview)
-              .filter(([, v]) => v)
-              .map(([k, v]) => `${k}: ${String(v).slice(0, 20)}${String(v).length > 20 ? '...' : ''}`)
-              .join(' • ')}
-          </p>
-        </div>
-      )}
-
       {/* Input Area */}
-      {!showForm && (
-        <div className="flex gap-2">
-          <Input
-            placeholder="Your answer..."
-            value={userInput}
-            onChange={(e) => setUserInput(e.target.value)}
-            onPressEnter={handleSendMessage}
-            disabled={isLoading}
-          />
-          {isLoading ? (
-            <Button
-              danger
-              onClick={handleCancel}
+      {!showForm ? (
+        <div className="flex flex-col">
+          {/* Build Campaign button - appears after 3+ user messages */}
+          {userMessageCount >= 3 && !isLoading && !isExtracting && (
+            <button
+              onClick={handleBuildCampaign}
+              className={`w-full py-2 font-mono text-[10px] uppercase tracking-widest border-x border-t ${borderClass} ${
+                isDarkMode
+                  ? 'text-emerald-400 hover:bg-emerald-950/30 hover:text-emerald-300'
+                  : 'text-emerald-600 hover:bg-emerald-50'
+              } transition-colors`}
             >
-              Cancel
-            </Button>
-          ) : (
-            <Button
-              type="primary"
-              icon={<SendOutlined />}
-              onClick={handleSendMessage}
-              disabled={!userInput.trim()}
-            />
+              ✓ I'm done — Build Campaign
+            </button>
           )}
+          <div className={`flex border ${borderClass} ${userMessageCount >= 3 && !isLoading && !isExtracting ? 'border-t-0' : ''}`}>
+            <input
+              ref={inputRef}
+              className={`flex-1 font-mono text-xs px-4 py-3 bg-transparent outline-none ${
+                isDarkMode ? 'text-white placeholder-zinc-600' : 'text-black placeholder-zinc-400'
+              } ${isExtracting ? 'opacity-50' : ''}`}
+              placeholder={isExtracting ? 'Extracting...' : 'Tell me about your brand...'}
+              value={userInput}
+              onChange={(e) => setUserInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+              disabled={isExtracting}
+            />
+            {isExtracting ? (
+              <button
+                onClick={handleCancel}
+                className={`px-4 font-mono text-xs uppercase tracking-widest border-l ${borderClass} ${
+                  isDarkMode ? 'text-red-400 hover:bg-red-950/30' : 'text-red-600 hover:bg-red-50'
+                } transition-colors`}
+              >
+                Stop
+              </button>
+            ) : (
+              <button
+                onClick={handleSendMessage}
+                disabled={!userInput.trim()}
+                className={`px-4 font-mono text-xs uppercase tracking-widest border-l ${borderClass} ${
+                  isDarkMode
+                    ? 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                    : 'text-zinc-500 hover:text-black hover:bg-zinc-100'
+                } transition-colors disabled:opacity-30`}
+              >
+                {isLoading ? 'Queue' : 'Send'}
+              </button>
+            )}
+          </div>
         </div>
-      )}
-
-      {/* Start Campaign Button */}
-      {showForm && (
-        <Button
-          type="primary"
-          size="large"
-          onClick={handleStartCampaign}
-          block
-        >
-          Start Campaign
-        </Button>
+      ) : (
+        <div className="flex gap-0">
+          <button
+            onClick={handleStartCampaign}
+            className={`flex-1 py-3 font-mono text-xs uppercase tracking-widest font-bold border ${
+              isDarkMode
+                ? 'border-white text-white hover:bg-white hover:text-black'
+                : 'border-black text-black hover:bg-black hover:text-white'
+            } transition-colors`}
+          >
+            Start Campaign
+          </button>
+        </div>
       )}
     </div>
   );

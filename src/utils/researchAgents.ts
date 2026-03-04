@@ -423,7 +423,7 @@ function evaluateCoverage(results: ResearchResult[]): CoverageGraph {
   return merged;
 }
 
-// Reflection Agent - identifies research gaps and suggests new angles
+// Reflection Agent - AGGRESSIVE gap identification with 150% bar, not "good enough"
 export const reflectionAgent = {
   async evaluateGaps(
     state: OrchestratorState,
@@ -436,58 +436,108 @@ export const reflectionAgent = {
         .filter(([, covered]) => !covered)
         .map(([dimension]) => dimension);
 
-      onChunk?.(`\n[Reflection Agent] Analyzing research gaps...\n`);
-      onChunk?.(`Missing dimensions: ${gaps.join(', ')}\n`);
+      onChunk?.(`\n[🔍 REFLECTION AGENT - 150% BAR MODE] Aggressive gap analysis...\n`);
+      onChunk?.(`Covered: ${10 - gaps.length}/10 dimensions. STILL MISSING: ${gaps.join(', ')}\n`);
 
-      const reflectionPrompt = `You are a research reflection agent. Based on the campaign and completed research, identify what perspectives are missing and suggest new research angles.
+      // AGGRESSIVE reflection prompt - push for contradictions, skepticism, and overconfidence detection
+      const reflectionPrompt = `You are a CRITICAL research reflection agent operating at 150% thoroughness bar. Your job is to BRUTALLY identify what we DON'T know, not celebrate what we DO know.
 
-Campaign:
+Campaign Context:
 - Brand: ${state.campaign.brand}
 - Product: ${state.campaign.productDescription}
 - Target: ${state.campaign.targetAudience}
 - Goal: ${state.campaign.marketingGoal}
 
-Research completed so far:
-${completedResults.map((r) => `- ${r.query}: covered ${Object.values(r.coverage_graph).filter(Boolean).length} dimensions`).join('\n')}
+RESEARCH COMPLETED (${completedResults.length} queries):
+${completedResults.map((r, i) => `${i + 1}. "${r.query}" → ${Object.values(r.coverage_graph).filter(Boolean).length}/10 dimensions`).join('\n')}
 
-Research gaps (not yet covered):
-${gaps.join(', ')}
+RESEARCH GAPS (NOT COVERED):
+${gaps.length > 0 ? gaps.map((g, i) => `- [CRITICAL GAP ${i + 1}] ${g}`).join('\n') : 'NONE DECLARED (⚠️ OVERCONFIDENCE RISK!)'}
 
-REFLECTION QUESTIONS:
-1. What stakeholder perspectives are missing?
-2. What contradictions exist in the research?
-3. What would a skeptical expert criticize about this research?
-4. What regional or cultural factors are unexplored?
-5. What second-order effects are we ignoring?
+🚨 BRUTAL REFLECTION QUESTIONS - BE RUTHLESS:
+1. WHO is missing from this research? (Competitors' customers? Detractors? Price-sensitive buyers? Heavy users?)
+2. WHAT contradictions exist between sources? (One source says X, another says Y - which is RIGHT?)
+3. WHAT would a SKEPTICAL EXPERT ridicule? (What's the weakest part of this research? What's obviously unstudied?)
+4. WHAT assumptions are we making WITHOUT DATA? (Are we guessing about customer psychology?)
+5. WHAT is Reddit/Trustpilot saying? (Is the brand on Trustpilot? What are actual customer complaints?)
+6. WHAT does the website claim vs. what customers say? (Any mismatch = positioning gap)
+7. WHAT regions/segments did we SKIP? (Did we research UK? Australia? Gen Z vs Boomers?)
+8. WHAT second-order effects are HIDDEN? (Price drops affect perception. Market saturation. Seasonality.)
+9. WHAT competitors aren't we researching? (Indirect competitors. Newer entrants. Substitutes.)
+10. WHAT is the ACTUAL conversion journey? (How do people REALLY discover this? Not how they SAY they do.)
 
-Based on these gaps and questions, suggest NEW specific research angles that would fill these gaps.
+CRITICAL INSTRUCTION: If you find gaps, SUGGEST SPECIFIC RESEARCH to fill them. Not vague suggestions - CONCRETE angles.
 
-Format as:
-NEW_RESEARCH_ANGLES:
-1. [specific angle]
-2. [specific angle]
-3. [specific angle]`;
+EXAMPLES OF CONCRETE ANGLES:
+❌ WEAK: "Research social media sentiment"
+✅ STRONG: "Search TikTok videos about [product category] + common complaints/praise"
+
+❌ WEAK: "Analyze competitor positioning"
+✅ STRONG: "Extract exact claims from top 3 competitor homepages + customer objections from their Trustpilot reviews"
+
+Format your response as:
+
+OVERCONFIDENCE RISK LEVEL: [LOW/MEDIUM/HIGH/CRITICAL]
+REASON: [Why are we at risk of thinking we know more than we do?]
+
+CRITICAL GAPS ANALYSIS:
+[For each gap dimension, explain WHY it's critical and what we're missing]
+
+WEB RESEARCH OPPORTUNITIES:
+1. [Brand name] + "trustpilot" reviews - actual customer complaints
+2. Reddit r/[relevant subreddit] - authentic customer discussion
+3. [Brand website] homepage - official claims vs reality
+4. [Top competitor] Trustpilot - compare satisfaction rates
+5. [Product category] + reviews/alternatives - market perception
+
+AGGRESSIVE NEW RESEARCH ANGLES:
+1. [SPECIFIC angle - not vague]
+2. [SPECIFIC angle - not vague]
+3. [SPECIFIC angle - not vague]
+4. [SPECIFIC angle - not vague]
+5. [SPECIFIC angle - not vague]`;
 
       const response = await ollamaService.generateStream(
         reflectionPrompt,
-        'You critically evaluate research gaps and suggest novel investigation angles.',
+        `You are BRUTALLY critical. Your job is to make us realize what we DON'T KNOW. Find overconfidence. Find contradictions. Push for 150% bar, not "good enough". Suggest web research (Trustpilot, Reddit, websites). Be specific, not vague.`,
         {
           model: 'lfm-2.5:q4_K_M',
+          temperature: 0.85, // Higher temp = more creative gap-finding
           onChunk,
         }
       );
 
-      // Extract new research angles from response
-      const anglesMatch = response.match(/NEW_RESEARCH_ANGLES:\s*([\s\S]*?)(?=$|REFLECTION)/);
-      if (!anglesMatch) return [];
+      // Extract overconfidence risk level
+      const riskMatch = response.match(/OVERCONFIDENCE RISK LEVEL:\s*(\w+)/i);
+      const riskLevel = riskMatch ? riskMatch[1] : 'MEDIUM';
+      onChunk?.(`⚠️  Overconfidence Risk: ${riskLevel}\n`);
+
+      // Extract web research opportunities
+      const webResearchMatch = response.match(/WEB RESEARCH OPPORTUNITIES:\s*([\s\S]*?)(?=AGGRESSIVE NEW|$)/i);
+      if (webResearchMatch) {
+        const opportunities = webResearchMatch[1]
+          .split('\n')
+          .filter((line) => /^\d+\.\s+/.test(line))
+          .slice(0, 5);
+        if (opportunities.length > 0) {
+          onChunk?.(`\n🌐 Web Research Suggestions:\n${opportunities.map((o) => `  ${o}`).join('\n')}\n`);
+        }
+      }
+
+      // Extract new research angles
+      const anglesMatch = response.match(/AGGRESSIVE NEW RESEARCH ANGLES:\s*([\s\S]*?)(?=$)/i);
+      if (!anglesMatch) {
+        onChunk?.(`⚠️  No new research angles found - possible overconfidence!\n`);
+        return [];
+      }
 
       const angles = anglesMatch[1]
         .split('\n')
         .filter((line) => /^\d+\.\s+/.test(line))
         .map((line) => line.replace(/^\d+\.\s+/, '').trim())
-        .filter((angle) => angle.length > 0);
+        .filter((angle) => angle.length > 0 && !angle.startsWith('['));
 
-      onChunk?.(`Identified ${angles.length} new research angles to explore\n`);
+      onChunk?.(`Found ${angles.length} CRITICAL new research angles to pursue\n`);
       return angles;
     } catch (error) {
       console.error('Reflection agent error:', error);
