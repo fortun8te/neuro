@@ -21,11 +21,15 @@ export interface OllamaOptions {
 export const ollamaService = {
   async checkConnection(): Promise<boolean> {
     try {
-      const response = await fetch(`${getOllamaHost()}/api/tags`, {
+      const host = getOllamaHost();
+      console.debug('[Ollama] Checking connection to:', host);
+      const response = await fetch(`${host}/api/tags`, {
         method: 'GET',
       });
+      console.debug('[Ollama] Connection check:', response.ok ? 'OK' : 'FAILED');
       return response.ok;
-    } catch {
+    } catch (e) {
+      console.error('[Ollama] Connection error:', e);
       return false;
     }
   },
@@ -39,6 +43,14 @@ export const ollamaService = {
 
     const fullPrompt = `${systemPrompt}\n\n${prompt}`;
     let fullResponse = '';
+    const startTime = Date.now();
+
+    console.debug('[Ollama] Generate request:', {
+      model,
+      host: getOllamaHost(),
+      promptLength: prompt.length,
+      systemPromptLength: systemPrompt.length,
+    });
 
     try {
       const response = await fetch(getOllamaApi(), {
@@ -57,9 +69,11 @@ export const ollamaService = {
         signal,
       });
 
+      console.debug('[Ollama] Response status:', response.status, response.statusText);
+
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Ollama API error:', response.status, response.statusText, errorText);
+        console.error('[Ollama] API error:', response.status, response.statusText, errorText);
         throw new Error(`Ollama API error: ${response.status} ${response.statusText}. ${errorText || 'Check server connection'}`);
       }
 
@@ -70,10 +84,15 @@ export const ollamaService = {
 
       const decoder = new TextDecoder();
       let buffer = '';
+      let chunkCount = 0;
+      let tokenCount = 0;
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          console.debug('[Ollama] Stream complete. Total chunks:', chunkCount, 'Total tokens:', tokenCount);
+          break;
+        }
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
@@ -85,10 +104,13 @@ export const ollamaService = {
               const json = JSON.parse(line);
               if (json.response) {
                 fullResponse += json.response;
+                chunkCount++;
+                tokenCount += json.response.length;
+                console.debug('[Ollama] Chunk', chunkCount, '- tokens:', json.response.length);
                 onChunk?.(json.response);
               }
-            } catch {
-              // Ignore JSON parse errors
+            } catch (e) {
+              console.warn('[Ollama] JSON parse error on line:', line.substring(0, 50));
             }
           }
         }
@@ -100,17 +122,30 @@ export const ollamaService = {
           const json = JSON.parse(buffer);
           if (json.response) {
             fullResponse += json.response;
+            chunkCount++;
+            tokenCount += json.response.length;
+            console.debug('[Ollama] Final chunk -', json.response.length, 'tokens');
             onChunk?.(json.response);
           }
-        } catch {
-          // Ignore
+        } catch (e) {
+          console.warn('[Ollama] Final buffer parse error');
         }
       }
+
+      const duration = Date.now() - startTime;
+      console.debug('[Ollama] Generation complete:', {
+        duration: `${duration}ms`,
+        totalTokens: tokenCount,
+        totalChunks: chunkCount,
+        responseLength: fullResponse.length,
+      });
 
       onComplete?.();
       return fullResponse;
     } catch (error) {
+      const duration = Date.now() - startTime;
       const err = error instanceof Error ? error : new Error(String(error));
+      console.error('[Ollama] Generation error after', duration, 'ms:', err.message);
       onError?.(err);
       throw err;
     }

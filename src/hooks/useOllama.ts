@@ -35,6 +35,7 @@ export function useOllama() {
       }
     ) => {
       const { model = 'glm-4.7-flash:q4_K_M', signal, onChunk } = options || {};
+      console.debug('[useOllama] generate() called', { model, promptLength: prompt.length });
       setIsLoading(true);
       setError(null);
       setOutput('');
@@ -44,15 +45,18 @@ export function useOllama() {
           model,
           signal,
           onChunk: (chunk) => {
+            console.debug('[useOllama] Chunk received:', chunk.length, 'chars');
             onChunk?.(chunk);
             setOutput((prev) => prev + chunk);
           },
           onError: (err) => setError(err.message),
         });
 
+        console.debug('[useOllama] generate() complete, result length:', result.length);
         return result;
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+        console.error('[useOllama] generate() error:', errorMsg);
         setError(errorMsg);
         throw err;
       } finally {
