@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { Campaign, Cycle, StageName, StageData } from '../types';
+import type { Campaign, Cycle, StageName, StageData, CycleMode } from '../types';
 import { useOllama } from './useOllama';
 import { useStorage } from './useStorage';
 import { useResearchAgent } from './useResearchAgent';
@@ -7,8 +7,13 @@ import { getSystemPrompt } from '../utils/prompts';
 import { extractCompetitorNames } from '../utils/competitorAnalysis';
 import { getModelForStage } from '../utils/modelConfig';
 
-const STAGE_ORDER: StageName[] = ['research', 'objections', 'taste', 'make', 'test', 'memories'];
+const FULL_STAGE_ORDER: StageName[] = ['research', 'objections', 'taste', 'make', 'test', 'memories'];
+const CONCEPTING_STAGE_ORDER: StageName[] = ['research', 'objections', 'taste'];
 const STAGE_DELAY = 2000; // 2 second delay between stages
+
+function getStageOrder(mode: CycleMode): StageName[] {
+  return mode === 'concepting' ? CONCEPTING_STAGE_ORDER : FULL_STAGE_ORDER;
+}
 
 // Helper to create a cycle with new object references (important for React state updates)
 function refreshCycleReference(cycle: Cycle): Cycle {
@@ -29,7 +34,7 @@ function createEmptyStage(): StageData {
   };
 }
 
-function createCycle(campaignId: string, cycleNumber: number): Cycle {
+function createCycle(campaignId: string, cycleNumber: number, mode: CycleMode = 'full'): Cycle {
   return {
     id: `${campaignId}-cycle-${cycleNumber}`,
     campaignId,
@@ -46,6 +51,7 @@ function createCycle(campaignId: string, cycleNumber: number): Cycle {
     },
     currentStage: 'research',
     status: 'in-progress',
+    mode,
   };
 }
 
@@ -338,17 +344,18 @@ DOCUMENT THE LEARNINGS:
   // Advance to next stage
   const advanceToNextStage = useCallback(
     (cycle: Cycle): { cycle: Cycle; done: boolean } => {
-      const currentIndex = STAGE_ORDER.indexOf(cycle.currentStage);
+      const stageOrder = getStageOrder(cycle.mode);
+      const currentIndex = stageOrder.indexOf(cycle.currentStage);
       const nextIndex = currentIndex + 1;
 
-      if (nextIndex >= STAGE_ORDER.length) {
+      if (nextIndex >= stageOrder.length) {
         // Cycle complete
         cycle.status = 'complete';
         cycle.completedAt = Date.now();
         return { cycle, done: true };
       }
 
-      cycle.currentStage = STAGE_ORDER[nextIndex];
+      cycle.currentStage = stageOrder[nextIndex];
       return { cycle, done: false };
     },
     []
@@ -356,9 +363,9 @@ DOCUMENT THE LEARNINGS:
 
   // Main cycle loop
   const runCycle = useCallback(
-    async (campaign: Campaign, startCycleNumber: number = 1) => {
+    async (campaign: Campaign, startCycleNumber: number = 1, mode: CycleMode = 'full') => {
       let cycleNumber = startCycleNumber;
-      let cycle = createCycle(campaign.id, cycleNumber);
+      let cycle = createCycle(campaign.id, cycleNumber, mode);
       cycleRef.current = cycle;
 
       setIsRunning(true);
@@ -412,11 +419,11 @@ DOCUMENT THE LEARNINGS:
   );
 
   const start = useCallback(
-    async (campaign: Campaign, cycleNumber: number = 1) => {
+    async (campaign: Campaign, cycleNumber: number = 1, mode: CycleMode = 'full') => {
       if (isRunning) return;
       isPausedRef.current = false;
       setIsPaused(false);
-      await runCycle(campaign, cycleNumber);
+      await runCycle(campaign, cycleNumber, mode);
     },
     [isRunning, runCycle]
   );

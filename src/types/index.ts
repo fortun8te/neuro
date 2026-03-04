@@ -1,4 +1,5 @@
 export type StageName = 'research' | 'objections' | 'taste' | 'make' | 'test' | 'memories';
+export type CycleMode = 'full' | 'concepting'; // full = all stages, concepting = research + objections + taste only
 export type StageStatus = 'pending' | 'in-progress' | 'complete';
 export type CampaignStatus = 'active' | 'paused' | 'archived';
 export type CycleStatus = 'in-progress' | 'complete';
@@ -65,6 +66,7 @@ export interface Cycle {
   };
   currentStage: StageName;
   status: CycleStatus;
+  mode: CycleMode;
   researchFindings?: ResearchFindings;
 }
 

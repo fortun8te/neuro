@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import type { Campaign, Cycle, CampaignContextType, StageName } from '../types';
+import type { Campaign, Cycle, CampaignContextType, StageName, CycleMode } from '../types';
 import { useCycleLoop } from '../hooks/useCycleLoop';
 import { useStorage } from '../hooks/useStorage';
 
@@ -9,6 +9,7 @@ export function CampaignProvider({ children }: { children: React.ReactNode }) {
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [currentCycle, setCurrentCycle] = useState<Cycle | null>(null);
+  const [cycleMode, setCycleMode] = useState<CycleMode>('full');
 
   const {
     isRunning,
@@ -58,10 +59,10 @@ export function CampaignProvider({ children }: { children: React.ReactNode }) {
     setCurrentCycle(null);
   }, [pause]);
 
-  const startCycle = useCallback(async () => {
+  const startCycle = useCallback(async (mode: CycleMode = cycleMode) => {
     if (!campaign) return;
-    await start(campaign, campaign.currentCycle);
-  }, [campaign, start]);
+    await start(campaign, campaign.currentCycle, mode);
+  }, [campaign, start, cycleMode]);
 
   const pauseCycle = useCallback(() => {
     pause();
