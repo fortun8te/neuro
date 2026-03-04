@@ -1,8 +1,40 @@
-export type StageName = 'research' | 'taste' | 'make' | 'test' | 'memories';
+export type StageName = 'research' | 'objections' | 'taste' | 'make' | 'test' | 'memories';
 export type StageStatus = 'pending' | 'in-progress' | 'complete';
 export type CampaignStatus = 'active' | 'paused' | 'archived';
 export type CycleStatus = 'in-progress' | 'complete';
 export type SystemStatus = 'idle' | 'running' | 'paused' | 'error';
+
+// Desire-driven selling framework (from Zakaria Course)
+export interface DesireLayer {
+  level: number; // 1 = surface problem, 2+ = deeper layers
+  description: string;
+  example: string;
+}
+
+export interface DeepDesire {
+  surfaceProblem: string;
+  layers: DesireLayer[];
+  deepestDesire: string;
+  desireIntensity: 'low' | 'moderate' | 'high' | 'extreme';
+  targetSegment: string;
+}
+
+export interface Objection {
+  objection: string;
+  frequency: 'common' | 'moderate' | 'rare';
+  impact: 'high' | 'medium' | 'low';
+  handlingApproach: string;
+  requiredProof: string[];
+}
+
+export interface ResearchFindings {
+  deepDesires: DeepDesire[];
+  objections: Objection[];
+  avatarLanguage: string[];
+  whereAudienceCongregates: string[];
+  whatTheyTriedBefore: string[];
+  competitorWeaknesses: string[];
+}
 
 export interface StageData {
   status: StageStatus;
@@ -25,6 +57,7 @@ export interface Cycle {
   completedAt: number | null;
   stages: {
     research: StageData;
+    objections: StageData;
     taste: StageData;
     make: StageData;
     test: StageData;
@@ -32,6 +65,7 @@ export interface Cycle {
   };
   currentStage: StageName;
   status: CycleStatus;
+  researchFindings?: ResearchFindings;
 }
 
 export interface Campaign {

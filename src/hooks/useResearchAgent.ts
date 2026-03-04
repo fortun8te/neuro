@@ -1,18 +1,6 @@
 import { useOllama } from './useOllama';
 import { batchSearch } from '../utils/search';
-import type { Campaign } from '../types';
-
-interface ResearchTask {
-  task: string;
-  description: string;
-}
-
-interface SearcherAgentReport {
-  task: string;
-  queries: string[];
-  findings: string;
-  summary: string;
-}
+import type { Campaign, DeepDesire, Objection, ResearchFindings } from '../types';
 
 interface ResearchResult {
   processedOutput: string;
@@ -20,53 +8,53 @@ interface ResearchResult {
   model: string;
   tokensUsed?: number;
   processingTime?: number;
+  researchFindings?: ResearchFindings;
 }
 
 /**
- * Research Brain - Orchestrates the multi-agent research process
- * 1. Decides what to research
- * 2. Deploys generic searcher agents
- * 3. Collects and synthesizes findings
+ * Desire-Driven Research Agent (Zakaria Framework)
+ * Maps deep customer desires, not just surface problems
+ * Identifies objections and positioning gaps
+ * Works standalone for research/concepting or within full cycle
  */
 export function useResearchAgent() {
   const { generate } = useOllama();
 
   /**
-   * Research Brain: Analyzes campaign and decides what research is needed
-   * Returns list of research tasks to deploy agents for
-   * Uses gpt-oss:20b for strategic thinking
+   * Step 1: Map Deep Desires for audience
+   * Surface Problem → Layers → Deep Desire
+   * Example: "Back pain" → "Can't work" → "Can't provide for family"
    */
-  const analyzeResearchNeeds = async (campaign: Campaign, brainModel: string = 'gpt-oss:20b'): Promise<ResearchTask[]> => {
-    const prompt = `You are a strategic research director. Given this campaign, identify EXACTLY what research tasks are needed to build competitive intelligence.
+  const mapDeepDesires = async (campaign: Campaign, brainModel: string = 'glm-4.7-flash:q4_K_M'): Promise<DeepDesire[]> => {
+    const prompt = `You are a consumer psychology expert using the Zakaria Framework for desire mapping.
 
 Campaign:
 - Brand: ${campaign.brand}
 - Target Audience: ${campaign.targetAudience}
-- Goal: ${campaign.marketingGoal}
+- Marketing Goal: ${campaign.marketingGoal}
 
-You need to understand:
-1. Who are the main competitors and HOW are they positioned?
-2. What are the target audience's ACTUAL needs (primary vs secondary)?
-3. What is the market SHIFT happening right now?
-4. What positioning do NO competitors claim (the gap)?
-5. What messages are LOSING power vs EMERGING?
-6. What price tiers exist and where is money flowing?
+For the target audience, identify 3-4 DEEP DESIRES. Map each from surface problem to deep desire.
 
-Return a JSON array of 5-7 research tasks. Each task focuses on ONE specific aspect.
-Format: [
-  { "task": "identifier", "description": "specific research goal" },
-  ...
-]
+Structure for EACH desire:
+{
+  "surfaceProblem": "What they say they want to solve",
+  "layers": [
+    { "level": 1, "description": "Immediate consequence", "example": "..." },
+    { "level": 2, "description": "Secondary impact", "example": "..." },
+    { "level": 3, "description": "Life impact", "example": "..." }
+  ],
+  "deepestDesire": "What they REALLY want (identity, status, loved ones, survival)",
+  "desireIntensity": "low|moderate|high|extreme",
+  "targetSegment": "Who has this desire most intensely"
+}
 
-Example tasks:
-- "main_competitors" → "Identify top 3-4 competitors in this space and their positioning"
-- "audience_priorities" → "Research what target audience ACTUALLY wants (willingness to pay, non-negotiables)"
-- "market_shifts" → "What consumer behavior is changing in this market?"
-- "pricing_tiers" → "How is the market segmented by price and what's in each tier?"
-- "emerging_messaging" → "What new messaging angles are gaining traction?"
-- "positioning_gaps" → "What positioning do competitors avoid or can't claim?"
+Example for skincare (Mother):
+Surface: "Clean ingredients"
+Layer 2: "Products that won't harm kids' skin"
+Layer 3: "Being a good, protective mother"
+Deep: "Peace of mind that I'm doing right by my kids"
 
-Return ONLY the JSON array, no other text. Be strategic - think about what you NEED to know to create winning positioning.`;
+Return ONLY valid JSON array, no other text.`;
 
     try {
       const result = await generate(prompt, '', { model: brainModel });
@@ -76,283 +64,177 @@ Return ONLY the JSON array, no other text. Be strategic - think about what you N
       }
       return [];
     } catch (err) {
-      console.error('Error analyzing research needs:', err);
+      console.error('Error mapping deep desires:', err);
       return [];
     }
   };
 
   /**
-   * Searcher Agent Generator: Takes a research task and creates search queries
-   * This is a GENERIC agent - same code, different tasks
+   * Step 2: Identify Objections
+   * What stops the deep desire from converting to purchase?
    */
-  const generateSearchQueries = async (task: ResearchTask): Promise<string[]> => {
-    const prompt = `You are a search strategist who creates queries that ACTUALLY RETURN USEFUL INFORMATION.
+  const identifyObjections = async (campaign: Campaign, desires: DeepDesire[], brainModel: string = 'glm-4.7-flash:q4_K_M'): Promise<Objection[]> => {
+    const desiresText = desires.map(d => `${d.targetSegment}: ${d.deepestDesire}`).join('\n');
 
-Research Task: ${task.task}
-Goal: ${task.description}
+    const prompt = `You are a sales psychology expert. Given these customer desires, what objections prevent purchase?
 
-Generate 5-7 search queries that will find the BEST information for this research. Think about:
-- What specific companies or brands should I search for?
-- What industry reports or trend analyses exist?
-- What forums/communities discuss this topic authentically?
-- What data or statistics would prove this point?
+Campaign: ${campaign.brand}
+Desires:
+${desiresText}
 
-Good queries are SPECIFIC. Bad queries are GENERIC.
-✓ Good: "Drunk Elephant brand positioning luxury natural skincare"
-✗ Bad: "skincare brands"
+Identify 5-7 SPECIFIC objections. For each, rank by:
+- How often it comes up (common|moderate|rare)
+- How much it blocks sales (high|medium|low)
+- How to handle it
 
-Return ONLY a JSON array of query strings:
-["query 1", "query 2", "query 3", "query 4", "query 5", "query 6", "query 7"]
+JSON format:
+{
+  "objection": "The specific objection/doubt",
+  "frequency": "common|moderate|rare",
+  "impact": "high|medium|low",
+  "handlingApproach": "How to address this in messaging/creative",
+  "requiredProof": ["type of proof needed - testimonial|before-after|mechanism|data|video"]
+}
 
-Make queries that will return REAL, SPECIFIC, USEFUL information that answers the research goal.`;
+Think deeply about what's REALLY stopping purchase, not generic objections.
+Return ONLY valid JSON array.`;
 
     try {
-      const result = await generate(prompt, '', {});
+      const result = await generate(prompt, '', { model: brainModel });
       const jsonMatch = result.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
         return JSON.parse(jsonMatch[0]);
       }
       return [];
     } catch (err) {
-      console.error('Error generating search queries:', err);
+      console.error('Error identifying objections:', err);
       return [];
     }
   };
 
   /**
-   * Summarizer: Takes raw search results and creates a structured summary
-   * Used by searcher agents to extract KEY INSIGHTS (not just compress)
+   * Step 3: Research Audience Behavior
+   * Where do they congregate? What have they tried? What language do they use?
    */
-  const summarizeFindings = async (
-    task: ResearchTask,
-    searchResults: string
-  ): Promise<string> => {
-    const prompt = `You are a strategic research analyst. Extract KEY FINDINGS from these search results.
+  const researchAudienceBehavior = async (campaign: Campaign, brainModel: string = 'glm-4.7-flash:q4_K_M') => {
+    const prompt = `You are a market researcher. Research the ${campaign.targetAudience} audience for ${campaign.brand}.
 
-Research Task: ${task.task}
-Goal: ${task.description}
+Return JSON with:
+{
+  "avatarLanguage": ["buzzword1", "phrase2", "how they describe problems"],
+  "whereAudienceCongregates": ["reddit communities", "facebook groups", "forums", "platforms"],
+  "whatTheyTriedBefore": ["failed solution 1", "product they abandoned", "approach they discarded"],
+  "competitorWeaknesses": ["positioning no one claims", "gap in market", "audience frustration with competitors"]
+}
 
-Search Results:
-${searchResults}
-
-Structure your response as:
-KEY FINDINGS:
-- [Specific finding 1 with evidence]
-- [Specific finding 2 with evidence]
-- [Specific finding 3 with evidence]
-
-STRATEGIC IMPLICATIONS:
-- [What this means for positioning/strategy]
-- [Opportunity or threat this reveals]
-
-SPECIFIC DATA/FACTS:
-- [Any numbers, prices, market share, quotes]
-
-Be SPECIFIC. Use actual data from the search results. NOT generic statements. Focus on what's STRATEGICALLY USEFUL for competitive positioning.`;
-
-    try {
-      const result = await generate(prompt, '', {});
-      return result.substring(0, 1500); // Allow longer summaries with structure
-    } catch (err) {
-      console.error('Error summarizing findings:', err);
-      return 'Unable to summarize findings.';
-    }
-  };
-
-  /**
-   * Deploy Searcher Agent: Generic agent that executes a research task
-   * Takes a task, generates queries, searches, and summarizes
-   */
-  const deploySearcherAgent = async (
-    task: ResearchTask,
-    onProgress?: (msg: string) => void
-  ): Promise<SearcherAgentReport> => {
-    onProgress?.(`\n[AGENT] ${task.task.toUpperCase()}\n`);
-    onProgress?.(`Goal: ${task.description}\n`);
-
-    // Step 1: Generate search queries
-    onProgress?.(`Generating search queries...`);
-    const queries = await generateSearchQueries(task);
-    onProgress?.(`Created ${queries.length} queries\n`);
-
-    // Show keywords being researched
-    const keywords = queries.map(q => q.split(' ').slice(0, 3).join(' ')).slice(0, 5);
-    onProgress?.(`Keywords: ${keywords.join(', ')}\n`);
-
-    // Step 2: Execute searches (hits SearXNG placeholder or mock)
-    onProgress?.(`Browsing sources...\n`);
-    const searchResults = await batchSearch(queries);
-    onProgress?.(`Found ${searchResults.length} results\n`);
-
-    // Step 3: Summarize findings
-    onProgress?.(`Analyzing findings into key points...`);
-    const summary = await summarizeFindings(task, searchResults);
-    onProgress?.(`Analysis complete\n`);
-
-    return {
-      task: task.task,
-      queries,
-      findings: searchResults,
-      summary,
-    };
-  };
-
-  /**
-   * Research Brain Synthesis: Combines all searcher agent reports into strategic intelligence
-   * Uses the full strategic intelligence framework
-   */
-  const synthesizeResearch = async (
-    campaign: Campaign,
-    reports: SearcherAgentReport[],
-    brainModel: string = 'gpt-oss:20b'
-  ): Promise<string> => {
-    const reportsSummary = reports
-      .map(
-        (r) => `
-RESEARCH AREA: ${r.task}
-FINDINGS:
-${r.summary}
-`
-      )
-      .join('\n\n---\n\n');
-
-    const prompt = `You are a STRATEGIC COMPETITIVE INTELLIGENCE ANALYST. Your job is not to summarize - it's to find the STRATEGIC WEDGE.
-
-Campaign:
-- Brand: ${campaign.brand}
-- Target Audience: ${campaign.targetAudience}
-- Goal: ${campaign.marketingGoal}
-
-RESEARCH FINDINGS FROM AGENTS:
-${reportsSummary}
-
-Using these findings, generate a STRATEGIC INTELLIGENCE BRIEF with these sections:
-
-§ COMPETITOR POSITIONING ANALYSIS
-  For EACH major competitor mentioned:
-    [Competitor Name]
-      Core positioning: [What ONE thing are they claiming?]
-      Brand permission: [What gives them the right to claim this?]
-      Blind spot: [What CAN'T they claim without breaking their brand?]
-      Lock-in: [What are they trapped by? (price point, audience, narrative)]
-      Vulnerability: [What question always hangs over them?]
-      What they DO: [Dominant hook, visual, colors, pacing]
-      Why it works: [What emotion/need triggers purchase]
-
-§ AUDIENCE NEED HIERARCHY
-  Primary need: [What they MUST have - would pay premium for]
-  Secondary needs: [Nice to have but tradeable]
-  Trade-off point: [Where they draw the line]
-  Non-negotiable: [What they NEVER sacrifice]
-  Money location: [Where are they actually spending?]
-  Core resentment: [What frustrates them most? (biggest pain)]
-
-§ MARKET DYNAMICS (What's shifting?)
-  Consumer behavior change:
-    FROM: [Old assumption]
-    TO: [New reality]
-    Implication: [What this opens up]
-  Messaging losing power: [Old claims that don't work - explain why]
-  Messaging emerging: [New claims gaining traction - explain why]
-  Market movement: [New entrants, consolidation, price stratification]
-
-§ POSITIONING VULNERABILITY MAP
-  What can NONE of them claim together?
-    Gap description: [Exact positioning no one owns]
-    Why it's unclaimed: [Explain the business lock-in]
-    Which competitors block it: [Who prevents it]
-  What question hangs over each competitor?
-    [Competitor A]: [The doubt they can never shake]
-    [Competitor B]: [The doubt they can never shake]
-
-§ YOUR STRATEGIC OPPORTUNITY
-  Unique positioning (only you can claim this):
-    Your claim: [What intersection of needs/attributes no one else claims]
-    Why only you: [Explain why competitors can't claim it]
-    Competitive moat: [Why can't they copy you even if they tried?]
-  Attack angle (where competitors are vulnerable):
-    vs [Competitor A]: [Their blind spot, your advantage]
-    vs [Competitor B]: [Their lock-in, your freedom]
-  Audience resonance (why your position solves their pain):
-    Their resentment: [What frustrates them]
-    Your answer: [How you eliminate the false choice]
-
-CRITICAL: Be strategically SPECIFIC. Not just what competitors do, but WHY they do it and what they CAN'T claim. This is your strategic wedge.`;
+Be specific - not generic.
+Return ONLY valid JSON.`;
 
     try {
       const result = await generate(prompt, '', { model: brainModel });
-      return result;
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+      return { avatarLanguage: [], whereAudienceCongregates: [], whatTheyTriedBefore: [], competitorWeaknesses: [] };
     } catch (err) {
-      console.error('Error synthesizing research:', err);
-      return 'Unable to synthesize research findings.';
+      console.error('Error researching audience behavior:', err);
+      return { avatarLanguage: [], whereAudienceCongregates: [], whatTheyTriedBefore: [], competitorWeaknesses: [] };
     }
   };
 
   /**
-   * Main Research Flow: Brain -> Agents -> Synthesis
-   * Uses gpt-oss:20b for strategic brain & synthesis, glm-4.7-flash for searcher agents
+   * Main Research Flow: Desire Mapping + Objections + Audience Research
+   * Outputs structured ResearchFindings for use in Objections and Taste stages
    */
   const executeResearch = async (
     campaign: Campaign,
     onProgress?: (msg: string) => void,
-    brainModel: string = 'glm-4.7-flash:q4_K_M',
-    searcherModel: string = 'lfm2.5-thinking:latest'
+    brainModel: string = 'glm-4.7-flash:q4_K_M'
   ): Promise<ResearchResult> => {
     const startTime = Date.now();
     onProgress?.(`\n────────────────────────────────────────────────\n`);
-    onProgress?.(`RESEARCH PHASE: Strategic Intelligence Gathering\n`);
+    onProgress?.(`RESEARCH PHASE: Desire-Driven Analysis (Zakaria Framework)\n`);
     onProgress?.(`────────────────────────────────────────────────\n\n`);
     onProgress?.(`[CAMPAIGN_DATA]\n`);
     onProgress?.(`Brand: ${campaign.brand}\n`);
     onProgress?.(`Target Audience: ${campaign.targetAudience}\n`);
     onProgress?.(`Marketing Goal: ${campaign.marketingGoal}\n\n`);
 
-    // Step 1: Research brain decides what to investigate
-    onProgress?.(`STEP 1: Analyzing research needs...\n`);
-    const tasks = await analyzeResearchNeeds(campaign, brainModel);
+    // Step 1: Map Deep Desires
+    onProgress?.(`STEP 1: Mapping deep customer desires...\n`);
+    const deepDesires = await mapDeepDesires(campaign, brainModel);
 
-    if (tasks.length === 0) {
-      onProgress?.(`ERROR: No research tasks identified.`);
+    if (deepDesires.length === 0) {
+      onProgress?.(`ERROR: Could not identify customer desires.\n`);
       return {
-        processedOutput: 'No research tasks identified.',
-        rawOutput: 'No research tasks identified.',
+        processedOutput: 'Failed to identify customer desires.',
+        rawOutput: 'Failed to identify customer desires.',
         model: brainModel,
         processingTime: Date.now() - startTime,
       };
     }
 
-    onProgress?.(`Identified ${tasks.length} research areas:\n`);
-    tasks.forEach((t, i) => {
-      onProgress?.(`  [${i + 1}] ${t.task}: ${t.description}\n`);
+    onProgress?.(`Identified ${deepDesires.length} deep desire hierarchies:\n`);
+    deepDesires.forEach((d, i) => {
+      onProgress?.(`  [${i + 1}] ${d.targetSegment}: ${d.deepestDesire}\n`);
+      onProgress?.(`       Surface: "${d.surfaceProblem}" (Intensity: ${d.desireIntensity})\n`);
     });
 
-    // Step 2: Deploy searcher agents (runs in parallel for speed)
-    onProgress?.(`\nSTEP 2: Deploying ${tasks.length} searcher agents...\n`);
-    onProgress?.(`(Running in parallel)\n\n`);
-    const agentReports = await Promise.all(
-      tasks.map((task) =>
-        deploySearcherAgent(task, (msg) => {
-          onProgress?.(msg);
-        })
-      )
-    );
+    // Step 2: Identify Objections
+    onProgress?.(`\nSTEP 2: Identifying purchase objections...\n`);
+    const objections = await identifyObjections(campaign, deepDesires, brainModel);
 
-    onProgress?.(`\nSTEP 3: Synthesizing findings into strategic brief...\n`);
+    onProgress?.(`Found ${objections.length} key objections:\n`);
+    objections.slice(0, 3).forEach((o, i) => {
+      onProgress?.(`  [${i + 1}] "${o.objection}" (${o.frequency}, impact: ${o.impact})\n`);
+    });
 
-    // Step 3: Brain synthesizes all findings
-    const strategicBrief = await synthesizeResearch(campaign, agentReports, brainModel);
+    // Step 3: Research Audience Behavior
+    onProgress?.(`\nSTEP 3: Researching audience behavior & market gaps...\n`);
+    const audienceBehavior = await researchAudienceBehavior(campaign, brainModel);
 
-    onProgress?.(`\n────────────────────────────────────────────────\n`);
-    onProgress?.(`RESEARCH COMPLETE - Ready for Taste Stage\n`);
+    onProgress?.(`Audience congregates: ${audienceBehavior.whereAudienceCongregates.slice(0, 2).join(', ')}\n`);
+    onProgress?.(`Key language: "${audienceBehavior.avatarLanguage.slice(0, 3).join('", "')}"...\n`);
+    onProgress?.(`Market gap: ${audienceBehavior.competitorWeaknesses[0] || 'positioning to claim'}\n`);
+
+    // Synthesize Findings
+    const researchFindings: ResearchFindings = {
+      deepDesires,
+      objections,
+      avatarLanguage: audienceBehavior.avatarLanguage,
+      whereAudienceCongregates: audienceBehavior.whereAudienceCongregates,
+      whatTheyTriedBefore: audienceBehavior.whatTheyTriedBefore,
+      competitorWeaknesses: audienceBehavior.competitorWeaknesses,
+    };
+
+    const output = `RESEARCH FINDINGS: Desire-Driven Intelligence
+
+DEEP DESIRES (What customers REALLY want):
+${deepDesires.map(d => `- ${d.targetSegment}: "${d.deepestDesire}"\n  Surface problem: "${d.surfaceProblem}"\n  Intensity: ${d.desireIntensity}`).join('\n\n')}
+
+KEY OBJECTIONS (What stops purchase):
+${objections.slice(0, 5).map(o => `- "${o.objection}" (${o.frequency}, high impact: ${o.impact === 'high' ? 'YES' : 'no'})\n  Handle via: ${o.handlingApproach}`).join('\n\n')}
+
+AUDIENCE BEHAVIOR:
+- Where they gather: ${audienceBehavior.whereAudienceCongregates.join(', ')}
+- Language they use: ${audienceBehavior.avatarLanguage.join(', ')}
+- What they tried before: ${audienceBehavior.whatTheyTriedBefore.join(', ')}
+- Market gap: ${audienceBehavior.competitorWeaknesses.join(', ')}
+
+Ready for: Objection Handling → Creative Direction (Taste)`;
+
+    onProgress?.(`\nRESEARCH COMPLETE\n`);
     onProgress?.(`────────────────────────────────────────────────\n\n`);
 
     const processingTime = Date.now() - startTime;
 
     return {
-      processedOutput: strategicBrief,
-      rawOutput: strategicBrief,
+      processedOutput: output,
+      rawOutput: output,
       model: brainModel,
       processingTime,
+      researchFindings,
     };
   };
 
