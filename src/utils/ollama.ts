@@ -6,6 +6,39 @@ function getOllamaHost(): string {
   return import.meta.env.VITE_OLLAMA_HOST || 'http://localhost:11434';
 }
 
+// Auto-discover Ollama by trying common locations
+export async function discoverOllama(): Promise<string | null> {
+  const candidates = [
+    'http://localhost:11434',
+    'http://127.0.0.1:11434',
+    'http://100.74.135.83:11434', // Tailscale
+    'http://ollama:11434', // Docker
+  ];
+
+  console.debug('[Ollama] Auto-discovering Ollama at:', candidates);
+
+  for (const host of candidates) {
+    try {
+      const response = await Promise.race([
+        fetch(`${host}/api/tags`, { method: 'GET' }),
+        new Promise<Response>((_, reject) =>
+          setTimeout(() => reject(new Error('timeout')), 3000)
+        ),
+      ]);
+
+      if (response.ok) {
+        console.debug('[Ollama] Found Ollama at:', host);
+        return host;
+      }
+    } catch (e) {
+      console.debug('[Ollama] Not at', host);
+    }
+  }
+
+  console.debug('[Ollama] No Ollama found at any candidate location');
+  return null;
+}
+
 function getOllamaApi(): string {
   return `${getOllamaHost()}/api/generate`;
 }
