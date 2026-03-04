@@ -1,33 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
-import { discoverOllama } from '../utils/ollama';
+import { useOllamaStatus } from '../context/OllamaContext';
 
 export function OllamaConnectionManager() {
   const { isDarkMode } = useTheme();
-  const [status, setStatus] = useState<'discovering' | 'connected' | 'failed'>('discovering');
-  const [host, setHost] = useState<string>('');
+  const { isConnected, isDiscovering } = useOllamaStatus();
   const [showSetup, setShowSetup] = useState(false);
 
-  useEffect(() => {
-    const checkConnection = async () => {
-      setStatus('discovering');
-      const discoveredHost = await discoverOllama();
-
-      if (discoveredHost) {
-        setHost(discoveredHost);
-        setStatus('connected');
-        console.debug('[OllamaConnectionManager] Connected to:', discoveredHost);
-      } else {
-        setStatus('failed');
-        console.debug('[OllamaConnectionManager] Failed to discover Ollama');
-      }
-    };
-
-    checkConnection();
-  }, []);
-
-  if (status === 'connected') {
-    return null; // Connection successful, don't show anything
+  // Show nothing if connected or still discovering
+  if (isConnected || isDiscovering) {
+    return null;
   }
 
   return (
@@ -48,21 +30,11 @@ export function OllamaConnectionManager() {
             Ollama Not Connected
           </h3>
 
-          {status === 'discovering' && (
-            <p className={`font-mono text-xs mt-2 ${
-              isDarkMode ? 'text-orange-300' : 'text-orange-600'
-            }`}>
-              Searching for Ollama...
-            </p>
-          )}
-
-          {status === 'failed' && (
-            <>
-              <p className={`font-mono text-xs mt-2 ${
-                isDarkMode ? 'text-orange-300' : 'text-orange-600'
-              }`}>
-                Couldn't find Ollama. Make sure it's running locally.
-              </p>
+          <p className={`font-mono text-xs mt-2 ${
+            isDarkMode ? 'text-orange-300' : 'text-orange-600'
+          }`}>
+            Couldn't find Ollama. Make sure it's running locally.
+          </p>
 
               <button
                 onClick={() => setShowSetup(!showSetup)}
