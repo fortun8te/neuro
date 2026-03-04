@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTheme } from '../context/ThemeContext';
+import { BUILD_INFO } from '../constants/buildInfo';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -294,7 +295,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <p className={`font-mono text-xs ${
                     isDarkMode ? 'text-zinc-600' : 'text-zinc-400'
                   }`}>
-                    Ad Creative Agent v1.0
+                    Ad Creative Agent {BUILD_INFO.displayVersion}
+                  </p>
+                  <p className={`font-mono text-xs mt-1 ${
+                    isDarkMode ? 'text-zinc-700' : 'text-zinc-500'
+                  }`}>
+                    Build #{BUILD_INFO.buildNumber}
                   </p>
                 </div>
               </>
