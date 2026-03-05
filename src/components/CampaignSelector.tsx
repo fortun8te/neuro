@@ -4,7 +4,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import { useCampaign } from '../context/CampaignContext';
 import { useTheme } from '../context/ThemeContext';
 import { QuickChatBuilder } from './QuickChatBuilder';
-import { DEFAULT_PRESET } from '../utils/presetCampaigns';
+import { DEFAULT_PRESET, SIMPLETICS_PRESET } from '../utils/presetCampaigns';
 
 type Tab = 'preset' | 'detailed' | 'chat';
 
@@ -671,12 +671,18 @@ Ready? Tell me about your brand or product: What do you sell, and who are you tr
 
     const pipelineMode = localStorage.getItem('pipeline_mode');
     const researchMode = pipelineMode === 'interactive' ? 'interactive' as const : 'autonomous' as const;
+
+    // Extract features array from preset.product.features (which is an object)
+    const productFeaturesArray = preset.product.features
+      ? Object.entries(preset.product.features).map(([key, value]) => `${key}: ${value}`)
+      : [];
+
     createCampaign(
       preset.brand.name,
       preset.audience.name,
       goalStr,
       preset.product.description,
-      preset.product.features,
+      productFeaturesArray,
       preset.product.pricing,
       researchMode
     );
@@ -839,22 +845,45 @@ Ready? Tell me about your brand or product: What do you sell, and who are you tr
         {/* Tab Content */}
         <div>
           {activeTab === 'preset' && (
-            <div
-              className={`p-4 cursor-pointer transition-all duration-150 ${isDarkMode ? 'hover:bg-zinc-900/60' : 'hover:bg-zinc-50'}`}
-              onClick={() => handlePresetSelect(DEFAULT_PRESET)}
-            >
-              <h3 className={`font-mono text-sm font-bold ${isDarkMode ? 'text-white' : 'text-black'}`}>{DEFAULT_PRESET.label}</h3>
-              <p className={`text-xs mt-2 leading-relaxed ${isDarkMode ? 'text-zinc-500' : 'text-zinc-600'}`}>
-                {DEFAULT_PRESET.brand.description}
-              </p>
-              <div className="pt-3">
-                <button className={`px-4 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.15em] transition-all duration-150 ${
-                  isDarkMode
-                    ? 'bg-white text-black hover:bg-zinc-200'
-                    : 'bg-black text-white hover:bg-zinc-800'
-                }`}>
-                  Use This Preset
-                </button>
+            <div className="space-y-3">
+              {/* Simpletics Preset */}
+              <div
+                className={`p-4 cursor-pointer transition-all duration-150 rounded ${isDarkMode ? 'hover:bg-zinc-900/60 border border-zinc-800' : 'hover:bg-zinc-50 border border-zinc-200'}`}
+                onClick={() => handlePresetSelect(SIMPLETICS_PRESET)}
+              >
+                <h3 className={`font-mono text-sm font-bold ${isDarkMode ? 'text-white' : 'text-black'}`}>{SIMPLETICS_PRESET.label}</h3>
+                <p className={`text-xs mt-2 leading-relaxed ${isDarkMode ? 'text-zinc-500' : 'text-zinc-600'}`}>
+                  {SIMPLETICS_PRESET.brand.description}
+                </p>
+                <div className="pt-3">
+                  <button className={`px-4 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.15em] transition-all duration-150 ${
+                    isDarkMode
+                      ? 'bg-white text-black hover:bg-zinc-200'
+                      : 'bg-black text-white hover:bg-zinc-800'
+                  }`}>
+                    Use This Preset
+                  </button>
+                </div>
+              </div>
+
+              {/* Default Preset */}
+              <div
+                className={`p-4 cursor-pointer transition-all duration-150 rounded ${isDarkMode ? 'hover:bg-zinc-900/60 border border-zinc-800' : 'hover:bg-zinc-50 border border-zinc-200'}`}
+                onClick={() => handlePresetSelect(DEFAULT_PRESET)}
+              >
+                <h3 className={`font-mono text-sm font-bold ${isDarkMode ? 'text-white' : 'text-black'}`}>{DEFAULT_PRESET.label}</h3>
+                <p className={`text-xs mt-2 leading-relaxed ${isDarkMode ? 'text-zinc-500' : 'text-zinc-600'}`}>
+                  {DEFAULT_PRESET.brand.description}
+                </p>
+                <div className="pt-3">
+                  <button className={`px-4 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.15em] transition-all duration-150 ${
+                    isDarkMode
+                      ? 'bg-white text-black hover:bg-zinc-200'
+                      : 'bg-black text-white hover:bg-zinc-800'
+                  }`}>
+                    Use This Preset
+                  </button>
+                </div>
               </div>
             </div>
           )}
