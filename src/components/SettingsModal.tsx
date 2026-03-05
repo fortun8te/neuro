@@ -19,6 +19,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [wayfarerHost, setWayfarerHost] = useState('');
   const [maxResearchTime, setMaxResearchTime] = useState('10');
   const [maxIterations, setMaxIterations] = useState('3');
+  const [pipelineMode, setPipelineMode] = useState<'auto' | 'interactive'>('auto');
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [debugTests, setDebugTests] = useState<DebugTest[]>([
@@ -36,6 +37,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setMaxResearchTime(savedTime || '10');
     const savedIter = localStorage.getItem('max_research_iterations');
     setMaxIterations(savedIter || '3');
+    const savedMode = localStorage.getItem('pipeline_mode');
+    setPipelineMode((savedMode as 'auto' | 'interactive') || 'auto');
   }, []);
 
   const fetchWithTimeout = (url: string, timeout = 10000) => {
@@ -236,6 +239,44 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       }`} />
                     </button>
                   </div>
+                </div>
+
+                {/* Pipeline Mode */}
+                <div className={sectionBorder}>
+                  <label className={`block ${labelClass} mb-2`}>Pipeline Mode</label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setPipelineMode('auto');
+                        localStorage.setItem('pipeline_mode', 'auto');
+                      }}
+                      className={`flex-1 px-3 py-2 font-mono text-[10px] uppercase tracking-widest border transition-colors ${
+                        pipelineMode === 'auto'
+                          ? isDarkMode ? 'bg-white text-black border-white' : 'bg-black text-white border-black'
+                          : isDarkMode ? 'bg-transparent text-zinc-500 border-zinc-700 hover:border-zinc-500' : 'bg-transparent text-zinc-400 border-zinc-300 hover:border-zinc-500'
+                      }`}
+                    >
+                      Full Auto
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPipelineMode('interactive');
+                        localStorage.setItem('pipeline_mode', 'interactive');
+                      }}
+                      className={`flex-1 px-3 py-2 font-mono text-[10px] uppercase tracking-widest border transition-colors ${
+                        pipelineMode === 'interactive'
+                          ? isDarkMode ? 'bg-white text-black border-white' : 'bg-black text-white border-black'
+                          : isDarkMode ? 'bg-transparent text-zinc-500 border-zinc-700 hover:border-zinc-500' : 'bg-transparent text-zinc-400 border-zinc-300 hover:border-zinc-500'
+                      }`}
+                    >
+                      Interactive
+                    </button>
+                  </div>
+                  <p className={`font-mono text-[10px] mt-1.5 ${isDarkMode ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                    {pipelineMode === 'auto'
+                      ? 'Runs end-to-end without interruption.'
+                      : 'Pauses at key checkpoints to ask for your direction.'}
+                  </p>
                 </div>
 
                 {/* Ollama Connection */}

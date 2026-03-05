@@ -1,33 +1,34 @@
 // Model configuration for different stages
 // Maps each stage to the optimal model from local Ollama
 //
-// Available models:
-//   glm-4.7-flash:q4_K_M  (19GB, 30B params) — best quality, slow
-//   qwen3.5:9b             (6.6GB, 9B params)  — fast, creative writing
-//   lfm-2.5:q4_K_M         (730MB, 1.2B params) — fast, lightweight
-//   mistral:latest          (4.4GB) — general purpose
+// Model roster:
+//   glm-4.7-flash:q4_K_M  (19GB, 30B) — strategist: orchestration, reflection, analysis
+//   qwen3.5:9b             (6.6GB, 9B) — creative: synthesis, ad generation, evaluation
+//   lfm-2.5:q4_K_M         (730MB, 1.2B) — grunt work: page compression, memory archiving
 //
-// Replaced gpt-oss:20b (13GB) → qwen3.5:9b (6.6GB) for make/test stages
-// Expected speedup: ~2x (half the weight, similar quality for creative tasks)
+// Research pipeline model assignments (hardcoded in researchAgents.ts):
+//   Page compression:     lfm-2.5:q4_K_M  (fast, good enough for fact extraction)
+//   Research synthesis:   qwen3.5:9b       (needs strategic thinking for insights)
+//   Orchestrator:         glm-4.7-flash    (decides what to research next)
+//   Reflection agent:     glm-4.7-flash    (finds blind spots, pushes for AHA moments)
 
 export const MODEL_CONFIG = {
-  // Research uses orchestrated system (glm orchestrator + lfm researchers)
-  // This is only used as fallback
+  // Research Phase 1 (desire analysis) — needs deep strategic thinking
   research: 'glm-4.7-flash:q4_K_M',
 
-  // Objection handling — needs strategic thinking
+  // Objection handling — strategic copy angles
   objections: 'glm-4.7-flash:q4_K_M',
 
-  // Creative direction — balanced quality/speed
+  // Creative direction — competitive positioning
   taste: 'glm-4.7-flash:q4_K_M',
 
-  // Asset generation — needs creative writing (qwen3.5:9b = faster than gpt-oss:20b)
+  // Ad generation — creative writing + concepts
   make: 'qwen3.5:9b',
 
-  // Testing/evaluation — needs analytical reasoning
+  // Evaluation — analytical reasoning
   test: 'qwen3.5:9b',
 
-  // Memory consolidation — can be lighter weight
+  // Memory archiving — lightweight consolidation
   memories: 'lfm-2.5:q4_K_M',
 
   // Default fallback

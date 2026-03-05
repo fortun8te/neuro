@@ -182,7 +182,7 @@ SOURCES: [URLs cited]`;
         synthesisPrompt,
         'Synthesize research findings for marketing strategy. Be specific, cite sources. Identify which dimensions you covered.',
         {
-          model: 'lfm-2.5:q4_K_M',
+          model: 'qwen3.5:9b', // Upgraded from lfm-2.5 — 1.2B too small for strategic synthesis
           onChunk,
           signal,
         }
@@ -213,7 +213,7 @@ Cover as many dimensions as possible: market size, competitors, objections, tren
         const response = await ollamaService.generateStream(
           fallbackPrompt,
           'Provide research insights. Note which dimensions you cover.',
-          { model: 'lfm-2.5:q4_K_M', onChunk, signal }
+          { model: 'qwen3.5:9b', onChunk, signal }
         );
 
         return {
@@ -316,8 +316,8 @@ export const orchestrator = {
           break;
         }
 
-        // Deploy researchers in parallel (up to 3)
-        const researchTopics = nextTopics.slice(0, 3).filter((t) => t.query.length > 0);
+        // Deploy researchers in parallel (up to 5)
+        const researchTopics = nextTopics.slice(0, 5).filter((t) => t.query.length > 0);
         onProgressUpdate?.(`Deploying ${researchTopics.length} researcher agents...\n`);
         researchTopics.forEach((t) => {
           onProgressUpdate?.(`  [Orchestrator] → "${t.query}"\n`);
@@ -373,7 +373,7 @@ export const orchestrator = {
 
         // Always run reflection agent after iteration 1+ (not just when below threshold)
         // This ensures we catch overconfidence even when coverage looks "complete"
-        const MIN_ITERATIONS_BEFORE_EXIT = 2;
+        const MIN_ITERATIONS_BEFORE_EXIT = 3;
         if (iteration >= 1 && iteration < maxIterations) {
           onProgressUpdate?.(`\nRunning reflection agent (150% bar mode)...\n`);
 
@@ -400,9 +400,9 @@ export const orchestrator = {
           }
 
           if (reflectionAngles.length > 0) {
-            state.reflectionSuggestedTopics = reflectionAngles.slice(0, 3);
+            state.reflectionSuggestedTopics = reflectionAngles.slice(0, 5);
             onProgressUpdate?.(
-              `Reflection found ${reflectionAngles.length} gaps — feeding top 3 into next iteration`
+              `Reflection found ${reflectionAngles.length} gaps — feeding top 5 into next iteration`
             );
           }
         }
@@ -444,7 +444,7 @@ export const reflectionAgent = {
 
       onChunk?.(`[150% BAR] Covered: ${10 - gaps.length}/10. Missing: ${gaps.join(', ') || 'none declared'}\n`);
 
-      const reflectionPrompt = `You are a CRITICAL research reflection agent at 150% thoroughness bar. BRUTALLY identify what we DON'T know.
+      const reflectionPrompt = `You are a RUTHLESS research strategist at 150% thoroughness bar. Your job is to find the AHA MOMENTS we're missing — not just fill gaps, but find INSIGHTS that change the entire strategy.
 
 Campaign: ${state.campaign.brand} | ${state.campaign.productDescription} | Target: ${state.campaign.targetAudience}
 
@@ -452,36 +452,45 @@ RESEARCH COMPLETED (${completedResults.length} queries):
 ${completedResults.map((r, i) => `${i + 1}. "${r.query}" → ${Object.values(r.coverage_graph).filter(Boolean).length}/10 dimensions`).join('\n')}
 
 MISSING DIMENSIONS:
-${gaps.length > 0 ? gaps.map((g, i) => `[GAP ${i + 1}] ${g}`).join('\n') : '⚠️ NONE DECLARED — OVERCONFIDENCE RISK!'}
+${gaps.length > 0 ? gaps.map((g, i) => `[GAP ${i + 1}] ${g}`).join('\n') : '⚠️ NONE DECLARED — OVERCONFIDENCE RISK! Are we sure?'}
 
-BRUTAL QUESTIONS:
-1. WHO is missing? (Competitors' customers? Detractors? Price-sensitive buyers?)
-2. WHAT contradictions exist between sources?
-3. WHAT would a SKEPTICAL EXPERT ridicule about this research?
-4. WHAT assumptions are we making WITHOUT data?
-5. WHAT is Reddit/Trustpilot actually saying about this brand or category?
-6. WHAT does the website claim vs what customers say?
-7. WHAT regions/segments did we skip?
-8. WHAT indirect competitors aren't we researching?
+CRITICAL BLIND SPOT CHECKS:
+1. Did we check TRUSTPILOT reviews for competitors? (Real complaints = gold)
+2. Did we search REDDIT for real user opinions? (r/SkincareAddiction, r/30PlusSkinCare, etc.)
+3. Did we look at competitor ADVERTISING? (Meta Ad Library, what hooks are they running?)
+4. Did we find CONTRADICTIONS between what brands claim vs what users say?
+5. Did we research what ADJACENT niches are doing differently? (What can we steal from fitness/wellness/beauty?)
+6. Did we find the ONE THING competitors can NEVER claim? (Their structural weakness)
+7. Did we check what's ACTUALLY TRENDING on TikTok/Instagram for this category?
+8. Did we look at NEGATIVE reviews and 1-star complaints? (What makes people ANGRY?)
+9. Did we research price sensitivity and willingness-to-pay data?
+10. Did we find any SURPRISING insights that would change the strategy?
 
-Output CONCRETE research angles (not vague):
-❌ WEAK: "Research social media sentiment"
-✅ STRONG: "Search Reddit r/SkincareAddiction for vitamin C serum complaints and brand mentions"
+The best research doesn't just answer questions — it reveals things nobody expected.
+Look for the AHA: "Wait, customers don't actually care about X, they care about Y!"
+
+Output HYPERSPECIFIC research queries (not vague):
+BAD: "Research social media sentiment"
+GOOD: "trustpilot reviews The Ordinary vitamin C serum complaints"
+GOOD: "reddit r/SkincareAddiction vitamin C serum recommendations 2025"
+GOOD: "meta ad library competitor_name skincare ads running now"
+GOOD: "tiktok trending vitamin C serum hooks viral 2025"
 
 Format:
 OVERCONFIDENCE RISK: [LOW/MEDIUM/HIGH/CRITICAL]
+AHA POTENTIAL: [What kind of breakthrough insight are we still missing?]
 
 AGGRESSIVE NEW RESEARCH ANGLES:
-1. [specific angle]
-2. [specific angle]
-3. [specific angle]
-4. [specific angle]
-5. [specific angle]`;
+1. [hyperspecific query]
+2. [hyperspecific query]
+3. [hyperspecific query]
+4. [hyperspecific query]
+5. [hyperspecific query]`;
 
       const response = await ollamaService.generateStream(
         reflectionPrompt,
         'Be BRUTALLY critical. Find what we DON\'T know. Suggest specific web research.',
-        { model: 'lfm-2.5:q4_K_M', temperature: 0.85, onChunk, signal }
+        { model: 'glm-4.7-flash:q4_K_M', onChunk, signal } // Upgraded from lfm-2.5 — reflection needs strategic depth
       );
 
       // Extract risk level
@@ -594,7 +603,7 @@ ${state.reflectionSuggestedTopics.map((t, i) => `${i + 1}. ${t}`).join('\n')}
 Consider these angles for next research deployment.`
     : '';
 
-  return `You are evaluating research completeness for an ad campaign.
+  return `You are evaluating research completeness for an ad campaign. Be THOROUGH — don't mark dimensions as covered unless we have SPECIFIC data.
 
 Campaign:
 - Brand: ${state.campaign.brand}
@@ -604,6 +613,9 @@ Campaign:
 - Goal: ${state.campaign.marketingGoal}
 ${state.userProvidedContext ? `\nUser Context:\n${Object.entries(state.userProvidedContext).map(([k, v]) => `- ${k}: ${v}`).join('\n')}` : ''}
 
+Research Goals:
+${state.researchGoals.map((g, i) => `${i + 1}. ${g}`).join('\n')}
+
 Research So Far (${results.length} queries):
 ${results.map((r) => {
   const covered = Object.values(r.coverage_graph).filter(Boolean).length;
@@ -611,22 +623,31 @@ ${results.map((r) => {
   return `- "${r.query}": ${covered}/${total} dimensions`;
 }).join('\n')}
 
-10 Dimensions to cover:
-1. Market size & trends
-2. Competitor analysis
-3. Customer objections
-4. Emerging trends
-5. Regional differences
-6. Pricing strategies
-7. Channel effectiveness
-8. Brand positioning gaps
-9. Psychological triggers
-10. Media consumption patterns
+10 Dimensions to cover (ALL must have REAL data, not just mentions):
+1. Market size & trends (actual numbers, growth rates)
+2. Competitor analysis (specific competitors, their strategies, ad creative approaches)
+3. Customer objections (real complaints from reviews/forums, not hypothetical)
+4. Emerging trends (what's changing in this market RIGHT NOW)
+5. Regional differences (geography matters?)
+6. Pricing strategies (actual price points, value perception)
+7. Channel effectiveness (where do ads work? Meta, TikTok, Google?)
+8. Brand positioning gaps (what NO competitor claims)
+9. Psychological triggers (emotional drivers, fear/desire based)
+10. Media consumption patterns (where does this audience actually spend time?)
+
+IMPORTANT: Research competitor ADVERTISING specifically — what ads are they running? What hooks? What visuals? Check Meta Ad Library, search for competitor ad examples, and look at what's working in this niche.
 ${reflectionNote}
 
-If gaps remain: RESEARCH: [specific topic to investigate]
+If gaps remain, list 3-5 specific research queries:
+RESEARCH: [specific topic 1]
+RESEARCH: [specific topic 2]
+RESEARCH: [specific topic 3]
+RESEARCH: [specific topic 4]
+RESEARCH: [specific topic 5]
+
+Include at LEAST one competitor-focused query and one audience sentiment query.
 If need user input: QUESTION: [question]
-If complete: COMPLETE: true${interactiveNote}`;
+If ALL 10 dimensions are thoroughly covered with real data: COMPLETE: true${interactiveNote}`;
 }
 
 function buildCoverageGraph(response: string): CoverageGraph {

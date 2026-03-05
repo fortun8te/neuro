@@ -57,6 +57,23 @@ export interface ResearchQuestion {
   suggestedAnswers?: string[];
 }
 
+// Interactive question system — AI asks the user for direction at key checkpoints
+export type QuestionCheckpoint = 'pre-research' | 'mid-pipeline' | 'pre-make';
+
+export interface UserQuestion {
+  id: string;
+  question: string;
+  options: string[]; // 3 AI-generated options (user can also type custom)
+  checkpoint: QuestionCheckpoint;
+  context?: string; // Brief summary of why the AI is asking this
+}
+
+export interface UserQuestionAnswer {
+  questionId: string;
+  answer: string; // The selected option text or custom text
+  checkpoint: QuestionCheckpoint;
+}
+
 export interface Cycle {
   id: string;
   campaignId: string;
@@ -110,6 +127,11 @@ export interface CampaignContextType {
   currentCycle: Cycle | null;
   systemStatus: SystemStatus;
   error: string | null;
+
+  // Interactive question system
+  pendingQuestion: UserQuestion | null;
+  questionAnswers: UserQuestionAnswer[];
+  answerQuestion: (answer: string) => void;
 
   // Actions
   createCampaign: (

@@ -1,5 +1,5 @@
-import { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import type { Campaign, Cycle, CampaignContextType, StageName, CycleMode } from '../types';
+import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import type { Campaign, Cycle, CampaignContextType, StageName, CycleMode, UserQuestion, UserQuestionAnswer } from '../types';
 import { useCycleLoop } from '../hooks/useCycleLoop';
 import { useStorage } from '../hooks/useStorage';
 
@@ -11,6 +11,35 @@ export function CampaignProvider({ children }: { children: React.ReactNode }) {
   const [currentCycle, setCurrentCycle] = useState<Cycle | null>(null);
   const [cycleMode] = useState<CycleMode>('full');
 
+  // Interactive question system
+  const [pendingQuestion, setPendingQuestion] = useState<UserQuestion | null>(null);
+  const [questionAnswers, setQuestionAnswers] = useState<UserQuestionAnswer[]>([]);
+  const questionResolverRef = useRef<((answer: string) => void) | null>(null);
+
+  // Called by QuestionModal when user picks an answer
+  const answerQuestion = useCallback((answer: string) => {
+    if (pendingQuestion && questionResolverRef.current) {
+      // Record the answer
+      setQuestionAnswers(prev => [...prev, {
+        questionId: pendingQuestion.id,
+        answer,
+        checkpoint: pendingQuestion.checkpoint,
+      }]);
+      // Resolve the promise so the pipeline continues
+      questionResolverRef.current(answer);
+      questionResolverRef.current = null;
+      setPendingQuestion(null);
+    }
+  }, [pendingQuestion]);
+
+  // Called by useCycleLoop to show a question and wait for answer
+  const askUser = useCallback((question: UserQuestion): Promise<string> => {
+    return new Promise<string>((resolve) => {
+      questionResolverRef.current = resolve;
+      setPendingQuestion(question);
+    });
+  }, []);
+
   const {
     isRunning,
     isPaused,
@@ -20,7 +49,7 @@ export function CampaignProvider({ children }: { children: React.ReactNode }) {
     pause,
     resume,
     stop,
-  } = useCycleLoop();
+  } = useCycleLoop(askUser);
 
   const { saveCampaign, saveCycle, getCyclesByCampaign } = useStorage();
 
@@ -130,6 +159,9 @@ export function CampaignProvider({ children }: { children: React.ReactNode }) {
     currentCycle,
     systemStatus: isRunning ? 'running' : isPaused ? 'paused' : 'idle',
     error: cycleError,
+    pendingQuestion,
+    questionAnswers,
+    answerQuestion,
     createCampaign,
     startCycle,
     pauseCycle,

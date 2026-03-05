@@ -1,9 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { Campaign, Cycle, StageName, StageData, CycleMode } from '../types';
+import type { Campaign, Cycle, StageName, StageData, CycleMode, UserQuestion, QuestionCheckpoint } from '../types';
 import { useOllama } from './useOllama';
 import { useStorage } from './useStorage';
 import { useOrchestratedResearch } from './useOrchestratedResearch';
-import { getSystemPrompt } from '../utils/prompts';
+import { getSystemPrompt, getCheckpointQuestionPrompt } from '../utils/prompts';
 import { getModelForStage } from '../utils/modelConfig';
 
 const FULL_STAGE_ORDER: StageName[] = ['research', 'objections', 'taste', 'make', 'test', 'memories'];
@@ -54,7 +54,7 @@ function createCycle(campaignId: string, cycleNumber: number, mode: CycleMode = 
   };
 }
 
-export function useCycleLoop() {
+export function useCycleLoop(askUser?: (question: UserQuestion) => Promise<string>) {
   const { generate } = useOllama();
   const { executeOrchestratedResearch } = useOrchestratedResearch();
   const { saveCycle, updateCycle } = useStorage();
@@ -69,6 +69,61 @@ export function useCycleLoop() {
   const isPausedRef = useRef(false);
   const isRunningRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const userAnswersRef = useRef<Record<string, string>>({});
+
+  // Check if interactive mode is enabled
+  const isInteractive = (): boolean => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('pipeline_mode') === 'interactive';
+    }
+    return false;
+  };
+
+  // Generate a question using GLM and wait for user answer
+  const askCheckpointQuestion = useCallback(async (
+    checkpoint: QuestionCheckpoint,
+    campaign: Campaign,
+    stageOutputs: Record<string, string>
+  ): Promise<string | null> => {
+    if (!isInteractive() || !askUser) return null;
+
+    try {
+      const brief = `Brand: ${campaign.brand}\nAudience: ${campaign.targetAudience}\nGoal: ${campaign.marketingGoal}\nProduct: ${campaign.productDescription}\nFeatures: ${campaign.productFeatures.join(', ')}\nPrice: ${campaign.productPrice || 'N/A'}`;
+
+      const { system, prompt } = getCheckpointQuestionPrompt(checkpoint, brief, stageOutputs);
+
+      // Generate question using GLM
+      const response = await generate(prompt, system, {
+        model: getModelForStage('research'), // GLM for question generation
+      });
+
+      // Parse JSON response
+      const cleaned = response.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      const parsed = JSON.parse(cleaned);
+
+      if (!parsed.question || !Array.isArray(parsed.options) || parsed.options.length < 3) {
+        console.warn('Invalid question format from GLM:', parsed);
+        return null;
+      }
+
+      // Create the question object
+      const question: UserQuestion = {
+        id: `q-${checkpoint}-${Date.now()}`,
+        question: parsed.question,
+        options: parsed.options.slice(0, 3),
+        checkpoint,
+        context: parsed.context || undefined,
+      };
+
+      // Show question and wait for answer
+      const answer = await askUser(question);
+      userAnswersRef.current[checkpoint] = answer;
+      return answer;
+    } catch (err) {
+      console.warn('Question generation failed, continuing without input:', err);
+      return null;
+    }
+  }, [askUser, generate]);
 
   // Execute a single stage
   const executeStage = useCallback(
@@ -182,7 +237,7 @@ Define the Creative Direction that:
 2. OWNS the market gap (positioning no one else claims)
 3. ADDRESSES top objections through visual/messaging style
 4. USES audience language: ${findings.avatarLanguage.slice(0, 3).join(', ')}
-
+${userAnswersRef.current['mid-pipeline'] ? `\nUSER DIRECTION: The user specifically wants to focus on: "${userAnswersRef.current['mid-pipeline']}". Prioritize this direction.\n` : ''}
 Specify:
 - Primary Desire Angle: [which desire to lead with]
 - Secondary Angles: [other desires to mention]
@@ -217,7 +272,7 @@ ${creativeDirection}
 
 TOP OBJECTIONS TO ADDRESS:
 ${findings.objections.slice(0, 2).map(o => `- "${o.objection}"`).join('\n')}
-
+${userAnswersRef.current['pre-make'] ? `\nUSER CREATIVE PREFERENCE: "${userAnswersRef.current['pre-make']}". Prioritize this angle/approach across all concepts.\n` : ''}
 Generate 3 DIFFERENT AD CONCEPTS, each targeting different psychology:
 
 ANGLE 1: DESIRE-FOCUSED (Lead with what they REALLY want)
@@ -394,6 +449,17 @@ DOCUMENT THE LEARNINGS:
       setIsRunning(true);
       setError(null);
 
+      // Reset user answers for this cycle
+      userAnswersRef.current = {};
+
+      // Pre-research checkpoint
+      const stageOutputs: Record<string, string> = {};
+      const preResearchAnswer = await askCheckpointQuestion('pre-research', campaign, stageOutputs);
+      if (preResearchAnswer) {
+        // Inject user direction into campaign context for research
+        campaign = { ...campaign, productFeatures: [...campaign.productFeatures, `[User direction: ${preResearchAnswer}]`] };
+      }
+
       while (isRunningRef.current) {
         if (isPausedRef.current) {
           await new Promise((resolve) => {
@@ -408,8 +474,28 @@ DOCUMENT THE LEARNINGS:
           // State already updated in executeStage, but refresh again to be sure
           setCurrentCycle(refreshCycleReference(cycle));
 
+          // Capture stage output for checkpoint questions
+          const completedStage = cycle.currentStage;
+          stageOutputs[completedStage] = cycle.stages[completedStage]?.processedOutput || cycle.stages[completedStage]?.agentOutput || '';
+
           // Save cycle progress
           await updateCycle(cycle);
+
+          // Mid-pipeline checkpoint: after objections, before taste
+          if (completedStage === 'objections') {
+            const midAnswer = await askCheckpointQuestion('mid-pipeline', campaign, stageOutputs);
+            if (midAnswer) {
+              stageOutputs['user_creative_direction'] = midAnswer;
+            }
+          }
+
+          // Pre-make checkpoint: after taste, before make
+          if (completedStage === 'taste') {
+            const preMakeAnswer = await askCheckpointQuestion('pre-make', campaign, stageOutputs);
+            if (preMakeAnswer) {
+              stageOutputs['user_make_direction'] = preMakeAnswer;
+            }
+          }
 
           // Delay before next stage
           await new Promise((resolve) => {

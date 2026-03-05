@@ -235,3 +235,57 @@ Show exact evidence for each insight.`,
 export function getSystemPrompt(stage: string): string {
   return systemPrompts[stage as keyof typeof systemPrompts] || '';
 }
+
+// Question generation prompts for interactive mode checkpoints
+export function getCheckpointQuestionPrompt(
+  checkpoint: 'pre-research' | 'mid-pipeline' | 'pre-make',
+  campaignBrief: string,
+  stageOutputs?: Record<string, string>
+): { system: string; prompt: string } {
+  const system = `You generate ONE strategic question for the user at a pipeline checkpoint.
+You MUST respond in valid JSON with this exact format:
+{"question":"<your question>","options":["<option A>","<option B>","<option C>"],"context":"<1 sentence explaining why you're asking>"}
+
+Rules:
+- Question must be specific to this campaign, not generic
+- Options must be distinct strategic directions, not just phrasing variations
+- Each option should be 10-25 words max
+- Context explains what gap or ambiguity you detected
+- Do NOT wrap in markdown code blocks. Output raw JSON only.`;
+
+  let prompt = '';
+
+  if (checkpoint === 'pre-research') {
+    prompt = `Campaign Brief:
+${campaignBrief}
+
+You are about to start the research phase. Look at this brief and identify the most important strategic ambiguity — something that would change HOW you research if you knew the answer.
+
+Generate a question that helps you focus the research in the right direction. The 3 options should represent genuinely different research angles.`;
+  } else if (checkpoint === 'mid-pipeline') {
+    prompt = `Campaign Brief:
+${campaignBrief}
+
+Research Output:
+${stageOutputs?.research?.slice(0, 2000) || 'N/A'}
+
+Objections Analysis:
+${stageOutputs?.objections?.slice(0, 1000) || 'N/A'}
+
+Research and objection analysis are complete. Next up: creative direction (taste) and then ad generation (make).
+
+Based on what the research revealed, generate a question that helps choose the right CREATIVE DIRECTION. The 3 options should represent different strategic positioning choices.`;
+  } else if (checkpoint === 'pre-make') {
+    prompt = `Campaign Brief:
+${campaignBrief}
+
+Creative Direction:
+${stageOutputs?.taste?.slice(0, 1500) || 'N/A'}
+
+Creative direction is set. Next: generating 3 ad concepts.
+
+Generate a question about which AD ANGLE or HOOK to prioritize. The 3 options should represent different creative approaches (e.g., desire-led vs proof-led vs story-led).`;
+  }
+
+  return { system, prompt };
+}

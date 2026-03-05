@@ -6,10 +6,11 @@ import { ControlPanel } from './ControlPanel';
 import { CycleTimeline } from './CycleTimeline';
 import { StagePanel } from './StagePanel';
 import { CycleHistory } from './CycleHistory';
+import { QuestionModal } from './QuestionModal';
 import type { StageName } from '../types';
 
 export function Dashboard() {
-  const { systemStatus, error, currentCycle, cycles, campaign } = useCampaign();
+  const { systemStatus, error, currentCycle, cycles, campaign, pendingQuestion, answerQuestion } = useCampaign();
   const { isDarkMode } = useTheme();
   const isRunning = systemStatus === 'running';
   const [selectedStage, setSelectedStage] = useState<StageName | null>(null);
@@ -89,6 +90,15 @@ export function Dashboard() {
         </div>
 
       </div>
+
+      {/* Interactive question modal — shown when pipeline pauses for user input */}
+      {pendingQuestion && (
+        <QuestionModal
+          question={pendingQuestion}
+          onAnswer={answerQuestion}
+          isDarkMode={isDarkMode}
+        />
+      )}
     </div>
   );
 }

@@ -79,10 +79,13 @@ export function useOrchestratedResearch() {
     const orchestratorState: OrchestratorState = {
       campaign,
       researchGoals: [
-        'Validate competitive positioning gaps',
-        'Identify market trends',
-        'Find audience congregations',
-        'Research competitor weaknesses',
+        'Research competitor ads and creative strategies (Meta Ad Library, ad examples)',
+        'Validate competitive positioning gaps with real market data',
+        'Identify market trends, growth rates, and emerging shifts',
+        'Find audience congregations (Reddit, forums, communities) and their language',
+        'Research competitor weaknesses from customer reviews and complaints',
+        'Analyze pricing strategies and value perception across market',
+        'Research brand perception and sentiment (reviews, social mentions)',
       ],
       completedResearch: [],
       coverageThreshold: 0.8, // Orchestrator needs 80%+ dimensional coverage

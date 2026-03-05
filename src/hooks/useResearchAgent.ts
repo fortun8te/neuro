@@ -56,7 +56,8 @@ Deep: "Peace of mind that I'm doing right by my kids"
 Return ONLY valid JSON array, no other text.`;
 
     try {
-      const result = await generate(prompt, '', { model: brainModel, signal, onChunk: (c) => onProgress?.(c) });
+      onProgress?.('  Generating desire map...\n');
+      const result = await generate(prompt, '', { model: brainModel, signal });
       const jsonMatch = result.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
         return JSON.parse(jsonMatch[0]);
@@ -99,10 +100,32 @@ Think deeply about what's REALLY stopping purchase, not generic objections.
 Return ONLY valid JSON array.`;
 
     try {
-      const result = await generate(prompt, '', { model: brainModel, signal, onChunk: (c) => onProgress?.(c) });
+      onProgress?.('  Analyzing purchase objections...\n');
+      const result = await generate(prompt, '', { model: brainModel, signal });
+      // Try multiple JSON extraction strategies
       const jsonMatch = result.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
+        try {
+          return JSON.parse(jsonMatch[0]);
+        } catch {
+          // Try cleaning common JSON issues
+          const cleaned = jsonMatch[0].replace(/,\s*]/g, ']').replace(/'/g, '"');
+          try {
+            return JSON.parse(cleaned);
+          } catch {
+            console.warn('Objection JSON parse failed after cleanup');
+          }
+        }
+      }
+      // Last resort: retry once with a simpler prompt
+      onProgress?.('  Retrying objection analysis...\n');
+      const retry = await generate(
+        `List 5 purchase objections for ${campaign.brand} targeting ${campaign.targetAudience}. Return ONLY a JSON array of objects with keys: objection, frequency (common/moderate/rare), impact (high/medium/low), handlingApproach, requiredProof (array of strings).`,
+        '', { model: brainModel, signal }
+      );
+      const retryMatch = retry.match(/\[[\s\S]*\]/);
+      if (retryMatch) {
+        try { return JSON.parse(retryMatch[0]); } catch { /* give up */ }
       }
       return [];
     } catch (err) {
@@ -131,7 +154,8 @@ Be specific - not generic.
 Return ONLY valid JSON.`;
 
     try {
-      const result = await generate(prompt, '', { model: brainModel, signal, onChunk: (c) => onProgress?.(c) });
+      onProgress?.('  Researching audience behavior...\n');
+      const result = await generate(prompt, '', { model: brainModel, signal });
       const jsonMatch = result.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         return JSON.parse(jsonMatch[0]);
@@ -167,7 +191,8 @@ Each entry should be a specific, actionable positioning opportunity.
 Return ONLY valid JSON array.`;
 
     try {
-      const result = await generate(prompt, '', { model: brainModel, signal, onChunk: (c) => onProgress?.(c) });
+      onProgress?.('  Mapping competitor landscape...\n');
+      const result = await generate(prompt, '', { model: brainModel, signal });
       const jsonMatch = result.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
         return JSON.parse(jsonMatch[0]);
