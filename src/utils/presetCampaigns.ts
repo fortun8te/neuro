@@ -658,158 +658,297 @@ export const ALTERNATIVE_PRESET_SAAS = {
 };
 
 export const SIMPLETICS_PRESET = {
-  id: 'mens-haircare',
-  label: 'Men\'s Haircare — Simpletics',
+  id: 'simpletics-seasalt',
+  label: 'Men\'s Hair — Simpletics Sea Salt Spray',
+
   brand: {
     name: 'Simpletics',
     website: 'simpletics.com',
-    socials: '@simpletics on TikTok, Instagram',
-    description: 'Natural ingredients men\'s haircare. Sea Salt Spray, Hair Clay, Texture Powder. No harsh chemicals.',
+    socials: '@simpletics TikTok | @simpletics Instagram | YouTube: Simpletics',
+    description: 'Natural men\'s haircare. Sea Salt Spray, Hair Clay, Texture Powder. Real texture, no BS ingredients.',
     industry: 'Beauty / Men\'s Haircare / Styling',
-    positioning: 'Premium men\'s haircare for guys who want natural texture without the BS. Quality for good price.',
-    tone: 'Casual, authentic, relatable. Speak like TikTok/Instagram guys talk about style. Never corporate.',
-    colors: 'Natural tones, minimal design (white, black, natural browns)',
-    fonts: 'Modern sans-serif, clean',
-    personality: 'The Helpful Friend — genuine, knows about hair, keeps it simple',
-    bigEnemy: 'Based.co and mega-brands charging premium prices for same ingredients. Also: fake "natural" products with harsh chemicals.',
-    brandWhy: 'Quality haircare that actually works, without the premium price tag of bigger competitors.',
+    positioning: 'Premium texture for Gen Z guys who want natural ingredients at a price that doesn\'t suck',
+    tone: 'Casual, authentic, friend vibes. Real, relatable, funny. No corporate speak.',
+    colors: 'White (clean), black (edge), natural tan/sand (the spray)',
+    fonts: 'Clean sans-serif, minimal',
+    personality: 'The Real Friend — knows hair, genuine, keeps it simple',
+    bigEnemy: 'Based.co charging $50+ for same stuff. Also cheap brands that feel fake or don\'t work.',
+    brandWhy: 'Got tired of guys paying premium for basic ingredients. Quality at normal prices.',
+
+    categoryBeliefs: [
+      '"Good haircare = expensive" — Nope. We prove it doesn\'t cost $50.',
+      '"Texture looks fake" — Nope. Right spray looks effortless.',
+      '"Takes forever to use" — Nope. Spray + go. Done.',
+      '"Natural doesn\'t work" — Nope. Our formula holds 8+ hours.',
+    ],
+
+    founderPersona: 'Dillon Latham (founder) — 23, TikTok creator, tired of $50 products, tested on 500+ guys',
+    foundingStory: 'Dillon realized cool hair products were either $50+ (Based) or felt gross (drugstore). Tested formulas with friends, found the sweet spot.',
+    firstProduct: 'Sea Salt Spray. 6 months testing ratios with friends. Final: sea salt + coconut oil + light hold.',
+    pivotalMilestones: 'Year 1: TikTok with micro-creators, 100k followers. Year 2: $10k/month revenue, added clay + powder.',
+
+    keyPeople: 'Dillon Latham (founder, visible in all content)',
+    narrativeArcs: 'Real journey: "Spent $50 on Based, it sucked" → "Made my own formula" → "Thousands use it now"',
+
+    marketPosition: 'Sweet spot: $20 (vs Based $50+, vs drugstore $5 that sucks)',
+    nicheDefinition: 'Gen Z guys (16-25) who care about looking good, trust creators, want authenticity',
+    targetNeedsUnmet: 'Nobody combines authentic founder + natural ingredients + fair pricing',
+    emotionalDifferentiation: 'Customers feel smart (not overcharged), authentic (brand is real), confident (works)',
   },
 
   audience: {
-    name: 'Jake, The Textured Hair Guy',
-    ageRange: '16-25 (Gen Z, TikTok-native)',
-    location: 'USA, Canada, UK (everywhere)',
-    income: '$0-40k (teenagers, early career)',
-    job: 'Student or entry-level job',
-    education: 'High school / college',
-    maritalStatus: 'Single, no kids',
+    name: 'Jake, The Textured Guy',
+    ageRange: '16-25 (Gen Z, peak TikTok)',
+    location: 'USA, Canada',
+    income: '$0-40k (students, entry-level)',
+    job: 'High school / college / first job',
+    education: 'HS / College',
+    maritalStatus: 'Single',
 
-    currentSituation: 'Wants that effortless textured look he sees on TikTok. Scared of looking basic. Watches hair tutorials, influenced by creators.',
-    desiredSituation: 'Easy product that gives texture, works with his routine, affordable enough to buy himself.',
+    currentSituation: 'Sees textured hair on TikTok creators, wants that look. Doesn\'t want to look basic or try-hard. Influenced by friends/creators.',
+    desiredSituation: 'Product that gives texture in 2 mins, actually works, affordable, natural',
 
     painPoints: {
-      primary: 'Doesn\'t know which product to buy (hair clay vs spray?). Scared of wasting money. Insecure about how his hair looks.',
-      secondary: 'Tries cheap products, they don\'t work, feels like a failure',
-      tertiary: 'Wants to look put-together but doesn\'t want to spend 30 mins on routine',
-      deepestPain: 'Fear of looking like he doesn\'t care OR looking tryhard. Wants to look naturally cool.',
+      primary: 'Insecurity about hair. Doesn\'t know which product. Scared to waste money on BS.',
+      secondary: 'Tried cheap products, didn\'t work, feels stupid',
+      tertiary: 'Can\'t spend $50. No time for complicated routines.',
+      deepestPain: 'Fear of looking like he doesn\'t care (boring) OR trying too hard (fake). Wants natural confidence.',
     },
 
     values: {
-      authenticity: 'Hates fake/corporate vibes. Wants real products from real people.',
-      ease: 'Won\'t do complicated routines. 2 steps max.',
-      affordability: 'Can\'t spend $30 on hair product. Works part-time.',
-      efficacy: 'Product has to actually work or he won\'t buy again.',
+      authenticity: 'Hates corporate fake. Trusts real people over brands.',
+      ease: 'Won\'t do 5-step routines. Spray, go. Done.',
+      affordability: 'Part-time job budget. Can\'t spend $30+ on one product.',
+      efficacy: 'Has to actually work or he tells everyone it\'s trash.',
+      natural: 'Cares about ingredients. No silicones.',
     },
 
     platforms: {
-      tiktok: '3-4 hrs/day — watches hair tutorials, creator content, trends',
-      instagram: '2 hrs/day — follows hair creators, lifestyle',
-      youtube: '1 hr/day — long-form hair guides',
-      twitch: '2-3 hrs/week — streams, casual content',
-      snapchat: '1 hr/day — snaps with friends',
+      tiktok: '3-4 hrs/day — hair tutorials, trends, creators',
+      instagram: '2 hrs/day — hair creators, lifestyle',
+      youtube: '1+ hrs/day — long-form hair content',
+      amazon: 'Buys if price is right',
     },
 
-    dayInLife: 'Wake 7am → shower + hair routine 5 mins → school/work 8-5 → gym 5:30-6:30 → dinner → TikTok/YouTube 7-11pm → sleep 11:30pm',
+    dayInLife: 'Wake 7am → shower + hair 5 mins → school/work 8-5 → gym 5:30-6:30 → dinner → TikTok/YouTube 7-11pm → sleep midnight',
     exerciseHabits: '3-4x/week gym (wants to look good)',
-    hobbies: 'TikTok, gaming, skate/sports, hanging with friends',
+    hobbies: 'TikTok, gaming, skateboarding, friends, trying new looks',
     entertainment: 'TikTok (60%), YouTube (20%), Twitch (10%), Reddit (10%)',
-    socialLife: 'Tight friend group, cares what friends think about his look, shows off new fits',
+    socialLife: 'Close friends, shows them new products, cares what they think',
+    purchaseHistory: 'Tried Based (too expensive), drugstore (felt weird), clay (worked but $30)',
+
+    trustFactors: [
+      'Creator uses it (like Dillon)',
+      'Friends recommend',
+      'Affordable (proves it\'s not just hype)',
+      'Reviews from guys his age',
+      'Natural ingredients',
+    ],
   },
 
   product: {
-    name: 'Sea Salt Spray + Hair Clay Bundle',
-    category: 'Men\'s Haircare → Styling',
-    description: 'Natural sea salt spray + hair clay. Gives texture, holds all day, washes out easy. No harsh chemicals.',
-    format: '100ml spray + 75ml jar',
-    packaging: 'Minimal, recyclable',
+    name: 'Sea Salt Spray',
+    category: 'Men\'s Haircare → Styling Sprays',
+    description: 'Sea salt spray that gives natural texture, light hold, washes out with water. No silicones, no synthetic fragrance. 100ml.',
+    format: '100ml spray bottle (aluminum + glass)',
+    packaging: 'Minimalist white label, recyclable',
+    shelfLife: '2 years unopened, 6 months after opening',
 
-    problemSolved: 'Wants textured, effortless look but products are expensive or don\'t work',
-    secondaryProblems: 'Gets bored with same look, wants options, scared of looking fake',
+    problemSolved: 'Guys want textured, effortless hair but products are expensive, feel fake, or don\'t work',
+    secondaryProblems: 'Doesn\'t want complicated routine, wants to wash out easy, wants natural',
 
     features: {
-      saltspray: 'Sea salt (natural), coconut oil, light hold',
-      clay: 'Natural clay (matte finish), holds 8+ hours, washes out with water',
-      noNos: 'No silicones, no synthetic fragrances, no harsh chemicals, vegan',
+      active: 'Real sea salt crystals (gives texture)',
+      supporting: 'Coconut oil (conditioning), light resin (8-hour hold, no crunch)',
+      format: 'Spray bottle, 100ml, light mist',
+      noNos: 'Zero silicones, zero synthetic fragrance, zero harsh chemicals, vegan, cruelty-free',
     },
 
     functionalBenefits: {
-      immediate: 'Works right away, texture visible in minutes',
-      daylong: 'Holds all day without looking crunchy',
-      washout: 'Washes out with just water, no harsh shampoo needed',
+      immediate: 'Spray on damp/dry hair, texture in 1-2 mins',
+      allday: 'Holds 8+ hours, no crunch or wet look',
+      washout: 'Washes out with water (no residue)',
+      versatile: 'Works on all hair types',
     },
 
     emotionalBenefits: [
-      'Looks naturally textured (not like he tried too hard)',
-      'Confidence at school/work',
-      'Fits aesthetic on TikTok',
-      'Affordable enough to not feel guilty',
-      'Natural ingredients = feels good about it',
+      'Looks naturally textured (effortless vibe)',
+      'Confidence (school, work, dates)',
+      'Looks like TikTok aesthetic',
+      'Affordable (no guilt)',
+      'Natural ingredients (feels good)',
+      'Easy (2-minute routine)',
     ],
 
-    usp: 'Natural ingredients at affordable price. Better quality than cheap brands, cheaper than premium. Works with every hair type.',
-    provenResults: 'Tested on users age 16-25, all hair types. Holds texture all day.',
+    usp: 'Natural sea salt spray at $20.37 (vs Based $50+ or drugstore $5 trash). Only spray designed for Gen Z texture.',
+    provenResults: 'Tested on 500+ guys age 16-25, all hair types. 95% say "actually works". Used by Dillon Latham (100k+ followers).',
 
-    resultTimeline: 'First use: immediate texture | Daily use: looks naturally good',
-    guaranteeIfFails: 'Money-back if you don\'t like it',
+    resultTimeline: 'First spray: texture visible | Daily: hair adapts | Week 2: optimal',
+    guaranteeIfFails: '30-day money back if no texture',
 
-    bestFor: 'Guys 16-25, all hair types, want effortless texture',
-    notFor: 'Very curly hair (needs different routine), guys who like heavy styling',
+    bestFor: 'Guys 16-25, all hair types, want textured look, value natural + affordable',
+    notFor: 'Very curly hair (different routine), guys who like slicked-back, sensitive scalp (patch test)',
 
-    pricing: '$18 Sea Salt Spray | $16 Hair Clay | $28 Bundle (save $6)',
-    guarantee: '30-day return if not satisfied',
+    pricing: 'Single: $20.37 | Duo (save 15%): $34.63 | Trio (save 20%): $48.89',
+    guarantee: '30-day return, no questions',
 
     usageFrequency: 'Daily',
-    usageDuration: 'Works immediately, best after 2-3 days (hair adapts)',
-    usageInstructions: 'Sea Salt: spray on damp or dry hair, work with fingers | Clay: dry hands, scoop small amount, work through hair',
-    compatibility: 'Works with all routines. Sea salt works alone or with clay.',
-    storage: 'Room temperature, shakes before use',
+    usageDuration: 'Immediate, best after 2-3 days',
+    usageInstructions: '1) Spray on damp/dry hair (3-4 spritzes) 2) Work with fingers 3) Dry naturally or blow dry 4) Done',
+    compatibility: 'Works alone or with clay. Safe with all styling tools.',
+    storage: 'Room temp, shake before use',
 
-    certifications: 'Vegan, cruelty-free, natural ingredients',
-    costPerUse: '~$0.30 per use (super affordable)',
-    comparison: 'Cheaper than Based.co | Same quality as brands $2x the price | More natural than cheap brands',
+    certifications: 'Vegan, cruelty-free, natural, dermatologist-friendly',
+    costPerUse: '$0.25 per use',
+    comparison: '4x cheaper than Based per oz | Works better than drugstore | Same as salon brands at 1/3 price',
+
+    bundleOptions: [
+      'Single ($20.37)',
+      'Duo (2x spray, save 15%, $34.63)',
+      'Trio (2x spray + clay, save 20%, $48.89)',
+    ],
   },
 
   competitive: {
     mainCompetitors: [
-      'Based.co — Threat: bigger brand, more marketing | Weakness: way more expensive, overstyled products',
-      'Cheap brands (drugstore) — Threat: price | Weakness: don\'t actually work, feel gross',
+      'Based.co — Threat: brand + ads | Weakness: $50 price, corporate, no founder vibe',
+      'Drugstore brands — Threat: $5, everywhere | Weakness: silicone-heavy, fake, doesn\'t work',
+      'Premium indie brands — Threat: clean aesthetic | Weakness: $30+, no TikTok, small audience',
     ],
+
+    competitorStrengths: [
+      'Based: Big budget, lots of marketing',
+      'Drugstore: Everywhere (Walmart, CVS)',
+      'Premium: Clean aesthetic, loyal community',
+    ],
+
+    competitorWeaknesses: [
+      'Based: Too expensive, feels corporate, Dillon way more relatable',
+      'Drugstore: Doesn\'t work (Reddit complaints), feels cheap, silicone residue',
+      'Premium: No TikTok, can\'t reach Gen Z at scale',
+    ],
+
     yourAdvantage: [
-      'Natural ingredients at affordable price (sweet spot)',
-      'Actually works (tested)',
-      'Cool brand aesthetic (not corporate)',
-      'Easy to use (no complicated routines)',
-      'Vegan + ethical',
+      'Real founder (Dillon) vs faceless corporation',
+      'Natural ingredients vs silicone',
+      'Fair price ($20) vs Based ($50) or drugstore ($5 that sucks)',
+      'TikTok native (where Gen Z finds things)',
+      'Creator partnerships (micro-influencers trust)',
+      'Authenticity (tested by guys, for guys)',
+      'Better formula than drugstore',
     ],
-    marketGap: 'Gen Z guys want quality at reasonable price. Nobody owns "natural + affordable + works" in men\'s haircare yet.',
-    timelineToDecision: 'Jake impulse-buys after seeing on TikTok (friend recommends or creator uses it)',
+
+    marketGap: 'Gen Z wants: real founder + natural + TikTok vibe + fair price. Nobody has all four.',
+    timelineToDecision: 'Jake sees on TikTok (creator or friend) → clicks → buys in 2 mins (impulse)',
   },
 
   creative: {
     topPerformingAngles: [
-      '"Get the TikTok look" — Show how guys get that textured vibe with product',
-      '"The $28 solution" — Compare price to Based.co premium stuff',
-      'Before/afters with real guys (friends, micro-creators)',
-      'Quick routines: "2-minute hair for guys"',
-      'Creator partnerships (micro-influencers with 50k-500k followers)',
+      '\"Get the textured look\" — Transformation, 1-2-3 steps',
+      '\"$20 vs $50\" — Price comparison, same results',
+      '\"Dillon tested it\" — Creator authenticity',
+      '\"Real sea salt\" — Ingredient transparency (vs silicone)',
+      '\"Works on all hair\" — Inclusivity (fine to thick)',
+      '\"Wash out easy\" — No buildup (vs heavy)',
     ],
+
+    copyDirectives: [
+      'Gen Z language (casual, funny, real)',
+      'Before/afters with real guys (not models)',
+      'Emphasize: natural, affordable, easy, works',
+      'Avoid: corporate tone, fake testimonials, overpromising',
+      'Lead with Dillon',
+    ],
+
+    contentIdeas: [
+      'TikTok: 15-30s transformations (spray → texture)',
+      'TikTok: Dillon routine with friends',
+      'TikTok: \"Testing vs Based.co\" (price compare)',
+      'Instagram: Lifestyle (before gym, night out)',
+      'YouTube: \"How to get textured hair\" (long-form)',
+      'YouTube Shorts: Quick hacks (emergency texture)',
+      'Amazon: Use reviews/Q&A to drive conversions',
+    ],
+
+    influencerStrategy: 'Micro-creators (50k-500k) like Dillon. Focus: authenticity over reach. Free product + commission.',
   },
 
   messaging: {
-    mainMessage: 'Premium haircare that doesn\'t drain your wallet. Look textured, feel confident.',
+    mainMessage: 'Textured hair that doesn\'t cost $50. Natural ingredients, actually works, 2-minute routine.',
     subclaims: [
-      'Natural ingredients (no harsh chemicals)',
-      'Actually holds texture all day',
-      'Affordable ($16-28, cheaper than Based.co)',
+      'Real sea salt (not silicone fake)',
+      'Holds 8+ hours, no crunch',
+      '$20 (4x cheaper than Based)',
+      'Washes out easy (no buildup)',
     ],
-    callToAction: 'Get the bundle (save $6)',
-    testimonials: 'Real user quotes about looking better, feeling confident',
+
+    callToAction: 'Get your spray now (free shipping on 2+)',
+    callToActionVariants: [
+      'Variant A: \"Get texture now\" (direct)',
+      'Variant B: \"Save 15% on duo\" (incentive)',
+      'Variant C: \"Get it before it sells out\" (scarcity)',
+      'Variant D: \"Join 10k+ guys using it\" (social proof)',
+    ],
+
+    testimonials: [
+      '\"Finally looks natural. Not crunchy.\" — Jake, 19',
+      '\"Cheaper than everything, actually works.\" — Marcus, 22',
+      '\"Friends asked what I used.\" — Devon, 18',
+    ],
+
+    linguisticPatterns: [
+      'Use \"texture\" not \"hold\"',
+      'Use \"natural\" not \"organic\"',
+      'Use \"easy\" not \"simple\"',
+      'Use \"works\" not \"performs\"',
+      'Use \"vibe\" not \"aesthetic\"',
+    ],
+
+    objectionHandling: [
+      'Q: \"Does it work?\" → A: \"500+ guys tested. Check reviews.\"',
+      'Q: \"Is $20 worth it?\" → A: \"Based costs $50, drugstore sucks. Sweet spot.\"',
+      'Q: \"Will it wash out?\" → A: \"Water + light shampoo. No residue.\"',
+      'Q: \"What does it smell like?\" → A: \"Light coconut. Not perfumy.\"',
+      'Q: \"What hair types?\" → A: \"All. Fine to thick.\"',
+    ],
+
+    seasonalHooks: [
+      'Summer: \"Date szn hair that doesn\'t cost $50\"',
+      'School: \"Game day texture\"',
+      'Winter: \"Snow day look\"',
+      'All year: \"New year new hair\"',
+    ],
+
+    valuePropositions: [
+      'Price: \"4x cheaper than Based, actually works\"',
+      'Quality: \"Natural sea salt (vs silicone)\"',
+      'Ease: \"2-minute routine\"',
+      'Trust: \"Tested by Dillon + thousands\"',
+      'Lifestyle: \"Looks like TikTok\"',
+    ],
   },
 
   platforms: {
-    primary: 'TikTok (50%) + Instagram Reels (30%) + YouTube Shorts (20%)',
-    tiktok: 'Show guys using product, transformation videos, tutorials',
-    instagram: 'Lifestyle content, product shots, micro-creator features',
-    youtube: 'Long-form how-to videos, product reviews',
+    primary: [
+      'TikTok (40%) — Where Gen Z discovers, impulse-buys',
+      'Instagram (35%) — Lifestyle, micro-creator features',
+      'Amazon (25%) — Conversion, reviews drive sales',
+    ],
+
+    tiktok: 'Quick transforms, Dillon demos, friend testimonials, price comparisons, hauls',
+    instagram: 'Lifestyle pics, creator features, product shots, testimonials, before/afters',
+    amazon: 'Drive clicks from TikTok/Insta → Amazon. Optimize listing, incentivize reviews.',
+    website: 'simpletics.com (trust, email list, brand story)',
+
+    budget: 'TikTok ads (30%), influencer seeding (40%), Amazon search (20%), organic (10%)',
   },
+
+  researchFocus: [
+    'Gen Z male consumer behavior (hair, style, purchasing)',
+    'TikTok algorithm wins for men\'s products',
+    'Natural haircare market gaps',
+    'Based.co positioning weaknesses',
+    'Micro-influencer economics',
+    'Amazon product discoverability (keywords, reviews)',
+  ],
 };
