@@ -57,6 +57,61 @@ export interface AvatarPersona {
   biggestFear: string; // What they're most afraid of if they DON'T act
 }
 
+export interface VisualAnalysis {
+  url: string;
+  analysisTimestamp: number;
+  dominantColors: string[];       // e.g., ["deep navy", "gold accents", "white space"]
+  layoutStyle: string;            // e.g., "clean minimalist with hero image"
+  visualTone: string;             // e.g., "premium clinical" or "warm lifestyle"
+  keyVisualElements: string[];    // e.g., ["before-after images", "trust badges"]
+  textOverlayStyle: string;       // e.g., "bold sans-serif headlines over imagery"
+  ctaStyle: string;               // e.g., "prominent orange button, urgency text"
+  overallImpression: string;      // 2-3 sentence summary of visual strategy
+  competitiveInsight: string;     // What this reveals about competitor strategy
+}
+
+export interface VisualFindings {
+  competitorVisuals: VisualAnalysis[];
+  commonPatterns: string[];               // Visual patterns across competitors
+  visualGaps: string[];                   // What NO competitor is doing visually
+  recommendedDifferentiation: string[];   // How to look different
+  analysisModel: string;                  // "minicpm-v:8b"
+  totalScreenshots: number;
+  totalAnalyzed: number;
+}
+
+export interface AdExample {
+  adCopy: string;
+  headline?: string;
+  cta?: string;
+  hookAngle: string;       // "pain-agitate-solution" | "social-proof" | "before-after" | "curiosity" | "authority" | "urgency" | "lifestyle"
+  emotionalDriver: string; // "fear of failure" | "aspiration" | "social belonging" | "identity" | "urgency"
+  offerStructure?: string; // "30-day free trial" | "50% off" | "money-back guarantee"
+  estimatedLongevity?: string; // "90+ days (proven converter)" | "newly launched" | "unknown"
+  sourceUrl: string;
+  visualAnalysis?: string; // minicpm-v raw output for this specific creative
+}
+
+export interface CompetitorProfile {
+  brand: string;
+  estimatedActiveAds?: number;
+  adExamples: AdExample[];
+  dominantAngles: string[];
+  positioning: string;
+}
+
+export interface CompetitorAdIntelligence {
+  competitors: CompetitorProfile[];
+  industryPatterns: {
+    dominantHooks: string[];
+    commonEmotionalDrivers: string[];
+    unusedAngles: string[];   // creative opportunities — what NO competitor does
+    dominantFormats: string[];
+    commonOffers: string[];
+  };
+  visionAnalyzed: number;
+}
+
 export interface ResearchFindings {
   deepDesires: DeepDesire[];
   objections: Objection[];
@@ -68,6 +123,8 @@ export interface ResearchFindings {
   rootCauseMechanism?: RootCauseMechanism; // The belief-building chain
   verbatimQuotes?: string[]; // Raw customer quotes from Reddit, Trustpilot, forums
   persona?: AvatarPersona; // Detailed sub-avatar persona synthesis
+  visualFindings?: VisualFindings; // Visual intelligence from competitor screenshots
+  competitorAds?: CompetitorAdIntelligence; // Competitor ad creative intelligence
 }
 
 export interface StageData {

@@ -84,7 +84,7 @@ RELEVANT FACTS:`;
     const compressed = await ollamaService.generateStream(
       prompt,
       'Extract relevant facts from web pages. Be concise and specific. Preserve numbers and quotes.',
-      { model: 'lfm-2.5:q4_K_M', signal }
+      { model: 'lfm2.5-thinking:latest', signal }
     );
 
     if (compressed.includes('NO_RELEVANT_CONTENT')) return '';
@@ -133,7 +133,7 @@ export const researcherAgent = {
       onChunk?.(`Searching: "${query.topic}"...\n`);
 
       // Step 1: Fetch full page content via Wayfarer
-      const wayfarerResult = await wayfarerService.research(query.topic, 10);
+      const wayfarerResult = await wayfarerService.research(query.topic, 20);
       const meta = wayfarerResult.meta;
       onChunk?.(`Fetched ${meta.success}/${meta.total} pages (${meta.elapsed}s)\n`);
 
@@ -250,8 +250,8 @@ export const orchestrator = {
   ): Promise<ResearchResult[]> {
     const allResults: ResearchResult[] = [...state.completedResearch];
     let iteration = 0;
-    const maxIterations = state.campaign.maxResearchIterations || 3;
-    const maxTimeMs = (state.campaign.maxResearchTimeMinutes || 10) * 60 * 1000;
+    const maxIterations = state.campaign.maxResearchIterations || 15;
+    const maxTimeMs = (state.campaign.maxResearchTimeMinutes || 45) * 60 * 1000;
     const startTime = Date.now();
 
     while (iteration < maxIterations) {
@@ -277,24 +277,52 @@ export const orchestrator = {
       const evaluationPrompt = buildEvaluationPrompt(state, allResults, state.campaign.researchMode);
 
       try {
-        // Buffer orchestrator decision — show a trimmed summary, not raw tokens
+        // Stream orchestrator thinking live — throttled to avoid UI overload
         let decisionBuffer = '';
+        let lastThinkEmit = 0;
         const decision = await ollamaService.generateStream(
           evaluationPrompt,
           'You decide what research is needed. Be specific about topics.',
           {
             model: 'glm-4.7-flash:q4_K_M',
             signal,
-            onChunk: (c) => { decisionBuffer += c; },
+            onChunk: (c) => {
+              decisionBuffer += c;
+              // Emit thinking tokens every 200ms so user sees live reasoning
+              const now = Date.now();
+              if (now - lastThinkEmit >= 200 && decisionBuffer.length > 0) {
+                // Emit accumulated buffer as thinking
+                const chunk = decisionBuffer.replace(/\n/g, ' ').trim();
+                if (chunk.length > 5) {
+                  onProgressUpdate?.(`[Orchestrator thinking] ${chunk}\n`);
+                }
+                decisionBuffer = '';
+                lastThinkEmit = now;
+              }
+            },
           }
         );
-        // Show first meaningful line of the decision
-        const decisionPreview = decisionBuffer.split('\n').find(l => l.trim().length > 10)?.trim();
-        if (decisionPreview) {
-          onProgressUpdate?.(`  [Orchestrator] Decision: ${decisionPreview.slice(0, 120)}${decisionPreview.length > 120 ? '...' : ''}\n`);
+        // Flush any remaining buffer
+        if (decisionBuffer.trim().length > 5) {
+          onProgressUpdate?.(`[Orchestrator thinking] ${decisionBuffer.replace(/\n/g, ' ').trim()}\n`);
         }
 
         const nextTopics = parseOrchestratorDecision(decision);
+
+        // Force-inject reflection-suggested topics if orchestrator didn't include them
+        if (state.reflectionSuggestedTopics?.length && nextTopics.length > 0 && nextTopics[0].shouldContinue) {
+          const existingQueries = new Set(nextTopics.map(t => t.query.toLowerCase()));
+          const forcedTopics = state.reflectionSuggestedTopics
+            .filter(t => !existingQueries.has(t.toLowerCase()))
+            .slice(0, 2)
+            .map(t => ({ query: t, context: 'Forced from reflection agent gap analysis', depth: 'thorough' as const, shouldContinue: true }));
+          if (forcedTopics.length > 0) {
+            nextTopics.push(...forcedTopics);
+            onProgressUpdate?.(`  [Orchestrator] Injecting ${forcedTopics.length} reflection-forced queries\n`);
+          }
+          // Clear after use
+          state.reflectionSuggestedTopics = undefined;
+        }
 
         // Handle questions in interactive mode
         if (nextTopics[0]?.question && state.campaign.researchMode === 'interactive' && onPauseForInput) {
@@ -323,8 +351,8 @@ export const orchestrator = {
           break;
         }
 
-        // Deploy researchers in parallel (up to 5)
-        const researchTopics = nextTopics.slice(0, 5).filter((t) => t.query.length > 0);
+        // Deploy researchers in parallel (up to 8)
+        const researchTopics = nextTopics.slice(0, 8).filter((t) => t.query.length > 0);
         onProgressUpdate?.(`Deploying ${researchTopics.length} researcher agents...\n`);
         researchTopics.forEach((t) => {
           onProgressUpdate?.(`  [Orchestrator] → "${t.query}"\n`);
@@ -332,34 +360,38 @@ export const orchestrator = {
 
         const parallelResults = await Promise.all(
           researchTopics.map((topic) => {
-            // Buffer streaming output — only emit structured messages, not token-by-token LFM output
+            // Stream synthesis tokens live with throttling — user sees what researchers find in real-time
             let synthesisBuffer = '';
             let isSynthesizing = false;
+            let lastSynthEmit = 0;
             return researcherAgent.research(
               { topic: topic.query, context: topic.context, depth: topic.depth },
               (chunk) => {
                 // Structured messages (search, fetch, compress) — emit directly
                 if (chunk.includes('Searching:') || chunk.includes('Fetched') || chunk.includes('Compress') || chunk.includes('No web results') || chunk.includes('Web search failed') || chunk.includes('LLM knowledge')) {
                   if (isSynthesizing && synthesisBuffer.length > 0) {
-                    // Flush synthesis buffer as summary
-                    const summary = synthesisBuffer.slice(0, 200).replace(/\n/g, ' ').trim();
-                    onProgressUpdate?.(`  [Researcher] Synthesis: ${summary}${synthesisBuffer.length > 200 ? '...' : ''}\n`);
+                    onProgressUpdate?.(`  [Researcher] ${synthesisBuffer.replace(/\n/g, ' ').trim()}\n`);
                     synthesisBuffer = '';
                     isSynthesizing = false;
                   }
                   onProgressUpdate?.(`  [Researcher] ${chunk}`);
                 } else {
-                  // LFM synthesis tokens — buffer them
+                  // Synthesis tokens — stream live with throttling
                   isSynthesizing = true;
                   synthesisBuffer += chunk;
+                  const now = Date.now();
+                  if (now - lastSynthEmit >= 300 && synthesisBuffer.trim().length > 10) {
+                    onProgressUpdate?.(`  [Researcher] ${synthesisBuffer.replace(/\n/g, ' ').trim()}\n`);
+                    synthesisBuffer = '';
+                    lastSynthEmit = now;
+                  }
                 }
               },
               signal
             ).then((result) => {
-              // After researcher finishes, emit a synthesis summary if we have buffered text
-              if (synthesisBuffer.length > 0) {
-                const summary = synthesisBuffer.slice(0, 300).replace(/\n/g, ' ').trim();
-                onProgressUpdate?.(`  [Researcher] Synthesis: ${summary}${synthesisBuffer.length > 300 ? '...' : ''}\n`);
+              // Flush remaining synthesis buffer
+              if (synthesisBuffer.trim().length > 0) {
+                onProgressUpdate?.(`  [Researcher] ${synthesisBuffer.replace(/\n/g, ' ').trim()}\n`);
               }
               return result;
             });
@@ -367,6 +399,32 @@ export const orchestrator = {
         );
 
         allResults.push(...parallelResults);
+
+        // Track total unique sources across all research
+        const totalSources = new Set(allResults.flatMap(r => r.sources)).size;
+        onProgressUpdate?.(`Total unique sources: ${totalSources}\n`);
+
+        // Visual Scout: if orchestrator requested VISUAL_SCOUT, dispatch visual analysis
+        const visualScoutUrls = researchTopics
+          .flatMap(t => t.visualScoutUrls || [])
+          .filter(Boolean);
+
+        if (visualScoutUrls.length > 0 && !(state as any)._visualFindings) {
+          onProgressUpdate?.(`\n[Visual Scout] Orchestrator requested visual analysis of ${visualScoutUrls.length} URLs\n`);
+          try {
+            const { visualScoutAgent } = await import('./visualScoutAgent');
+            const visualFindings = await visualScoutAgent.analyzeCompetitorVisuals(
+              visualScoutUrls.slice(0, 5), // Cap at 5 URLs
+              state.campaign,
+              onProgressUpdate,
+              signal
+            );
+            (state as any)._visualFindings = visualFindings;
+            onProgressUpdate?.(`[Visual Scout] Visual analysis complete — ${visualFindings.totalAnalyzed} sites analyzed\n`);
+          } catch (err) {
+            onProgressUpdate?.(`[Visual Scout] Visual analysis failed: ${err}\n`);
+          }
+        }
 
         // Evaluate coverage
         const coverageStatus = evaluateCoverage(allResults);
@@ -378,9 +436,24 @@ export const orchestrator = {
           `Coverage: ${coveragePercentage.toFixed(0)}% (${coveredDimensions}/${totalDimensions} dimensions, threshold: ${(state.coverageThreshold * 100).toFixed(0)}%)`
         );
 
+        // Emit structured metrics for UI display
+        const iterEndSec = Math.round((Date.now() - startTime) / 1000);
+        const sourcesNow = new Set(allResults.flatMap(r => r.sources)).size;
+        onProgressUpdate?.(`[METRICS] ${JSON.stringify({
+          iteration,
+          maxIterations,
+          elapsedSec: iterEndSec,
+          coveragePct: coveragePercentage.toFixed(0),
+          coveredDims: coveredDimensions,
+          totalDims: totalDimensions,
+          totalSources: sourcesNow,
+          queriesThisIteration: researchTopics.length,
+          totalQueries: allResults.length,
+        })}\n`);
+
         // Always run reflection agent after iteration 1+ (not just when below threshold)
         // This ensures we catch overconfidence even when coverage looks "complete"
-        const MIN_ITERATIONS_BEFORE_EXIT = 3;
+        const MIN_ITERATIONS_BEFORE_EXIT = 8;
         if (iteration >= 1 && iteration < maxIterations) {
           onProgressUpdate?.(`\nRunning reflection agent (150% bar mode)...\n`);
 
@@ -412,15 +485,45 @@ export const orchestrator = {
               `Reflection found ${reflectionAngles.length} gaps — feeding top 5 into next iteration`
             );
           }
+
+          // Check if reflection agent requested visual scouting
+          if (reflectionBuffer.includes('VISUAL_SCOUT:') && !(state as any)._visualFindings) {
+            const visualMatch = reflectionBuffer.match(/VISUAL_SCOUT:\s*(.+)/i);
+            if (visualMatch) {
+              const reflectionVisualUrls = visualMatch[1]
+                .split(/[,\s]+/)
+                .map(u => u.trim().replace(/[\[\]]/g, ''))
+                .filter(u => u.startsWith('http'));
+              if (reflectionVisualUrls.length > 0) {
+                onProgressUpdate?.(`\n[Visual Scout] Reflection agent requested visual analysis of ${reflectionVisualUrls.length} URLs\n`);
+                try {
+                  const { visualScoutAgent } = await import('./visualScoutAgent');
+                  const visualFindings = await visualScoutAgent.analyzeCompetitorVisuals(
+                    reflectionVisualUrls.slice(0, 5),
+                    state.campaign,
+                    onProgressUpdate,
+                    signal
+                  );
+                  (state as any)._visualFindings = visualFindings;
+                  onProgressUpdate?.(`[Visual Scout] Visual analysis complete — ${visualFindings.totalAnalyzed} sites analyzed\n`);
+                } catch (err) {
+                  onProgressUpdate?.(`[Visual Scout] Visual analysis failed: ${err}\n`);
+                }
+              }
+            }
+          }
         }
 
-        // Require minimum iterations before allowing coverage exit
-        // This forces at least 2 rounds of web research for depth
-        if (iteration >= MIN_ITERATIONS_BEFORE_EXIT && coveragePercentage / 100 >= state.coverageThreshold) {
-          onProgressUpdate?.('Coverage threshold reached — research complete');
+        // Require minimum iterations AND minimum sources before allowing exit
+        const MIN_SOURCES = 50;
+        const currentSources = new Set(allResults.flatMap(r => r.sources)).size;
+        if (iteration >= MIN_ITERATIONS_BEFORE_EXIT && coveragePercentage / 100 >= state.coverageThreshold && currentSources >= MIN_SOURCES) {
+          onProgressUpdate?.(`Coverage threshold reached with ${currentSources} sources — research complete`);
           break;
         } else if (iteration < MIN_ITERATIONS_BEFORE_EXIT) {
           onProgressUpdate?.(`Iteration ${iteration} of minimum ${MIN_ITERATIONS_BEFORE_EXIT} — continuing research for depth`);
+        } else if (currentSources < MIN_SOURCES) {
+          onProgressUpdate?.(`Only ${currentSources}/${MIN_SOURCES} sources — continuing research for depth`);
         }
       } catch (error) {
         console.error('Orchestrator error:', error);
@@ -449,7 +552,8 @@ export const reflectionAgent = {
         .filter(([, covered]) => !covered)
         .map(([dimension]) => dimension);
 
-      onChunk?.(`[150% BAR] Covered: ${10 - gaps.length}/10. Missing: ${gaps.join(', ') || 'none declared'}\n`);
+      const totalDims = Object.keys(coverage).length;
+      onChunk?.(`[150% BAR] Covered: ${totalDims - gaps.length}/${totalDims}. Missing: ${gaps.join(', ') || 'none declared'}\n`);
 
       const reflectionPrompt = `You are a RUTHLESS research strategist at 150% thoroughness bar. Your job is to find the AHA MOMENTS — not just fill gaps, but find INSIGHTS that change the entire strategy.
 
@@ -489,6 +593,18 @@ EMOTIONAL INTELLIGENCE CHECKS:
 13. What would make them feel SMART for choosing this one?
 14. Is there a STATUS signal in this purchase? (What does buying this SAY about them?)
 
+VISUAL INTELLIGENCE CHECKS:
+15. Did we SCREENSHOT competitor websites/ads? (Visual reveals what text can't — colors, layout, CTA design)
+16. Do we know what COLORS, LAYOUTS, and VISUAL STYLES competitors use?
+17. Have we identified VISUAL GAPS — what no competitor does visually?
+18. Can we differentiate through VISUAL APPROACH, not just messaging?
+
+${(state as any)?._visualFindings ? `EXISTING VISUAL ANALYSIS:
+${((state as any)._visualFindings.competitorVisuals || []).map((v: any) => `- ${v.url}: tone=${v.visualTone}, colors=${v.dominantColors?.join(',')} elements=${v.keyVisualElements?.join(',')}`).join('\n')}
+Common Patterns: ${(state as any)._visualFindings.commonPatterns?.join('; ') || 'none yet'}
+Visual Gaps: ${(state as any)._visualFindings.visualGaps?.join('; ') || 'none yet'}
+` : 'NO VISUAL ANALYSIS DONE YET — consider requesting VISUAL_SCOUT for competitor URLs.'}
+
 The best research reveals: "Wait, customers don't actually care about X — they care about Y!"
 
 Output HYPERSPECIFIC research queries (not vague):
@@ -509,7 +625,9 @@ AGGRESSIVE NEW RESEARCH ANGLES:
 2. [hyperspecific query]
 3. [hyperspecific query]
 4. [hyperspecific query]
-5. [hyperspecific query]`;
+5. [hyperspecific query]
+
+VISUAL_SCOUT: [competitor URLs to screenshot and analyze, if visual analysis is lacking]`;
 
       const response = await ollamaService.generateStream(
         reflectionPrompt,
@@ -559,6 +677,7 @@ interface OrchestratorDecision {
   shouldContinue: boolean;
   question?: string;
   questionContext?: string;
+  visualScoutUrls?: string[]; // URLs for visual analysis via minicpm-v
 }
 
 function parseOrchestratorDecision(decision: string): OrchestratorDecision[] {
@@ -598,7 +717,35 @@ function parseOrchestratorDecision(decision: string): OrchestratorDecision[] {
     }
   }
 
-  // No structured format — end research
+  // Parse VISUAL_SCOUT: directive for screenshot analysis
+  const visualLines = lines.filter(l => l.includes('VISUAL_SCOUT:'));
+  if (visualLines.length > 0) {
+    const urls: string[] = [];
+    for (const vl of visualLines) {
+      const urlPart = vl.replace(/.*VISUAL_SCOUT:\s*/i, '').trim();
+      const extracted = urlPart
+        .split(/[,\s]+/)
+        .map(u => u.trim().replace(/[\[\]]/g, ''))
+        .filter(u => u.startsWith('http'));
+      urls.push(...extracted);
+    }
+    if (urls.length > 0) {
+      // Attach visual scout URLs to first topic, or create a dedicated one
+      if (topics.length > 0) {
+        topics[0].visualScoutUrls = urls;
+      } else {
+        topics.push({
+          query: '',
+          context: 'Visual analysis of competitor pages',
+          depth: 'thorough',
+          shouldContinue: true,
+          visualScoutUrls: urls,
+        });
+      }
+    }
+  }
+
+  // No structured format and no visual scout — end research
   if (topics.length === 0) {
     topics.push({
       query: '',
@@ -684,6 +831,15 @@ BAD queries: "Research social media sentiment" (too vague)
 GOOD queries: "trustpilot reviews [competitor] complaints 2025" or "reddit r/[subreddit] [product] recommendations"
 
 Include at LEAST one competitor-advertising query and one real-user-opinion query.
+
+VISUAL INTELLIGENCE:
+You can request VISUAL ANALYSIS of competitor websites/ads. A vision model (minicpm-v:8b) will screenshot and analyze them.
+To request visual scouting, add this line:
+VISUAL_SCOUT: https://competitor1.com, https://competitor2.com
+Request this when you've found competitor landing pages or ad examples worth visually analyzing.
+This reveals: color palettes, layout patterns, visual tone, CTA design, and visual gaps competitors miss.
+You can combine RESEARCH: and VISUAL_SCOUT: in the same response.
+
 If need user input: QUESTION: [question]
 If ALL 10 dimensions are thoroughly covered with REAL evidence: COMPLETE: true${interactiveNote}`;
 }
@@ -700,6 +856,7 @@ function buildCoverageGraph(response: string): CoverageGraph {
     brand_positioning_gaps: false,
     psychological_triggers: false,
     media_consumption_patterns: false,
+    visual_competitive_analysis: false,
   };
 
   const lower = response.toLowerCase();
@@ -730,25 +887,38 @@ function buildCoverageGraph(response: string): CoverageGraph {
   }
 
   // Fallback: scan full text for dimension keywords
-  // Require 2+ different keyword matches to mark as covered — single mentions are too easy to hit
+  // Require 3+ different keyword matches AND substantial surrounding content — brief mentions don't count
   const heuristicMap: Array<{ keywords: string[]; dimension: keyof CoverageGraph; minMatches: number }> = [
-    { keywords: ['market size', 'tam ', 'total addressable', 'market worth', 'billion', 'million dollar', 'market growth', 'market value'], dimension: 'market_size_trends', minMatches: 2 },
-    { keywords: ['competitor', 'competing brand', 'rival', 'vs ', 'compared to', 'market leader', 'alternative brand'], dimension: 'competitor_analysis', minMatches: 2 },
-    { keywords: ['objection', 'skeptic', 'doubt', 'concern about', 'hesitat', 'barrier to purchase', 'why they don\'t buy', 'reluctan'], dimension: 'customer_objections', minMatches: 2 },
-    { keywords: ['emerging trend', 'growing trend', 'new trend', 'trending', 'rise of', 'shift toward', 'increasingly'], dimension: 'emerging_trends', minMatches: 2 },
-    { keywords: ['region', 'country', 'geographic', 'local market', 'europe', 'asia', 'north america', 'urban', 'rural'], dimension: 'regional_differences', minMatches: 2 },
-    { keywords: ['pricing', 'price point', 'price range', 'cost of', 'premium pric', 'affordable', 'budget', 'value for money', 'willingness to pay'], dimension: 'pricing_strategies', minMatches: 2 },
-    { keywords: ['channel', 'distribution', 'retail', 'e-commerce', 'online store', 'marketplace', 'direct-to-consumer', 'dtc', 'wholesale'], dimension: 'channel_effectiveness', minMatches: 2 },
-    { keywords: ['positioning', 'brand position', 'unique selling', 'usp', 'differentiat', 'brand identity', 'brand perception', 'gap in market'], dimension: 'brand_positioning_gaps', minMatches: 2 },
-    { keywords: ['psycholog', 'emotional', 'trigger', 'fear of', 'desire for', 'motivation', 'cognitive', 'bias', 'persuasion', 'social proof'], dimension: 'psychological_triggers', minMatches: 2 },
-    { keywords: ['media consumption', 'social media', 'instagram', 'tiktok', 'youtube', 'podcast', 'influencer', 'content consumption', 'advertising channel'], dimension: 'media_consumption_patterns', minMatches: 2 },
+    { keywords: ['market size', 'tam ', 'total addressable', 'market worth', 'billion', 'million dollar', 'market growth', 'market value'], dimension: 'market_size_trends', minMatches: 3 },
+    { keywords: ['competitor', 'competing brand', 'rival', 'vs ', 'compared to', 'market leader', 'alternative brand'], dimension: 'competitor_analysis', minMatches: 3 },
+    { keywords: ['objection', 'skeptic', 'doubt', 'concern about', 'hesitat', 'barrier to purchase', 'why they don\'t buy', 'reluctan'], dimension: 'customer_objections', minMatches: 3 },
+    { keywords: ['emerging trend', 'growing trend', 'new trend', 'trending', 'rise of', 'shift toward', 'increasingly'], dimension: 'emerging_trends', minMatches: 3 },
+    { keywords: ['region', 'country', 'geographic', 'local market', 'europe', 'asia', 'north america', 'urban', 'rural'], dimension: 'regional_differences', minMatches: 3 },
+    { keywords: ['pricing', 'price point', 'price range', 'cost of', 'premium pric', 'affordable', 'budget', 'value for money', 'willingness to pay'], dimension: 'pricing_strategies', minMatches: 3 },
+    { keywords: ['channel', 'distribution', 'retail', 'e-commerce', 'online store', 'marketplace', 'direct-to-consumer', 'dtc', 'wholesale'], dimension: 'channel_effectiveness', minMatches: 3 },
+    { keywords: ['positioning', 'brand position', 'unique selling', 'usp', 'differentiat', 'brand identity', 'brand perception', 'gap in market'], dimension: 'brand_positioning_gaps', minMatches: 3 },
+    { keywords: ['psycholog', 'emotional', 'trigger', 'fear of', 'desire for', 'motivation', 'cognitive', 'bias', 'persuasion', 'social proof'], dimension: 'psychological_triggers', minMatches: 3 },
+    { keywords: ['media consumption', 'social media', 'instagram', 'tiktok', 'youtube', 'podcast', 'influencer', 'content consumption', 'advertising channel'], dimension: 'media_consumption_patterns', minMatches: 3 },
+    { keywords: ['visual', 'screenshot', 'layout', 'color palette', 'visual tone', 'design style', 'visual approach', 'cta design', 'visual gap'], dimension: 'visual_competitive_analysis', minMatches: 3 },
   ];
 
   heuristicMap.forEach(({ keywords, dimension, minMatches }) => {
     if (!defaultGraph[dimension]) {
       const matches = keywords.filter((kw) => lower.includes(kw));
+      // Require 3+ keyword matches AND at least 200 chars of content around matches
+      // This prevents superficial mentions from marking a dimension as covered
       if (matches.length >= minMatches) {
-        defaultGraph[dimension] = true;
+        let contentChars = 0;
+        for (const kw of matches) {
+          const idx = lower.indexOf(kw);
+          if (idx >= 0) {
+            // Count chars in a 300-char window around each match
+            contentChars += Math.min(lower.slice(Math.max(0, idx - 50), idx + 250).length, 300);
+          }
+        }
+        if (contentChars >= 200) {
+          defaultGraph[dimension] = true;
+        }
       }
     }
   });
@@ -768,6 +938,7 @@ function evaluateCoverage(results: ResearchResult[]): CoverageGraph {
     brand_positioning_gaps: false,
     psychological_triggers: false,
     media_consumption_patterns: false,
+    visual_competitive_analysis: false,
   };
 
   results.forEach((result) => {

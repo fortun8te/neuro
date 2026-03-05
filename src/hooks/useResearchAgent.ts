@@ -21,6 +21,18 @@ interface ResearchResult {
 export function useResearchAgent() {
   const { generate } = useOllama();
 
+  /**
+   * Strip model-internal content that isn't part of the JSON output:
+   *  - <think>...</think> blocks (GLM-4.7, Qwen3, lfm2.5-thinking, etc.)
+   *  - ```json ... ``` code-fence wrappers
+   */
+  const stripModelNoise = (raw: string): string =>
+    raw
+      .replace(/<think>[\s\S]*?<\/think>/gi, '')  // thinking blocks
+      .replace(/```(?:json)?\s*/gi, '')            // opening code fences
+      .replace(/```\s*/g, '')                      // closing code fences
+      .trim();
+
   /** Helper: Robust JSON extraction with cleanup + retry */
   const extractJSON = async (
     result: string,
@@ -30,8 +42,9 @@ export function useResearchAgent() {
     signal?: AbortSignal,
     onProgress?: (msg: string) => void
   ): Promise<any> => {
+    const stripped = stripModelNoise(result);
     const pattern = type === 'array' ? /\[[\s\S]*\]/ : /\{[\s\S]*\}/;
-    const jsonMatch = result.match(pattern);
+    const jsonMatch = stripped.match(pattern);
     if (jsonMatch) {
       try {
         return JSON.parse(jsonMatch[0]);
@@ -52,7 +65,8 @@ export function useResearchAgent() {
     if (retryPrompt) {
       onProgress?.('  Retrying with simpler prompt...\n');
       const retry = await generate(retryPrompt, '', { model: brainModel, signal });
-      const retryMatch = retry.match(pattern);
+      const retryStripped = stripModelNoise(retry);
+      const retryMatch = retryStripped.match(pattern);
       if (retryMatch) {
         try { return JSON.parse(retryMatch[0]); } catch { /* give up */ }
       }
@@ -116,8 +130,14 @@ Return ONLY valid JSON array, no other text.`;
 
     try {
       onProgress?.('  [Layer 1] Mapping deep desires + turning points...\n');
-      const result = await generate(prompt, '', { model: brainModel, signal });
-      return await extractJSON(result, 'array', null, brainModel, signal);
+      const result = await generate(prompt, '', {
+        model: brainModel,
+        signal,
+        // Stream raw tokens — dim mono in ResearchOutput, also drives token counter in footer
+        onChunk: (chunk) => onProgress?.(chunk),
+      });
+      onProgress?.('\n');
+      return await extractJSON(result, 'array', null, brainModel, signal, onProgress);
     } catch (err) {
       console.error('Error mapping deep desires:', err);
       return [];
@@ -174,7 +194,8 @@ Return ONLY valid JSON.`;
 
     try {
       onProgress?.('  [Layer 2] Analyzing root cause + building belief chain...\n');
-      const result = await generate(prompt, '', { model: brainModel, signal });
+      const result = await generate(prompt, '', { model: brainModel, signal, onChunk: (chunk) => onProgress?.(chunk) });
+      onProgress?.('\n');
       const parsed = await extractJSON(result, 'object', null, brainModel, signal);
       if (parsed.rootCause) return parsed as RootCauseMechanism;
       return { rootCause: '', mechanism: '', chainOfYes: [], ahaInsight: '' };
@@ -229,16 +250,41 @@ Return ONLY valid JSON array.`;
 
     try {
       onProgress?.('  [Layer 3] Identifying purchase objections...\n');
-      const result = await generate(prompt, '', { model: brainModel, signal });
-      const parsed = await extractJSON(
+      const result = await generate(prompt, '', { model: brainModel, signal, onChunk: (chunk) => onProgress?.(chunk) });
+      onProgress?.('\n');
+      let parsed = await extractJSON(
         result, 'array',
-        `List 5 purchase objections for ${campaign.brand} targeting ${campaign.targetAudience}. Product: ${campaign.productDescription}. Return ONLY a JSON array of objects with keys: objection, frequency (common/moderate/rare), impact (high/medium/low), handlingApproach, requiredProof (array of strings), rootCauseAnswer (string).`,
+        `List 5 purchase objections for ${campaign.brand} targeting ${campaign.targetAudience}. Product: ${campaign.productDescription}. Return ONLY a JSON array of objects with keys: objection, frequency (common/moderate/rare), impact (high/medium/low), handlingApproach, requiredProof (array of strings), rootCauseAnswer (string).
+
+Example: [{"objection":"It is too expensive","frequency":"common","impact":"high","handlingApproach":"Compare daily cost to alternatives","requiredProof":["testimonial","before-after"],"rootCauseAnswer":"Addresses root cause so you only buy once"}]`,
         brainModel, signal, onProgress
       );
+
+      // If JSON parsing failed or returned empty, generate fallback objections from desires
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        onProgress?.('  [Layer 3] JSON extraction failed — generating objections from desires...\n');
+        parsed = desires.slice(0, 5).map(d => ({
+          objection: `"Does this actually solve ${d.surfaceProblem}?" — skepticism after trying other solutions`,
+          frequency: 'common' as const,
+          impact: 'high' as const,
+          handlingApproach: `Address through root cause mechanism: ${rootCause.rootCause || 'unique approach'}`,
+          requiredProof: ['testimonial', 'before-after'],
+          rootCauseAnswer: rootCause.ahaInsight || 'This addresses the root cause, not just symptoms',
+        }));
+      }
+
       return parsed;
     } catch (err) {
       console.error('Error identifying objections:', err);
-      return [];
+      // Even on error, return fallback objections rather than empty
+      return desires.slice(0, 3).map(d => ({
+        objection: `"Will this really help with ${d.surfaceProblem}?"`,
+        frequency: 'common' as const,
+        impact: 'high' as const,
+        handlingApproach: 'Demonstrate mechanism with proof',
+        requiredProof: ['testimonial', 'before-after'],
+        rootCauseAnswer: rootCause.ahaInsight || 'Addresses root cause directly',
+      }));
     }
   };
 
@@ -304,7 +350,8 @@ Return ONLY valid JSON.`;
 
     try {
       onProgress?.('  [Layer 4] Deep-diving avatar behavior + market sophistication...\n');
-      const result = await generate(prompt, '', { model: brainModel, signal });
+      const result = await generate(prompt, '', { model: brainModel, signal, onChunk: (chunk) => onProgress?.(chunk) });
+      onProgress?.('\n');
       return await extractJSON(result, 'object', null, brainModel, signal);
     } catch (err) {
       console.error('Error researching avatar and market:', err);
@@ -342,7 +389,8 @@ Return ONLY valid JSON array.`;
 
     try {
       onProgress?.('  [Layer 4] Mapping competitor positioning landscape...\n');
-      const result = await generate(prompt, '', { model: brainModel, signal });
+      const result = await generate(prompt, '', { model: brainModel, signal, onChunk: (chunk) => onProgress?.(chunk) });
+      onProgress?.('\n');
       return await extractJSON(result, 'array', null, brainModel, signal);
     } catch (err) {
       console.error('Error mapping competitor landscape:', err);
@@ -419,7 +467,8 @@ Return ONLY valid JSON.`;
 
     try {
       onProgress?.('  Synthesizing avatar persona...\n');
-      const result = await generate(prompt, '', { model: brainModel, signal });
+      const result = await generate(prompt, '', { model: brainModel, signal, onChunk: (chunk) => onProgress?.(chunk) });
+      onProgress?.('\n');
       const parsed = await extractJSON(result, 'object', null, brainModel, signal);
       if (parsed.name) return parsed as AvatarPersona;
       return {

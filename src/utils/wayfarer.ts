@@ -128,6 +128,67 @@ function emptyResult(query: string): WayfarerResult {
   };
 }
 
+// ── Screenshot types + methods ──
+
+export interface ScreenshotResult {
+  url: string;
+  image_base64: string;   // Raw base64 JPEG, no data: prefix
+  width: number;
+  height: number;
+  error: string | null;
+}
+
+export const screenshotService = {
+  async screenshot(url: string, options?: {
+    viewportWidth?: number;
+    viewportHeight?: number;
+    quality?: number;
+  }): Promise<ScreenshotResult> {
+    try {
+      const resp = await fetch(`${getHost()}/screenshot`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url,
+          viewport_width: options?.viewportWidth ?? 1280,
+          viewport_height: options?.viewportHeight ?? 720,
+          quality: options?.quality ?? 60,
+        }),
+      });
+      if (!resp.ok) return { url, image_base64: '', width: 0, height: 0, error: `HTTP ${resp.status}` };
+      return await resp.json();
+    } catch (error) {
+      return { url, image_base64: '', width: 0, height: 0, error: String(error) };
+    }
+  },
+
+  async screenshotBatch(urls: string[], options?: {
+    viewportWidth?: number;
+    viewportHeight?: number;
+    quality?: number;
+    concurrency?: number;
+  }): Promise<ScreenshotResult[]> {
+    try {
+      const resp = await fetch(`${getHost()}/screenshot/batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          urls,
+          viewport_width: options?.viewportWidth ?? 1280,
+          viewport_height: options?.viewportHeight ?? 720,
+          quality: options?.quality ?? 60,
+          concurrency: options?.concurrency ?? 3,
+        }),
+      });
+      if (!resp.ok) return urls.map(u => ({ url: u, image_base64: '', width: 0, height: 0, error: `HTTP ${resp.status}` }));
+      const data = await resp.json();
+      return data.screenshots;
+    } catch (error) {
+      return urls.map(u => ({ url: u, image_base64: '', width: 0, height: 0, error: String(error) }));
+    }
+  },
+};
+
 // Re-export as searxngService for backward compatibility during migration
 export const searxngService = {
   async search(query: string) {

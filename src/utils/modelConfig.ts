@@ -4,10 +4,10 @@
 // Model roster:
 //   glm-4.7-flash:q4_K_M  (19GB, 30B) — strategist: orchestration, reflection, analysis
 //   qwen3.5:9b             (6.6GB, 9B) — creative: synthesis, ad generation, evaluation
-//   lfm-2.5:q4_K_M         (730MB, 1.2B) — grunt work: page compression, memory archiving
+//   lfm2.5-thinking:latest         (730MB, 1.2B) — grunt work: page compression, memory archiving
 //
 // Research pipeline model assignments (hardcoded in researchAgents.ts):
-//   Page compression:     lfm-2.5:q4_K_M  (fast, good enough for fact extraction)
+//   Page compression:     lfm2.5-thinking:latest  (fast, good enough for fact extraction)
 //   Research synthesis:   qwen3.5:9b       (needs strategic thinking for insights)
 //   Orchestrator:         glm-4.7-flash    (decides what to research next)
 //   Reflection agent:     glm-4.7-flash    (finds blind spots, pushes for AHA moments)
@@ -29,7 +29,10 @@ export const MODEL_CONFIG = {
   test: 'qwen3.5:9b',
 
   // Memory archiving — lightweight consolidation
-  memories: 'lfm-2.5:q4_K_M',
+  memories: 'lfm2.5-thinking:latest',
+
+  // Visual intelligence — competitor screenshots + creative evaluation
+  vision: 'minicpm-v:8b',
 
   // Default fallback
   default: 'glm-4.7-flash:q4_K_M',

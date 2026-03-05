@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Campaign, Cycle, StageName, StageData, CycleMode, UserQuestion, QuestionCheckpoint } from '../types';
+import type { ResearchPauseEvent } from '../utils/researchAgents';
 import { useOllama } from './useOllama';
 import { useStorage } from './useStorage';
 import { useOrchestratedResearch } from './useOrchestratedResearch';
@@ -92,6 +93,27 @@ export function useCycleLoop(askUser?: (question: UserQuestion) => Promise<strin
   const abortControllerRef = useRef<AbortController | null>(null);
   const userAnswersRef = useRef<Record<string, string>>({});
 
+  // Throttle React state updates to prevent UI freeze from per-token re-renders
+  const lastUpdateRef = useRef<number>(0);
+  const pendingUpdateRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const throttledSetCycle = useCallback((cycle: Cycle) => {
+    const now = Date.now();
+    if (now - lastUpdateRef.current >= 150) {
+      lastUpdateRef.current = now;
+      if (pendingUpdateRef.current) {
+        clearTimeout(pendingUpdateRef.current);
+        pendingUpdateRef.current = null;
+      }
+      setCurrentCycle(refreshCycleReference(cycle));
+    } else if (!pendingUpdateRef.current) {
+      pendingUpdateRef.current = setTimeout(() => {
+        lastUpdateRef.current = Date.now();
+        pendingUpdateRef.current = null;
+        setCurrentCycle(refreshCycleReference(cycle));
+      }, 150);
+    }
+  }, []);
+
   // Check if interactive mode is enabled
   const isInteractive = (): boolean => {
     if (typeof window !== 'undefined') {
@@ -99,6 +121,19 @@ export function useCycleLoop(askUser?: (question: UserQuestion) => Promise<strin
     }
     return false;
   };
+
+  // Adapter: convert ResearchPauseEvent → askUser system for interactive research
+  const handleResearchPauseForInput = useCallback(async (event: ResearchPauseEvent): Promise<string> => {
+    if (!askUser) return 'Continue automatically';
+    const question: UserQuestion = {
+      id: `research-q-${Date.now()}`,
+      question: event.question,
+      options: event.suggestedAnswers || ['Continue automatically', 'Focus deeper on this area', 'Skip this angle'],
+      checkpoint: 'mid-pipeline' as QuestionCheckpoint,
+      context: event.context,
+    };
+    return askUser(question);
+  }, [askUser]);
 
   // Generate a question using GLM and wait for user answer
   const askCheckpointQuestion = useCallback(async (
@@ -174,10 +209,10 @@ export function useCycleLoop(askUser?: (question: UserQuestion) => Promise<strin
             campaign,
             (msg) => {
               stage.agentOutput += msg + '\n';
-              setCurrentCycle(refreshCycleReference(cycle));
+              throttledSetCycle(cycle);
             },
             true, // Enable web search orchestration
-            undefined, // onPauseForInput
+            campaign.researchMode === 'interactive' ? handleResearchPauseForInput : undefined,
             abortControllerRef.current.signal
           );
 
@@ -192,7 +227,41 @@ export function useCycleLoop(askUser?: (question: UserQuestion) => Promise<strin
           // Objection Handling Stage — Root Cause + Mechanism framework
           const findings = cycle.researchFindings;
           if (!findings || findings.objections.length === 0) {
-            result = 'No objections identified in research phase.';
+            // Generate objections inline from desires instead of giving up
+            const fallbackDesires = findings?.deepDesires?.map(d => `- ${d.targetSegment}: "${d.deepestDesire}"`).join('\n') || '- General audience';
+            const rootCause = findings?.rootCauseMechanism;
+            const fallbackPrompt = `You are a sales copywriter using the root cause + mechanism framework for objection handling.
+
+Based on these customer desires for ${campaign.brand} (${campaign.productDescription}):
+${fallbackDesires}
+
+Root Cause: ${rootCause?.rootCause || 'Not yet identified'}
+Mechanism: ${rootCause?.mechanism || 'Not yet identified'}
+AHA Insight: "${rootCause?.ahaInsight || 'Not yet identified'}"
+
+Generate 5 objection-handling blocks. For each:
+OBJECTION: [the specific doubt in their language]
+ACKNOWLEDGE: [show empathy — you get it]
+ROOT CAUSE REFRAME: [why everything else failed — the "aha"]
+MECHANISM ANSWER: [how this specifically fixes the root cause]
+PROOF NEEDED: [evidence type — testimonial/before-after/mechanism demo/data]
+DESIRE HOOK: [reconnect to their deep desire]
+
+Be specific, powerful, and use customer language — not brand speak.`;
+
+            abortControllerRef.current = new AbortController();
+            const stageStartTime = Date.now();
+            result = await generate(fallbackPrompt, getSystemPrompt('objections'), {
+              model: getModelForStage('objections'),
+              signal: abortControllerRef.current.signal,
+              onChunk: (chunk) => {
+                stage.agentOutput += chunk;
+                throttledSetCycle(cycle);
+              },
+            });
+            stage.model = getModelForStage('objections');
+            stage.processingTime = Date.now() - stageStartTime;
+            stage.rawOutput = result;
           } else {
             const rootCause = findings.rootCauseMechanism;
             const marketSoph = findings.marketSophistication || 3;
@@ -256,7 +325,7 @@ Be specific, powerful, and use THEIR language — not brand speak.`;
               signal: abortControllerRef.current.signal,
               onChunk: (chunk) => {
                 stage.agentOutput += chunk;
-                setCurrentCycle(refreshCycleReference(cycle));
+                throttledSetCycle(cycle);
               },
             });
             stage.model = getModelForStage('objections');
@@ -313,6 +382,19 @@ ${competitorGaps}
 
 ${findings.avatarLanguage?.length > 0 ? `Audience Language (VERBATIM — use these exact phrases):\n${findings.avatarLanguage.slice(0, 8).map(l => `"${l}"`).join(', ')}\n` : ''}
 ${findings.verbatimQuotes?.length ? `Real Customer Quotes:\n${findings.verbatimQuotes.slice(0, 5).map(q => `"${q}"`).join('\n')}\n` : ''}
+${findings.visualFindings ? `
+VISUAL COMPETITIVE INTELLIGENCE:
+Competitor Visual Patterns: ${findings.visualFindings.commonPatterns.join('; ')}
+Visual Gaps (unclaimed): ${findings.visualFindings.visualGaps.join('; ')}
+Recommended Visual Differentiation: ${findings.visualFindings.recommendedDifferentiation.join('; ')}
+
+Individual Competitor Visuals:
+${findings.visualFindings.competitorVisuals.slice(0, 3).map((v: any) =>
+  `- ${v.url}: Tone=${v.visualTone}, Colors=${v.dominantColors.join(',')}, Elements=${v.keyVisualElements.join(',')}`
+).join('\n')}
+
+USE THIS VISUAL INTELLIGENCE to make our creative direction VISUALLY DISTINCT from competitors.
+` : ''}
 ${userAnswersRef.current['mid-pipeline'] ? `\nUSER DIRECTION: "${userAnswersRef.current['mid-pipeline']}". Prioritize this.\n` : ''}
 Define the Creative Direction:
 
@@ -333,6 +415,7 @@ Visual & Messaging Specs:
 - System 2 (Logic): [What builds belief through mechanism + proof?]
 - Copy Angles: [5 messaging variations — each tied to a different desire/objection combo]
 - Objection-Handling Visuals: [how to show proof without feeling like a sales pitch]
+${findings.visualFindings ? `- Visual Differentiation: [Based on competitor visual analysis — what exact visual choices make us look DIFFERENT? Colors competitors DON'T use, layouts they avoid, elements we can own]` : ''}
 
 Remember: System 1 (emotion) gets the click. System 2 (logic) gets the purchase. You need BOTH.`;
             } else {
@@ -380,6 +463,14 @@ TOP OBJECTIONS TO ADDRESS:
 ${findings.objections.slice(0, 3).map(o => `- "${o.objection}" → Mechanism answer: ${o.rootCauseAnswer || o.handlingApproach}`).join('\n')}
 
 ${findings.avatarLanguage?.length > 0 ? `AUDIENCE LANGUAGE (use their exact words):\n${findings.avatarLanguage.slice(0, 6).map(l => `"${l}"`).join(', ')}\n` : ''}
+${findings.visualFindings ? `
+VISUAL COMPETITIVE LANDSCAPE:
+What competitors look like: ${findings.visualFindings.commonPatterns.slice(0, 3).join('; ')}
+Visual gaps we can own: ${findings.visualFindings.visualGaps.slice(0, 3).join('; ')}
+Differentiation: ${findings.visualFindings.recommendedDifferentiation.slice(0, 3).join('; ')}
+
+For each ad concept, specify visual direction that is VISUALLY DISTINCT from competitors.
+` : ''}
 ${userAnswersRef.current['pre-make'] ? `\nUSER CREATIVE PREFERENCE: "${userAnswersRef.current['pre-make']}". Prioritize this.\n` : ''}
 Generate 3 DIFFERENT AD CONCEPTS using the VIDEO AD STRUCTURE (Hook → Problem → Agitate → Root Cause → Mechanism → Product → Desire → CTA):
 
@@ -470,7 +561,13 @@ For EACH of the 3 concepts, evaluate against the framework:
 6. OBJECTION HANDLING: Which objections does it address/miss?
 
 7. COMPETITIVE DIFFERENTIATION: Does it own a gap competitors CAN'T claim?
-
+${findings.visualFindings ? `
+8. VISUAL DIFFERENTIATION: Based on competitor visual analysis:
+   Competitor visual patterns: ${findings.visualFindings.commonPatterns.slice(0, 3).join('; ')}
+   - Does our creative look DIFFERENT from competitors?
+   - Does it own the visual gaps we identified?
+   - Would someone scrolling past STOP because this looks unfamiliar in the category?
+` : ''}
 RANKING:
 - Which angle will drive highest conversion? Why?
 - Which angle best matches market sophistication Level ${marketSoph}?
@@ -535,7 +632,7 @@ DOCUMENT THE LEARNINGS:
             signal: abortControllerRef.current.signal,
             onChunk: (chunk) => {
               stage.agentOutput += chunk;
-              setCurrentCycle(refreshCycleReference(cycle));
+              throttledSetCycle(cycle);
             },
           });
 
@@ -738,6 +835,9 @@ DOCUMENT THE LEARNINGS:
       isRunningRef.current = false;
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
+      }
+      if (pendingUpdateRef.current) {
+        clearTimeout(pendingUpdateRef.current);
       }
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();

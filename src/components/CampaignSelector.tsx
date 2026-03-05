@@ -669,13 +669,16 @@ Ready? Tell me about your brand or product: What do you sell, and who are you tr
     const growth = (preset as any).growth || { goal: '', budget: '', timeline: [], kpis: {} };
     const goalStr = `${growth.goal} | Budget: ${growth.budget} | Timeline: ${Array.isArray(growth.timeline) ? growth.timeline[0] : ''}`;
 
+    const pipelineMode = localStorage.getItem('pipeline_mode');
+    const researchMode = pipelineMode === 'interactive' ? 'interactive' as const : 'autonomous' as const;
     createCampaign(
       preset.brand.name,
       preset.audience.name,
       goalStr,
       preset.product.description,
       preset.product.features,
-      preset.product.pricing
+      preset.product.pricing,
+      researchMode
     );
     message.success('Preset campaign created!');
   };
@@ -686,13 +689,16 @@ Ready? Tell me about your brand or product: What do you sell, and who are you tr
       ? values.keyFeatures.split('\n').filter((f: string) => f.trim())
       : [];
 
+    const pipelineMode2 = localStorage.getItem('pipeline_mode');
+    const researchMode2 = pipelineMode2 === 'interactive' ? 'interactive' as const : 'autonomous' as const;
     createCampaign(
       values.brandName,
       values.personaName,
       `${values.marketingGoal || values.productName} | Category: ${values.productCategory} | Platforms: ${values.primaryPlatforms}`,
       values.productDescription,
       productFeatures,
-      values.pricing
+      values.pricing,
+      researchMode2
     );
     message.success('Detailed campaign created!');
   };
@@ -961,13 +967,16 @@ Ready? Tell me about your brand or product: What do you sell, and who are you tr
                   ? (chatData.keyFeatures as string).split('\n').filter((f: string) => f.trim())
                   : [(chatData.problemSolved as string | undefined) || 'Unknown feature'];
 
+                const chatPipelineMode = localStorage.getItem('pipeline_mode');
+                const chatResearchMode = chatPipelineMode === 'interactive' ? 'interactive' as const : 'autonomous' as const;
                 createCampaign(
                   (chatData.brandName as string | undefined) || 'Unknown Brand',
                   (chatData.personaName as string | undefined) || 'Unknown Persona',
                   `Product: ${(chatData.productName as string | undefined) || 'Unknown'} | Problem: ${(chatData.problemSolved as string | undefined) || 'Unknown'} | Platforms: ${(chatData.primaryPlatforms as string | undefined) || 'TBD'}`,
                   (chatData.productDescription as string | undefined) || (chatData.productName as string | undefined) || 'Unknown product',
                   productFeatures,
-                  (chatData.pricing as string | undefined) || 'TBD'
+                  (chatData.pricing as string | undefined) || 'TBD',
+                  chatResearchMode
                 );
                 message.success('Campaign created from chat! Starting research...');
               }}

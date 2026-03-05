@@ -4,6 +4,7 @@ import { useTheme } from '../context/ThemeContext';
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  isRunning?: boolean;
 }
 
 interface DebugTest {
@@ -12,7 +13,7 @@ interface DebugTest {
   message: string;
 }
 
-export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, isRunning }: SettingsModalProps) {
   const { isDarkMode, toggleTheme } = useTheme();
   const [tab, setTab] = useState<'settings' | 'debug'>('settings');
   const [ollamaHost, setOllamaHost] = useState('');
@@ -29,14 +30,15 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   ]);
 
   useEffect(() => {
-    const savedOllama = localStorage.getItem('ollama_host');
-    setOllamaHost(savedOllama || 'http://localhost:11435');
+    // All Ollama calls go through the Wayfarer proxy — show proxy URL
+    setOllamaHost('http://localhost:8889/ollama (proxy)');
+    localStorage.removeItem('ollama_host'); // clear any stale direct host
     const savedWayfarer = localStorage.getItem('wayfarer_host');
     setWayfarerHost(savedWayfarer || 'http://localhost:8889');
     const savedTime = localStorage.getItem('max_research_time_minutes');
-    setMaxResearchTime(savedTime || '10');
+    setMaxResearchTime(savedTime || '45');
     const savedIter = localStorage.getItem('max_research_iterations');
-    setMaxIterations(savedIter || '3');
+    setMaxIterations(savedIter || '15');
     const savedMode = localStorage.getItem('pipeline_mode');
     setPipelineMode((savedMode as 'auto' | 'interactive') || 'auto');
   }, []);
@@ -54,11 +56,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setTestingConnection(true);
     setConnectionStatus('idle');
     try {
-      const response = (await fetchWithTimeout(`${ollamaHost}/api/tags`, 10000)) as Response;
+      // Test via proxy
+      const response = (await fetchWithTimeout('http://localhost:8889/ollama/api/tags', 10000)) as Response;
       if (response.ok) {
         setConnectionStatus('success');
-        localStorage.setItem('ollama_host', ollamaHost);
-        setTimeout(() => window.location.reload(), 1000);
       } else {
         setConnectionStatus('error');
       }
@@ -82,9 +83,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       { name: 'Wayfayer (Web Research)', status: 'testing', message: 'Testing...' },
     ]);
 
-    // Test 1: Ollama Connection
+    // Test 1: Ollama Connection (via proxy)
     try {
-      const ollamaResp = (await fetchWithTimeout(`${ollamaHost}/api/tags`, 10000)) as Response;
+      const ollamaResp = (await fetchWithTimeout('http://localhost:8889/ollama/api/tags', 10000)) as Response;
       if (ollamaResp.ok) {
         const models = await ollamaResp.json();
         const modelCount = models.models?.length || 0;
@@ -277,6 +278,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       ? 'Runs end-to-end without interruption.'
                       : 'Pauses at key checkpoints to ask for your direction.'}
                   </p>
+                  {isRunning && (
+                    <p className={`font-mono text-[10px] mt-1.5 ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`}>
+                      Mode change takes effect on next cycle — current run is unaffected.
+                    </p>
+                  )}
                 </div>
 
                 {/* Ollama Connection */}
@@ -329,7 +335,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           value={maxResearchTime}
                           onChange={(e) => setMaxResearchTime(e.target.value)}
                           min="1"
-                          max="60"
+                          max="120"
                           className={`${inputClass} w-20`}
                         />
                         <span className={`font-mono text-xs ${isDarkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>min</span>
@@ -342,7 +348,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         value={maxIterations}
                         onChange={(e) => setMaxIterations(e.target.value)}
                         min="1"
-                        max="10"
+                        max="50"
                         className={`${inputClass} w-20`}
                       />
                     </div>

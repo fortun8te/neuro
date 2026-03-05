@@ -1,18 +1,26 @@
-function getOllamaHost(): string {
+// All Ollama calls route through the Wayfarer proxy to avoid CORS issues.
+// Wayfarer (localhost:8889) forwards to the remote Ollama instance.
+import { tokenTracker } from './tokenStats';
+
+const WAYFARER_HOST = 'http://localhost:8889';
+
+function getOllamaApi(): string {
+  return `${WAYFARER_HOST}/ollama/api/generate`;
+}
+
+// Keep getOllamaHost for the Settings modal connection test
+export function getOllamaHost(): string {
   if (typeof window !== 'undefined') {
     const saved = localStorage.getItem('ollama_host');
     if (saved) return saved;
   }
-  return import.meta.env.VITE_OLLAMA_HOST || 'http://localhost:11435';
-}
-
-function getOllamaApi(): string {
-  return `${getOllamaHost()}/api/generate`;
+  return import.meta.env.VITE_OLLAMA_HOST || 'http://100.74.135.83:11435';
 }
 
 export interface OllamaOptions {
   model?: string;
   temperature?: number;
+  images?: string[];  // base64-encoded images (no data: prefix), for vision models like minicpm-v
   onChunk?: (chunk: string) => void;
   onComplete?: () => void;
   onError?: (error: Error) => void;
@@ -36,10 +44,12 @@ export const ollamaService = {
     systemPrompt: string,
     options: OllamaOptions = {}
   ): Promise<string> {
-    const { model = 'glm-4.7-flash:q4_K_M', temperature = 0.7, onChunk, onComplete, onError, signal } = options;
+    const { model = 'glm-4.7-flash:q4_K_M', temperature = 0.7, images, onChunk, onComplete, onError, signal } = options;
 
     const fullPrompt = `${systemPrompt}\n\n${prompt}`;
     let fullResponse = '';
+
+    tokenTracker.startCall();
 
     try {
       const response = await fetch(getOllamaApi(), {
@@ -54,6 +64,7 @@ export const ollamaService = {
           stream: true,
           temperature,
           top_p: 0.9,
+          ...(images && images.length > 0 ? { images } : {}),
         }),
         signal,
       });
@@ -84,9 +95,23 @@ export const ollamaService = {
           if (line.trim()) {
             try {
               const json = JSON.parse(line);
+
+              // Response tokens — the actual model output
               if (json.response) {
                 fullResponse += json.response;
                 onChunk?.(json.response);
+                tokenTracker.tick();
+              }
+
+              // Thinking tokens (GLM-4.7, Qwen3, etc.) — model is reasoning internally.
+              // Don't add to fullResponse (we only want the final answer),
+              // but tick so the UI shows "thinking" instead of "loading model".
+              if (json.thinking) {
+                tokenTracker.tickThinking();
+              }
+
+              if (json.done) {
+                tokenTracker.endCall(json.eval_count, json.eval_duration);
               }
             } catch {
               // Ignore JSON parse errors
@@ -102,6 +127,13 @@ export const ollamaService = {
           if (json.response) {
             fullResponse += json.response;
             onChunk?.(json.response);
+            tokenTracker.tick();
+          }
+          if (json.thinking) {
+            tokenTracker.tickThinking();
+          }
+          if (json.done) {
+            tokenTracker.endCall(json.eval_count, json.eval_duration);
           }
         } catch {
           // Ignore
@@ -111,6 +143,7 @@ export const ollamaService = {
       onComplete?.();
       return fullResponse;
     } catch (error) {
+      tokenTracker.endCall(); // mark as done even on error
       const err = error instanceof Error ? error : new Error(String(error));
       onError?.(err);
       throw err;

@@ -3,6 +3,7 @@ import type { Cycle, StageName } from '../types';
 import { useTheme } from '../context/ThemeContext';
 import { ResearchOutput } from './ResearchOutput';
 import { ModelOutputDebug } from './ModelOutputDebug';
+import { tokenTracker, type TokenInfo } from '../utils/tokenStats';
 
 const STAGE_DESCRIPTIONS: Record<StageName, string> = {
   research: 'Market & audience research',
@@ -29,6 +30,12 @@ export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewSta
   const outputRef = useRef<HTMLDivElement>(null);
   const [prevStage, setPrevStage] = useState<StageName | null>(null);
   const [, setTick] = useState(0);
+  const [tokenInfo, setTokenInfo] = useState<TokenInfo>(tokenTracker.get());
+
+  // Subscribe to live token stats
+  useEffect(() => {
+    return tokenTracker.subscribe(() => setTokenInfo(tokenTracker.get()));
+  }, []);
 
   // Tick every second to update elapsed timer
   useEffect(() => {
@@ -166,15 +173,44 @@ export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewSta
         )}
       </div>
 
-      {/* Status Footer */}
+      {/* Status Footer — loading / generating / processing */}
       {stageData.status === 'in-progress' && (
-        <div className={`px-4 py-1.5 border-t ${borderClass} ${isDarkMode ? 'bg-[#090909]' : 'bg-zinc-50'} flex items-center gap-2`}>
-          <div className="flex gap-1">
-            <div className={`w-1 h-1 ${dotClass} rounded-full animate-slow-bounce`} />
-            <div className={`w-1 h-1 ${dotClass} rounded-full animate-slow-bounce`} style={{animationDelay:'0.15s'}} />
-            <div className={`w-1 h-1 ${dotClass} rounded-full animate-slow-bounce`} style={{animationDelay:'0.3s'}} />
+        <div className={`px-4 py-1.5 border-t ${borderClass} ${isDarkMode ? 'bg-[#090909]' : 'bg-zinc-50'} flex items-center justify-between`}>
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1">
+              <div className={`w-1 h-1 ${tokenInfo.isModelLoading ? (isDarkMode ? 'bg-amber-400' : 'bg-amber-500') : tokenInfo.isThinking ? (isDarkMode ? 'bg-violet-400' : 'bg-violet-500') : dotClass} rounded-full animate-slow-bounce`} />
+              <div className={`w-1 h-1 ${tokenInfo.isModelLoading ? (isDarkMode ? 'bg-amber-400' : 'bg-amber-500') : tokenInfo.isThinking ? (isDarkMode ? 'bg-violet-400' : 'bg-violet-500') : dotClass} rounded-full animate-slow-bounce`} style={{animationDelay:'0.15s'}} />
+              <div className={`w-1 h-1 ${tokenInfo.isModelLoading ? (isDarkMode ? 'bg-amber-400' : 'bg-amber-500') : tokenInfo.isThinking ? (isDarkMode ? 'bg-violet-400' : 'bg-violet-500') : dotClass} rounded-full animate-slow-bounce`} style={{animationDelay:'0.3s'}} />
+            </div>
+            <span className={`font-mono text-[10px] ${tokenInfo.isModelLoading ? (isDarkMode ? 'text-amber-400' : 'text-amber-600') : tokenInfo.isThinking ? (isDarkMode ? 'text-violet-400' : 'text-violet-600') : secondaryTextClass}`}>
+              {tokenInfo.isModelLoading ? 'loading model' : tokenInfo.isThinking ? 'thinking' : tokenInfo.isGenerating ? 'generating' : 'processing'}
+            </span>
           </div>
-          <span className={`font-mono text-[10px] ${secondaryTextClass}`}>processing</span>
+
+          {/* Live token stats */}
+          <div className="flex items-center gap-3 font-mono text-[10px] tabular-nums">
+            {/* Loading elapsed timer */}
+            {tokenInfo.isModelLoading && tokenInfo.callStartTime && (
+              <span className={isDarkMode ? 'text-amber-400' : 'text-amber-600'}>
+                {Math.floor((Date.now() - tokenInfo.callStartTime) / 1000)}s
+              </span>
+            )}
+            {/* Live token count while thinking or generating */}
+            {(tokenInfo.isThinking || tokenInfo.isGenerating) && (
+              <span className={tokenInfo.isThinking ? (isDarkMode ? 'text-violet-400' : 'text-violet-600') : (isDarkMode ? 'text-emerald-400' : 'text-emerald-600')}>
+                {tokenInfo.liveTokens.toLocaleString()} tok
+                {tokenInfo.tokensPerSec > 0 && (
+                  <span className={secondaryTextClass}> · {tokenInfo.tokensPerSec} t/s</span>
+                )}
+              </span>
+            )}
+            {/* Session total */}
+            {tokenInfo.sessionTotal > 0 && (
+              <span className={secondaryTextClass}>
+                {tokenInfo.sessionTotal.toLocaleString()} total
+              </span>
+            )}
+          </div>
         </div>
       )}
     </div>

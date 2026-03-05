@@ -90,7 +90,7 @@ export function useOrchestratedResearch() {
         'Research ADJACENT NICHES — what approaches from other industries could work here?',
       ],
       completedResearch: [],
-      coverageThreshold: 0.8, // Orchestrator needs 80%+ dimensional coverage
+      coverageThreshold: 0.85, // Orchestrator needs 85%+ dimensional coverage
     };
 
     try {
@@ -102,6 +102,34 @@ export function useOrchestratedResearch() {
       );
 
       onProgress?.('\n[PHASE 2 COMPLETE] Web research orchestration done.\n\n');
+
+      // Phase 3: Competitor Ad Intelligence
+      if (!signal?.aborted && desireResult.researchFindings.competitorWeaknesses.length > 0) {
+        onProgress?.('════════════════════════════════════════════════════════════════════\n');
+        onProgress?.('[PHASE 3] Competitor Ad Intelligence\n');
+        onProgress?.('════════════════════════════════════════════════════════════════════\n\n');
+        try {
+          const { analyzeCompetitorAds } = await import('../utils/competitorAdsAgent');
+          const competitorAds = await analyzeCompetitorAds(
+            campaign,
+            desireResult.researchFindings,
+            (msg) => onProgress?.(msg),
+            signal
+          );
+          desireResult.researchFindings.competitorAds = competitorAds;
+          const totalAds = competitorAds.competitors.reduce((s, c) => s + c.adExamples.length, 0);
+          onProgress?.(`\n[PHASE 3 COMPLETE] ${totalAds} ad examples across ${competitorAds.competitors.length} competitors | ${competitorAds.visionAnalyzed} vision-analyzed\n\n`);
+        } catch (err) {
+          onProgress?.('[PHASE 3] Competitor ad intelligence skipped\n\n');
+          console.warn('Competitor ads phase failed:', err);
+        }
+      }
+
+      // Merge visual findings if any were captured during orchestration
+      const visualFindings = (orchestratorState as any)._visualFindings;
+      if (visualFindings && desireResult.researchFindings) {
+        desireResult.researchFindings.visualFindings = visualFindings;
+      }
 
       // Combine findings
       const combinedOutput = `${desireResult.processedOutput}
@@ -120,6 +148,22 @@ Findings: ${r.findings.substring(0, 500)}...
 `;
 }).join('\n')}
 
+${visualFindings ? `
+════════════════════════════════════════════════════════════════════
+VISUAL COMPETITIVE INTELLIGENCE (via Visual Scout + minicpm-v:8b)
+════════════════════════════════════════════════════════════════════
+
+Screenshots analyzed: ${visualFindings.totalAnalyzed}/${visualFindings.totalScreenshots}
+
+Common Visual Patterns:
+${visualFindings.commonPatterns.map((p: string) => `- ${p}`).join('\n')}
+
+Visual Gaps (unclaimed territory):
+${visualFindings.visualGaps.map((g: string) => `- ${g}`).join('\n')}
+
+Recommended Visual Differentiation:
+${visualFindings.recommendedDifferentiation.map((r: string) => `- ${r}`).join('\n')}
+` : ''}
 ════════════════════════════════════════════════════════════════════
 RESEARCH SYNTHESIS COMPLETE
 ════════════════════════════════════════════════════════════════════
@@ -130,7 +174,7 @@ This research combines:
 - Audience behavior research
 - Web-based competitive analysis
 - Market trend validation
-
+${visualFindings ? '- Visual competitive intelligence\n' : ''}
 Ready for: Objection Handling -> Creative Direction (Taste)
 `;
 

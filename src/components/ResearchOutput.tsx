@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -11,12 +11,16 @@ type SectionKind =
   | 'orchestrator' // [Orchestrator] ...
   | 'researcher'   // [Researcher] ...
   | 'reflection'   // [Reflection] / Running reflection agent
-  | 'coverage'     // 📊 Coverage: ...
-  | 'deploy'       // 🚀 Deploying ...
-  | 'complete'     // ✓ ... complete / RESEARCH COMPLETE
-  | 'timelimit'    // ⏱️ Time limit
-  | 'error'        // ERROR / ⚠️
+  | 'visual'       // [Visual Scout] — minicpm-v screenshot analysis
+  | 'thinking'     // [Orchestrator thinking] — live reasoning stream
+  | 'metrics'      // [METRICS] — per-iteration stats
+  | 'coverage'     // Coverage: ...
+  | 'deploy'       // Deploying ...
+  | 'complete'     // research complete / RESEARCH COMPLETE
+  | 'timelimit'    // Time limit
+  | 'error'        // ERROR
   | 'findings'     // Desire/objection findings
+  | 'ads'          // [Ads] — Phase 3 competitor ad intelligence
   | 'raw';         // Fallback
 
 interface Section {
@@ -81,9 +85,59 @@ function parseOutput(text: string): Section[] {
       continue;
     }
 
-    if (t.startsWith('[PHASE 1 COMPLETE]') || t.startsWith('[PHASE 2 COMPLETE]')) {
+    if (t.startsWith('[PHASE 3]') || t.includes('Competitor Ad Intelligence')) {
+      push();
+      current = {
+        kind: 'phase',
+        title: 'Phase 3 — Competitor Ad Intelligence',
+        badge: 'minicpm-v + GLM',
+        lines: [],
+      };
+      continue;
+    }
+
+    // ── Competitor Ads [Ads] ──
+    if (t.includes('[Ads]')) {
+      const inner = t.replace(/.*\[Ads\]\s*/, '').trim();
+
+      // First [Ads] line after Phase 3 → create the section
+      if (!current || current.kind !== 'ads') {
+        push();
+        current = {
+          kind: 'ads',
+          title: 'Competitor Ad Intelligence',
+          icon: '📢',
+          badge: 'fetching...',
+          lines: [],
+        };
+      }
+
+      // Update badge with running counts
+      const metaMatch = inner.match(/Meta API:\s*(\d+)\s*ads found for "(.+?)"/);
+      if (metaMatch) {
+        const prevCount = parseInt(current.badge?.match(/\d+/)?.[0] || '0') || 0;
+        const newCount = prevCount + parseInt(metaMatch[1]);
+        current.badge = `${newCount} ads`;
+      }
+      const completeMatch = inner.match(/Complete:\s*(\d+)\s*ad examples.*?(\d+)\s*vision/);
+      if (completeMatch) {
+        current.badge = `${completeMatch[1]} ads · ${completeMatch[2]} vision`;
+      }
+      if (inner.includes('Creative opportunities found:')) {
+        const opps = inner.replace('Creative opportunities found:', '').trim();
+        current.lines.push(`Opportunities: ${opps}`);
+        continue;
+      }
+
+      if (inner) current.lines.push(inner);
+      continue;
+    }
+
+    if (t.startsWith('[PHASE 1 COMPLETE]') || t.startsWith('[PHASE 2 COMPLETE]') || t.startsWith('[PHASE 3 COMPLETE]')) {
       if (current) {
-        current.lines.push(t.includes('1') ? '✓ Desire-driven analysis done' : '✓ Web research orchestration done');
+        if (t.includes('1')) current.lines.push('✓ Desire-driven analysis done');
+        else if (t.includes('2')) current.lines.push('✓ Web research orchestration done');
+        else current.lines.push(t.replace('[PHASE 3 COMPLETE]', '✓').trim());
       }
       continue;
     }
@@ -219,6 +273,93 @@ function parseOutput(text: string): Section[] {
       // Synthesis / other researcher output
       if (current) {
         current.lines.push(inner);
+      }
+      continue;
+    }
+
+    // ── Visual Scout ──
+    if (t.includes('[Visual Scout]')) {
+      const inner = t.replace(/.*\[Visual Scout\]\s*/, '');
+
+      // New visual scout section on major events
+      if (inner.includes('Screenshotting') || inner.includes('Orchestrator requested') || inner.includes('Reflection agent requested')) {
+        push();
+        const countMatch = inner.match(/(\d+)/);
+        current = {
+          kind: 'visual',
+          title: inner.includes('Screenshotting') ? 'Visual Scout — Capturing' : inner.includes('Reflection') ? 'Visual Scout (Reflection)' : 'Visual Scout — Analyzing',
+          icon: '👁',
+          badge: countMatch ? `${countMatch[1]} pages` : 'minicpm-v',
+          lines: [],
+        };
+        continue;
+      }
+
+      // Append to current visual section or create one
+      if (!current || current.kind !== 'visual') {
+        push();
+        current = {
+          kind: 'visual',
+          title: 'Visual Scout',
+          icon: '👁',
+          badge: 'minicpm-v:8b',
+          lines: [],
+        };
+      }
+
+      // Update badge with analysis count
+      if (inner.includes('Analyzed') && inner.includes('competitor')) {
+        const countMatch = inner.match(/(\d+)/);
+        if (countMatch) current.badge = `${countMatch[1]} analyzed`;
+      }
+      if (inner.includes('complete')) {
+        current.badge = inner.match(/(\d+)\s+sites/)?.[0] || current.badge;
+      }
+
+      current.lines.push(inner);
+      continue;
+    }
+
+    // ── Orchestrator thinking (live reasoning stream) ──
+    if (t.startsWith('[Orchestrator thinking]') || t.startsWith('[Thinking]')) {
+      const inner = t.replace(/.*\[(Orchestrator thinking|Thinking)\]\s*/, '');
+      if (!current || current.kind !== 'thinking') {
+        push();
+        current = {
+          kind: 'thinking',
+          title: 'Orchestrator Reasoning',
+          icon: '💭',
+          badge: 'live',
+          lines: [],
+        };
+      }
+      if (inner) current.lines.push(inner);
+      continue;
+    }
+
+    // ── Metrics (per-iteration stats) ──
+    if (t.startsWith('[METRICS]')) {
+      push();
+      try {
+        const json = JSON.parse(t.replace('[METRICS] ', ''));
+        const elapsed = json.elapsedSec >= 60
+          ? `${Math.floor(json.elapsedSec / 60)}m ${json.elapsedSec % 60}s`
+          : `${json.elapsedSec}s`;
+        current = {
+          kind: 'metrics',
+          title: `Iteration ${json.iteration}/${json.maxIterations} — ${elapsed} — ${json.coveragePct}% — ${json.totalSources || '?'} sources`,
+          icon: '📈',
+          badge: `${json.coveragePct}%`,
+          lines: [
+            `Coverage: ${json.coveragePct}% (${json.coveredDims}/${json.totalDims} dimensions)`,
+            `Sources: ${json.totalSources || 0} unique`,
+            `Queries this round: ${json.queriesThisIteration}`,
+            `Total queries: ${json.totalQueries}`,
+            `Elapsed: ${elapsed}`,
+          ],
+        };
+      } catch {
+        current = { kind: 'raw', title: 'Metrics', icon: '📈', lines: [t] };
       }
       continue;
     }
@@ -377,6 +518,15 @@ function getStyles(kind: SectionKind, dark: boolean): StyleSet {
     coverage: dark
       ? { headerBg: 'bg-zinc-900/80', headerText: 'text-purple-300', badgeBg: 'bg-purple-900/35', badgeText: 'text-purple-300', border: 'border-purple-800/25', contentBg: 'bg-zinc-950/40', accent: 'text-purple-400' }
       : { headerBg: 'bg-purple-50', headerText: 'text-purple-800', badgeBg: 'bg-purple-100', badgeText: 'text-purple-700', border: 'border-purple-200', contentBg: 'bg-white', accent: 'text-purple-600' },
+    visual: dark
+      ? { headerBg: 'bg-zinc-900/80', headerText: 'text-rose-300', badgeBg: 'bg-rose-900/35', badgeText: 'text-rose-300', border: 'border-rose-800/25', contentBg: 'bg-zinc-950/40', accent: 'text-rose-400' }
+      : { headerBg: 'bg-rose-50', headerText: 'text-rose-800', badgeBg: 'bg-rose-100', badgeText: 'text-rose-700', border: 'border-rose-200', contentBg: 'bg-white', accent: 'text-rose-600' },
+    thinking: dark
+      ? { headerBg: 'bg-zinc-900/60', headerText: 'text-zinc-500', badgeBg: 'bg-zinc-800/60', badgeText: 'text-zinc-600', border: 'border-zinc-800/30', contentBg: 'bg-zinc-950/30', accent: 'text-zinc-600' }
+      : { headerBg: 'bg-zinc-50', headerText: 'text-zinc-500', badgeBg: 'bg-zinc-200', badgeText: 'text-zinc-500', border: 'border-zinc-200', contentBg: 'bg-white', accent: 'text-zinc-400' },
+    metrics: dark
+      ? { headerBg: 'bg-zinc-900/80', headerText: 'text-sky-300', badgeBg: 'bg-sky-900/35', badgeText: 'text-sky-300', border: 'border-sky-800/25', contentBg: 'bg-zinc-950/40', accent: 'text-sky-400' }
+      : { headerBg: 'bg-sky-50', headerText: 'text-sky-800', badgeBg: 'bg-sky-100', badgeText: 'text-sky-700', border: 'border-sky-200', contentBg: 'bg-white', accent: 'text-sky-600' },
     deploy: dark
       ? { headerBg: 'bg-zinc-900/80', headerText: 'text-cyan-300', badgeBg: 'bg-cyan-900/35', badgeText: 'text-cyan-300', border: 'border-cyan-800/25', contentBg: 'bg-zinc-950/40', accent: 'text-cyan-400' }
       : { headerBg: 'bg-cyan-50', headerText: 'text-cyan-800', badgeBg: 'bg-cyan-100', badgeText: 'text-cyan-700', border: 'border-cyan-200', contentBg: 'bg-white', accent: 'text-cyan-600' },
@@ -389,6 +539,9 @@ function getStyles(kind: SectionKind, dark: boolean): StyleSet {
     error: dark
       ? { headerBg: 'bg-zinc-900/80', headerText: 'text-red-300', badgeBg: 'bg-red-900/35', badgeText: 'text-red-300', border: 'border-red-800/25', contentBg: 'bg-zinc-950/40', accent: 'text-red-400' }
       : { headerBg: 'bg-red-50', headerText: 'text-red-800', badgeBg: 'bg-red-100', badgeText: 'text-red-700', border: 'border-red-200', contentBg: 'bg-white', accent: 'text-red-600' },
+    ads: dark
+      ? { headerBg: 'bg-zinc-900/80', headerText: 'text-orange-300', badgeBg: 'bg-orange-900/35', badgeText: 'text-orange-300', border: 'border-orange-800/25', contentBg: 'bg-zinc-950/40', accent: 'text-orange-400' }
+      : { headerBg: 'bg-orange-50', headerText: 'text-orange-800', badgeBg: 'bg-orange-100', badgeText: 'text-orange-700', border: 'border-orange-200', contentBg: 'bg-white', accent: 'text-orange-600' },
     findings: dark
       ? { headerBg: 'bg-zinc-900/60', headerText: 'text-zinc-300', badgeBg: 'bg-zinc-800/60', badgeText: 'text-zinc-500', border: 'border-zinc-800/50', contentBg: 'bg-zinc-950/30', accent: 'text-zinc-500' }
       : { headerBg: 'bg-zinc-50', headerText: 'text-zinc-800', badgeBg: 'bg-zinc-200', badgeText: 'text-zinc-600', border: 'border-zinc-200', contentBg: 'bg-white', accent: 'text-zinc-500' },
@@ -541,9 +694,19 @@ function SectionBlock({
           {/* Coverage gets a bar */}
           {section.kind === 'coverage' && <CoverageBar text={section.title} dark={dark} />}
 
-          {section.lines.map((line, li) => (
-            <RenderLine key={li} line={line} dark={dark} accent={s.accent} />
-          ))}
+          {/* Metrics get a coverage bar too */}
+          {section.kind === 'metrics' && <CoverageBar text={section.title} dark={dark} />}
+
+          {/* Thinking sections render in dim mono */}
+          {section.kind === 'thinking' ? (
+            <div className={`font-mono text-[10px] leading-tight whitespace-pre-wrap ${dark ? 'text-zinc-600' : 'text-zinc-400'}`}>
+              {section.lines.join('\n')}
+            </div>
+          ) : (
+            section.lines.map((line, li) => (
+              <RenderLine key={li} line={line} dark={dark} accent={s.accent} />
+            ))
+          )}
         </div>
       )}
     </div>
@@ -558,8 +721,13 @@ function ResearchSummary({ sections, dark }: { sections: Section[]; dark: boolea
   const phases = sections.filter(s => s.kind === 'phase').length;
   const steps = sections.filter(s => s.kind === 'step').length;
   const searches = sections.filter(s => s.kind === 'researcher').length;
+  const visuals = sections.filter(s => s.kind === 'visual').length;
+  const adsSections = sections.filter(s => s.kind === 'ads');
+  const adsCount = adsSections.length > 0 ? adsSections[adsSections.length - 1].badge : null;
+  const metricsSections = sections.filter(s => s.kind === 'metrics');
+  const lastMetrics = metricsSections[metricsSections.length - 1];
   const coverage = sections.find(s => s.kind === 'coverage');
-  const coveragePct = coverage?.title.match(/(\d+)%/)?.[1] || '—';
+  const coveragePct = lastMetrics?.badge || coverage?.title.match(/(\d+)%/)?.[1] || '—';
   const isDone = sections.some(s => s.kind === 'complete');
   const isTimeout = sections.some(s => s.kind === 'timelimit');
 
@@ -578,6 +746,21 @@ function ResearchSummary({ sections, dark }: { sections: Section[]; dark: boolea
         {searches > 0 && (
           <span className={`font-mono text-[10px] uppercase tracking-wider ${statClass}`}>
             <span className={numClass}>{searches}</span> searches
+          </span>
+        )}
+        {visuals > 0 && (
+          <span className={`font-mono text-[10px] uppercase tracking-wider ${statClass}`}>
+            <span className={numClass}>{visuals}</span> visuals
+          </span>
+        )}
+        {adsCount && (
+          <span className={`font-mono text-[10px] uppercase tracking-wider ${statClass}`}>
+            <span className={`${dark ? 'text-orange-400' : 'text-orange-600'} font-bold`}>{adsCount}</span>
+          </span>
+        )}
+        {metricsSections.length > 0 && (
+          <span className={`font-mono text-[10px] uppercase tracking-wider ${statClass}`}>
+            <span className={numClass}>{metricsSections.length}</span> iterations
           </span>
         )}
         <span className={`font-mono text-[10px] uppercase tracking-wider ${statClass}`}>
@@ -612,9 +795,74 @@ interface ResearchOutputProps {
   isDarkMode: boolean;
 }
 
+// Regex to detect lines that create NEW sections (not lines within existing sections)
+const SECTION_HEADER_RE = /\[PHASE [123]\]|Competitor Ad Intelligence|ORCHESTRATED RESEARCH:|Desire-Driven|Orchestrating Web Search|\[CAMPAIGN_DATA\]|STEP \d+:|Iteration \d+\/|Searching:\s*"|Screenshotting|Orchestrator requested visual|Reflection agent requested visual|Running reflection agent|150% bar mode|Coverage:\s*\d+%.*dimensions|research complete|RESEARCH COMPLETE|Coverage threshold|Orchestrator satisfied|Time limit reached|^ERROR|\[METRICS\]|\[Orchestrator thinking\]|\[Thinking\]|\[Ads\]/im;
+
 export function ResearchOutput({ output, isDarkMode }: ResearchOutputProps) {
-  const sections = useMemo(() => parseOutput(output), [output]);
+  const [sections, setSections] = useState<Section[]>([]);
+  const cacheRef = useRef<{ len: number; sections: Section[] }>({ len: 0, sections: [] });
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+
+  // Incremental parsing — only full re-parse when a new section header appears
+  useEffect(() => {
+    if (!output) {
+      cacheRef.current = { len: 0, sections: [] };
+      setSections([]);
+      return;
+    }
+
+    const cache = cacheRef.current;
+
+    // Reset on shrink (new stage started)
+    if (output.length < cache.len) {
+      cache.len = 0;
+      cache.sections = [];
+    }
+
+    // No change
+    if (output.length === cache.len) return;
+
+    const delta = output.slice(cache.len);
+    cache.len = output.length;
+
+    // Fast path: no new section header in delta — append lines to last section
+    if (!SECTION_HEADER_RE.test(delta) && cache.sections.length > 0) {
+      const last = cache.sections[cache.sections.length - 1];
+      for (const line of delta.split('\n')) {
+        const t = line.trim();
+        if (!t || /^[─═]{10,}$/.test(t)) continue;
+
+        // Strip known prefixes for fast path
+        if (last.kind === 'researcher' && t.includes('[Researcher]')) {
+          const inner = t.replace(/.*\[Researcher\]\s*/, '').replace(/^[🔎📄⚠️]\s*/, '');
+          if (inner.includes('Fetched')) {
+            const m = inner.match(/Fetched\s+(\d+)\/(\d+)\s+pages\s+\((.+?)s\)/);
+            if (m) last.badge = `${m[1]}/${m[2]} pages · ${m[3]}s`;
+          }
+          last.lines.push(inner);
+        } else if (last.kind === 'visual' && t.includes('[Visual Scout]')) {
+          const inner = t.replace(/.*\[Visual Scout\]\s*/, '');
+          if (inner.includes('Analyzed') || inner.includes('complete')) {
+            const m = inner.match(/(\d+)/);
+            if (m) last.badge = `${m[1]} analyzed`;
+          }
+          last.lines.push(inner);
+        } else if (last.kind === 'reflection' && t.includes('[Reflection]')) {
+          last.lines.push(t.replace(/.*\[Reflection\]\s*/, ''));
+        } else if (last.kind === 'thinking' && (t.startsWith('[Orchestrator thinking]') || t.startsWith('[Thinking]'))) {
+          last.lines.push(t.replace(/.*\[(Orchestrator thinking|Thinking)\]\s*/, ''));
+        } else {
+          last.lines.push(t);
+        }
+      }
+      setSections([...cache.sections]);
+      return;
+    }
+
+    // Slow path: new section detected — full re-parse
+    cache.sections = parseOutput(output);
+    setSections(cache.sections);
+  }, [output]);
 
   // Auto-expand latest section + all phases
   useEffect(() => {
@@ -625,7 +873,7 @@ export function ResearchOutput({ output, isDarkMode }: ResearchOutputProps) {
         next.add(sections.length - 1);
         // Auto-expand phases and steps on first appearance
         sections.forEach((s, i) => {
-          if (s.kind === 'phase' || s.kind === 'step' || s.kind === 'coverage' || s.kind === 'complete' || s.kind === 'error') {
+          if (s.kind === 'phase' || s.kind === 'step' || s.kind === 'coverage' || s.kind === 'complete' || s.kind === 'error' || s.kind === 'visual' || s.kind === 'metrics' || s.kind === 'ads') {
             next.add(i);
           }
         });

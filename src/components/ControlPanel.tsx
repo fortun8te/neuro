@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useCampaign } from '../context/CampaignContext';
 import { useTheme } from '../context/ThemeContext';
 import { SettingsModal } from './SettingsModal';
@@ -7,8 +7,25 @@ export function ControlPanel() {
   const { systemStatus, currentCycle, campaign, startCycle, pauseCycle, resumeCycle, stopCycle, clearCampaign } = useCampaign() as any;
   const { isDarkMode } = useTheme();
   const [showSettings, setShowSettings] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const isRunning = systemStatus === 'running';
   const isPaused = systemStatus === 'paused';
+
+  // Research stage must be complete to enable PDF export
+  const canExport = campaign && currentCycle && currentCycle.stages.research.status === 'complete';
+
+  const handleExport = useCallback(async () => {
+    if (!campaign || !currentCycle || exporting) return;
+    setExporting(true);
+    try {
+      const { exportResearchPDF } = await import('../utils/pdfExport');
+      await exportResearchPDF(campaign, currentCycle);
+    } catch (err) {
+      console.error('PDF export failed:', err);
+    } finally {
+      setExporting(false);
+    }
+  }, [campaign, currentCycle, exporting]);
 
   return (
     <div className={`border-b ${isDarkMode ? 'border-zinc-800/80' : 'border-zinc-200'} ${isDarkMode ? 'bg-[#0a0a0a]' : 'bg-white'} shadow-[0_1px_3px_rgba(0,0,0,0.2)]`}>
@@ -114,6 +131,23 @@ export function ControlPanel() {
             </button>
           )}
 
+          {canExport && (
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              className={`border px-3 py-1.5 text-[10px] font-mono font-semibold uppercase tracking-[0.15em] transition-all duration-150 ${
+                exporting
+                  ? (isDarkMode ? 'border-zinc-800 text-zinc-600 cursor-wait' : 'border-zinc-200 text-zinc-400 cursor-wait')
+                  : isDarkMode
+                    ? 'border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'
+                    : 'border-zinc-300 text-zinc-600 hover:border-zinc-500 hover:text-black'
+              }`}
+              title="Export research as PDF"
+            >
+              {exporting ? 'Exporting...' : 'PDF'}
+            </button>
+          )}
+
           <button
             onClick={() => setShowSettings(true)}
             className={`border px-2.5 py-1.5 text-[10px] font-mono transition-all duration-150 ${
@@ -128,7 +162,7 @@ export function ControlPanel() {
         </div>
       </div>
 
-      <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
+      <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} isRunning={isRunning} />
     </div>
   );
 }
