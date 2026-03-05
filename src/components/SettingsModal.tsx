@@ -29,7 +29,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   useEffect(() => {
     const savedOllama = localStorage.getItem('ollama_host');
-    setOllamaHost(savedOllama || 'http://localhost:11434');
+    setOllamaHost(savedOllama || 'http://localhost:11435');
     const savedWayfarer = localStorage.getItem('wayfarer_host');
     setWayfarerHost(savedWayfarer || 'http://localhost:8889');
     const savedTime = localStorage.getItem('max_research_time_minutes');
@@ -249,7 +249,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       setConnectionStatus('idle');
                     }}
                     className={`${inputClass} mb-2`}
-                    placeholder="http://localhost:11434"
+                    placeholder="http://localhost:11435"
                   />
                   <button
                     onClick={testConnection}
