@@ -1,6 +1,6 @@
 import { CampaignProvider } from './context/CampaignContext';
 import { ThemeProvider } from './context/ThemeContext';
-import { Dashboard } from './components/Dashboard';
+import { AppShell } from './components/AppShell';
 import ForzaXLanding from './components/ForzaXLanding';
 
 const SHOW_FORZAX = new URLSearchParams(window.location.search).has('forzax');
@@ -12,7 +12,7 @@ function App() {
   return (
     <ThemeProvider>
       <CampaignProvider>
-        <Dashboard />
+        <AppShell />
       </CampaignProvider>
     </ThemeProvider>
   );

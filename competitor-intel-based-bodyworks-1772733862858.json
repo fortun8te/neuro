@@ -1,0 +1,460 @@
+{
+  "brand": "Based Bodyworks",
+  "domain": "basedbodyworks.com",
+  "products": [
+    {
+      "url": "https://basedbodyworks.com/products/texturizing-powder",
+      "productName": "Texture Powder – BASED",
+      "visionRawOutput": "1. PRODUCT_DESCRIPTION:\n   - The Texture Powder by BASED is designed to transform flat hair into voluminous texture and precision. It is free of any preservatives and contains zero mess.\n\n2. INGREDIENTS:\n   - Ingredients: The product contains premium non-toxic ingredients but specific ingredients are not listed.\n\n3. PRICING:\n   - Tier 1: Texture Powder – $20.00\n   - Tier 2: Two Pack – $36.00 (discounted from $40.00)\n   - Tier 3: Complete Styling Kit – $79.20 (discounted from $88.00)\n\n4. TESTIMONIALS:\n   - The screenshot does not include customer quotes or ratings.\n\n5. GUARANTEES:\n   - The product comes with a money-back guarantee, stating \"Only while stock lasts.\"\n\n6. FEATURES:\n   - Features include transforming flat hair into instant volume & texture, precision styling with zero mess, and containing premium non-toxic ingredients.\n\n7. SCENTS:\n   - The screenshot does not specify available scent options.\n\n8. BRAND_MESSAGING:\n   - Tagline: \"Transforms Flat Hair—Instant Volume & Texture\"\n\n9. SOCIAL_PROOF:\n   - Customer counts and ratings: The product has a rating of 2,211 reviews and has received a rating of 4.5 stars.",
+      "description": "The Texture Powder by BASED is designed to transform flat hair into voluminous texture and precision. It is free of any preservatives and contains zero mess.",
+      "ingredients": [],
+      "pricing": [
+        {
+          "tier": "Texture Powder",
+          "price": "20.00",
+          "discount": "10%"
+        },
+        {
+          "tier": "Two Pack",
+          "price": "36.00",
+          "discount": "10%"
+        },
+        {
+          "tier": "Complete Styling Kit",
+          "price": "79.20",
+          "discount": "10%"
+        }
+      ],
+      "testimonials": [],
+      "guarantees": [
+        "Only while stock lasts."
+      ],
+      "features": [
+        "transforming flat hair into instant volume & texture",
+        "precision styling with zero mess",
+        "containing premium non-toxic ingredients"
+      ],
+      "scents": [],
+      "brand_messaging": "Transforms Flat Hair—Instant Volume & Texture",
+      "socialProof": [
+        {
+          "metric": "reviews",
+          "value": "2,211"
+        }
+      ]
+    },
+    {
+      "url": "https://basedbodyworks.com/products/curl-cream",
+      "productName": "Curl Cream – BASED",
+      "visionRawOutput": "1. PRODUCT_DESCRIPTION: This product is a \"Curl Cream\" designed to provide \"Instant Definition & Curl Control.\" It is suitable for curly hair and offers \"All-Day Hold.\" The formula contains \"Premium Non-Toxic Ingredients\" to ensure safety and effectiveness.\n\n2. INGREDIENTS: The specific ingredients are not listed in the visible portion of the screenshot.\n\n3. PRICING: \n   - Tier 1: Single bottle - $20.00 (discount: 20%)\n   - Tier 2: Two Pack - $36.00 (discount: $4.00)\n   - Tier 3: Best Value - $90.00 (discount: $10.00)\n\n4. TESTIMONIALS: No customer quotes or ratings are visible in the provided screenshot.\n\n5. GUARANTEE: The product comes with a \"60-Day Money Back Guarantee.\"\n\n6. FEATURES: The product is \"Complimentary\" with a \"Toiletry Bag\" included, it has a \"Scent\" of \"Sandalwood Masculine,\" and it is \"Clean and Addictive.\"\n\n7. SCENTS: The available scent option is \"Sandalwood Masculine.\"\n\n8. BRAND_MESSAGING: The main tagline or brand promise is \"Get Your Routine\" with a focus on \"Based\" products.\n\n9. SOCIAL_PROOF: The screenshot indicates \"715 Reviews\" with a \"4.3\" rating. Additionally, there are mentions of \"Best Seller\" and \"Complimentary\" items.",
+      "description": "This product is a Curl Cream designed to provide Instant Definition & Curl Control. It is suitable for curly hair and offers All-Day Hold. The formula contains Premium Non-Toxic Ingredients to ensure safety and effectiveness.",
+      "ingredients": [],
+      "pricing": [
+        {
+          "tier": "Single bottle",
+          "price": "$20.00",
+          "discount": "20%"
+        },
+        {
+          "tier": "Two Pack",
+          "price": "$36.00",
+          "discount": "$4.00"
+        },
+        {
+          "tier": "Best Value",
+          "price": "$90.00",
+          "discount": "$10.00"
+        }
+      ],
+      "testimonials": [],
+      "guarantees": [
+        "60-Day Money Back Guarantee"
+      ],
+      "features": [
+        "Complimentary with a Toiletry Bag",
+        "Scent of Sandalwood Masculine",
+        "Clean and Addictive"
+      ],
+      "scents": [
+        "Sandalwood Masculine"
+      ],
+      "brand_messaging": "Get Your Routine",
+      "socialProof": [
+        {
+          "metric": "Reviews",
+          "value": "715"
+        },
+        {
+          "metric": "Rating",
+          "value": "4.3"
+        },
+        {
+          "metric": "Best Seller",
+          "value": "Yes"
+        }
+      ]
+    },
+    {
+      "url": "https://basedbodyworks.com/products/leave-in-conditioner",
+      "productName": "Leave-In Conditioner – BASED",
+      "visionRawOutput": "1. PRODUCT_DESCRIPTION: The \"Leave-In Conditioner – BASED\" is designed to leave hair clean and addictive. It is a complementary item in the product line, specifically for use with the brand's hair care products.\n\n2. INGREDIENTS: The image shows a list of ingredients, but they are not clearly readable. Therefore, the specific ingredients cannot be determined from the provided screenshot.\n\n3. PRICING: The pricing information includes:\n   - Tier 1: $20.00\n   - Tier 2: $36.00 with a 10% discount ($30.60)\n   - Tier 3: $40.00 with a 10% discount ($36.00)\n   - Tier 4: $50.00 with a 10% discount ($45.00)\n   - Tier 5: $100.00 with a 10% discount ($90.00)\n\n4. TESTIMONIALS: There are no customer quotes or ratings visible on the product page.\n\n5. GUARANTEE: A 60-Day Money Back Guarantee is mentioned, indicating a customer satisfaction assurance.\n\n6. FEATURES: The product features include:\n   - Instant Definition & Hydration\n   - Advanced Frizz Control\n   - Premium Non-Toxic Ingredients\n   - Available in two sizes: 8.1 fl oz / 200 ml and 6.8 fl oz / 200 ml\n\n7. SCENTS: The available scent option is \"Santal Sandalwood.\"\n\n8. BRAND_MESSAGING: The main tagline or brand promise is \"Get Your Routine,\" suggesting a focus on personal care and maintaining a consistent beauty routine.\n\n9. SOCIAL_PROOF: There are 1465 reviews and a rating of 4.5 stars, indicating a positive reception from customers.",
+      "description": "The 'Leave-In Conditioner – BASED' is designed to leave hair clean and addictive. It serves as a complementary item within the brand's hair care line, intended for use with other products.",
+      "ingredients": [],
+      "pricing": [
+        {
+          "tier": "1",
+          "price": "$20.00",
+          "discount": "0%"
+        },
+        {
+          "tier": "2",
+          "price": "$36.00",
+          "discount": "10%"
+        },
+        {
+          "tier": "3",
+          "price": "$40.00",
+          "discount": "10%"
+        },
+        {
+          "tier": "4",
+          "price": "$50.00",
+          "discount": "10%"
+        },
+        {
+          "tier": "5",
+          "price": "$100.00",
+          "discount": "10%"
+        }
+      ],
+      "testimonials": [],
+      "guarantees": [
+        "60-Day Money Back Guarantee"
+      ],
+      "features": [
+        "Instant Definition & Hydration",
+        "Advanced Frizz Control",
+        "Premium Non-Toxic Ingredients",
+        "Available in two sizes: 8.1 fl oz / 200 ml and 6.8 fl oz / 200 ml"
+      ],
+      "scents": [
+        "Santal Sandalwood"
+      ],
+      "brand_messaging": "Get Your Routine",
+      "socialProof": [
+        {
+          "metric": "reviews",
+          "value": "1465"
+        },
+        {
+          "metric": "rating",
+          "value": "4.5 stars"
+        }
+      ]
+    },
+    {
+      "url": "https://basedbodyworks.com/products/shampoo",
+      "productName": "Shampoo – BASED",
+      "visionRawOutput": "1. PRODUCT_DESCRIPTION:\n   The BASED Shampoo is a fresh and energizing aroma from pure essential oils. It is described as having 12 fluid ounces (355 ml) of product and has received a 4.5-star rating based on 1278 reviews.\n\n2. INGREDIENTS:\n   While the specific ingredients are not listed in the provided screenshot, it mentions that the shampoo is scent-free and contains energizing aroma from pure essential oils.\n\n3. PRICING:\n   - BASED Shampoo: 12 fl. oz. or 355 ml - $28.00, with a discount of $59 off.\n   - Shower Duo: $48.00 (usually $56.00), saving $8.\n   - Best Value: BASED Shampoo with Complimentary Toiletry Bag - $59 off.\n\n4. TESTIMONIALS:\n   - There are no visible customer quotes with names and ratings on the product page.\n\n5. GUARANTEES:\n   - Free USA shipping on orders over $30.\n   - Free international shipping on orders over $100.\n   - 60-Day Money Back Guarantee.\n\n6. FEATURES:\n   - Complimentary Toiletry Bag included with the BASED Shampoo.\n   - Premium non-toxic formula.\n   - Cleanses gently without overstripping.\n   - Naturally derived fragrance.\n\n7. SCENTS:\n   - The product is available in a Single scent option.\n\n8. BRAND_MESSAGING:\n   The brand tagline or promise isn't explicitly mentioned, but the product is branded as \"BASED\".\n\n9. SOCIAL_PROOF:\n   - The webpage displays a significant customer count with \"3,000,000+\" products sold.\n   - The product has received \"1278 REVIEWS\" and is rated 4.5 stars.\n\nPlease note that the screenshot does not contain specific customer quotes, ratings, or social proof beyond the customer count and reviews.",
+      "description": "The BASED Shampoo is a fresh and energizing aroma from pure essential oils.",
+      "ingredients": [],
+      "pricing": [
+        {
+          "tier": "Shampoo",
+          "price": "$28.00",
+          "discount": "$59 off"
+        },
+        {
+          "tier": "Shower Duo",
+          "price": "$48.00",
+          "discount": "saving $8"
+        },
+        {
+          "tier": "Best Value",
+          "price": "$59.00",
+          "discount": "$59 off"
+        }
+      ],
+      "testimonials": [],
+      "guarantees": [
+        "Free USA shipping on orders over $30",
+        "Free international shipping on orders over $100",
+        "60-Day Money Back Guarantee"
+      ],
+      "features": [
+        "Complimentary Toiletry Bag included with the BASED Shampoo",
+        "Premium non-toxic formula",
+        "Cleanses gently without overstripping",
+        "Naturally derived fragrance"
+      ],
+      "scents": [
+        "Single scent"
+      ],
+      "brand_messaging": "BASED",
+      "socialProof": [
+        {
+          "metric": "Products Sold",
+          "value": "3,000,000+"
+        },
+        {
+          "metric": "Reviews",
+          "value": "1278"
+        }
+      ]
+    },
+    {
+      "url": "https://basedbodyworks.com/products/hair-elixir",
+      "productName": "Hair Elixir – BASED",
+      "visionRawOutput": "1. PRODUCT_DESCRIPTION:\n   \"BASED HAIR ELIXIR\" is a haircare product designed to nourish, seal, and protect hair. It contains ingredients to visibly boost shine and softness, instantly control frizz and flyaways, and provide advanced heat protection.\n\n2. INGREDIENTS:\n   - The specific ingredients are not listed in the provided screenshot.\n\n3. PRICING:\n   - Single Pack: $25.00\n   - Two Pack: $45.00 - $50.00\n   - Haircare Set: $64.80 - $68.10\n   - Best Value Set: $81.00\n\n4. TESTIMONIALS:\n   - There are no customer quotes or ratings provided in the screenshot.\n\n5. GUARANTEE:\n   - 60-Day Money Back Guarantee\n\n6. FEATURES:\n   - Complimentary Toiletry Bag ($50)\n   - Nourishing Seals + Protected\n   - Visibly Boosts Shine + Softness\n   - Instantly Controls Frizz and Flyaways\n   - Advanced Heat Protection\n\n7. SCENTS:\n   - The available scent options are not listed in the provided screenshot.\n\n8. BRAND_MESSAGING:\n   - \"ENGINEERED TO\" is the tagline visible on the product page, though the full phrase is not displayed.\n\n9. SOCIAL_PROOF:\n   - There are 304 reviews indicated with a rating of 4.5 stars.\n   - The product has been featured as a \"Best Value\" and \"Complimentary Toiletry Bag\" which suggests popularity and added value.\n\nThe screenshot also mentions a \"Best Value\" and \"Complimentary Toiletry Bag\" which are not listed in the provided information.",
+      "description": "Based Hair Elixir is a haircare product designed to nourish, seal, and protect hair. It contains ingredients to visibly boost shine and softness, instantly control frizz and flyaways, and provide advanced heat protection.",
+      "ingredients": [],
+      "pricing": [
+        {
+          "tier": "Single Pack",
+          "price": "$25.00",
+          "discount": "N/A"
+        },
+        {
+          "tier": "Two Pack",
+          "price": "$45.00 - $50.00",
+          "discount": "N/A"
+        },
+        {
+          "tier": "Haircare Set",
+          "price": "$64.80 - $68.10",
+          "discount": "N/A"
+        },
+        {
+          "tier": "Best Value Set",
+          "price": "$81.00",
+          "discount": "N/A"
+        }
+      ],
+      "testimonials": [],
+      "guarantees": [
+        "60-Day Money Back Guarantee"
+      ],
+      "features": [
+        "Complimentary Toiletry Bag ($50)",
+        "Nourishing Seals + Protected",
+        "Visibly Boosts Shine + Softness",
+        "Instantly Controls Frizz and Flyaways",
+        "Advanced Heat Protection"
+      ],
+      "scents": [],
+      "brand_messaging": "ENGINEERED TO",
+      "socialProof": [
+        {
+          "metric": "Reviews",
+          "value": "304 reviews"
+        },
+        {
+          "metric": "Rating",
+          "value": "4.5 stars"
+        }
+      ]
+    },
+    {
+      "url": "https://basedbodyworks.com/products/daily-skincare-duo",
+      "productName": "Daily Skincare Duo – BASED",
+      "visionRawOutput": "1. PRODUCT_DESCRIPTION: The Daily Skincare Duo – BASED is a complementary toiletry bag for daily use, designed for a full skincare kit that includes a cleansing system and a moisturizer. It is lightweight, non-comedogenic, and contains premium non-toxic ingredients.\n\n2. INGREDIENTS: The specific ingredients are not listed in the screenshot provided.\n\n3. PRICING: \n   - Tier 1: $36.00 with a 10% discount, originally $40.00.\n   - Tier 2: $74.40 with an 8% discount, originally $80.00.\n   - Tier 3: Best value kit for $86.00 with a 10% discount, originally $95.00.\n\n4. TESTIMONIALS: The screenshot does not provide customer quotes or ratings.\n\n5. GUARANTEE: Money-back guarantee for 60 days.\n\n6. FEATURES: \n   - Perfect for daily use.\n   - Lightweight and non-comedogenic.\n   - Contains premium non-toxic ingredients.\n   - Complimentary toiletry bag included.\n\n7. SCENTS: The available scent options are not listed in the screenshot provided.\n\n8. BRAND_MESSAGING: The main tagline is \"Get Your Routine,\" emphasizing the brand's focus on skincare essentials.\n\n9. SOCIAL_PROOF: The screenshot shows 1,289 reviews and mentions that the product is a best seller.",
+      "description": "The Daily Skincare Duo – BASED is a complementary toiletry bag for daily use, designed for a full skincare kit that includes a cleansing system and a moisturizer. It is lightweight, non-comedogenic, and contains premium non-toxic ingredients.",
+      "ingredients": [],
+      "pricing": [
+        {
+          "tier": "Tier 1",
+          "price": "$36.00",
+          "discount": "10%"
+        },
+        {
+          "tier": "Tier 2",
+          "price": "$74.40",
+          "discount": "8%"
+        },
+        {
+          "tier": "Tier 3",
+          "price": "$86.00",
+          "discount": "10%"
+        }
+      ],
+      "testimonials": [],
+      "guarantees": [
+        "Money-back guarantee for 60 days"
+      ],
+      "features": [
+        "Perfect for daily use",
+        "Lightweight and non-comedogenic",
+        "Contains premium non-toxic ingredients",
+        "Complimentary toiletry bag included"
+      ],
+      "scents": [],
+      "brand_messaging": "Get Your Routine",
+      "socialProof": [
+        {
+          "metric": "reviews",
+          "value": "1,289"
+        }
+      ]
+    },
+    {
+      "url": "https://basedbodyworks.com/products/pomade",
+      "productName": "Based Bodyworks Pomade – BASED",
+      "visionRawOutput": "1. PRODUCT_DESCRIPTION:\n   The \"Based Bodyworks Pomade – BASED\" is a styling product designed for hair. It is a styling tool that helps achieve a defined look with its creamy texture. It is suitable for straight to wavy hair and is recommended for use on hair ranging from 2-8 inches in length.\n\n2. INGREDIENTS:\n   The ingredients for this pomade are not listed in the provided screenshot.\n\n3. PRICING:\n   - Tier 1: $24.00 (Original Price $24.00, Discounted from $43.20)\n   - Tier 2: $43.20 (Original Price $43.20, Discounted from $88.00)\n   - Tier 3: $79.20 (Original Price $79.20, Discounted from $168.00)\n\n4. TESTIMONIALS:\n   - There are no customer quotes or ratings provided in the screenshot.\n\n5. GUARANEE: \n   - Money-back guarantee: \"60-Day Money Back Guarantee\"\n   - Shipping guarantee: \"Free USA Shipping $30+\"\n   - Quality guarantee: \"60-Day Money Back Guarantee\"\n   - Quality guarantee: \"Back Guarantee\"\n\n6. FEATURES:\n   - Complimentary Toiletry Bag ($50) while stock lasts\n   - Instant Non-Greasy, Sleek & Flowy Looks\n   - All Day Medium Hold\n   - Premium Non-Toxic Ingredients\n   - Scent: Santal Sandalwood, Masculine, Clean, and Addictive\n\n7. SCENTS:\n   - Santal Sandalwood, Masculine, Clean, and Addictive\n\n8. BRAND_MESSAGING:\n   - \"Get Your Routine\"\n   - \"Clean and addictive.\"\n\n9. SOCIAL_PROOF:\n   - Customer count: 427 Reviews\n   - Popular options include \"Complimentary Toiletry Bag\" and \"Premium Non-Toxic Ingredients.\"",
+      "description": "The 'Based Bodyworks Pomade – BASED' is a styling product designed for hair. It is a styling tool that helps achieve a defined look with its creamy texture. It is suitable for straight to wavy hair and is recommended for use on hair ranging from 2-8 inches in length.",
+      "ingredients": [],
+      "pricing": [
+        {
+          "tier": "Tier 1",
+          "price": "24.00",
+          "discount": "44.44"
+        },
+        {
+          "tier": "Tier 2",
+          "price": "43.20",
+          "discount": "50.91"
+        },
+        {
+          "tier": "Tier 3",
+          "price": "79.20",
+          "discount": "52.86"
+        }
+      ],
+      "testimonials": [],
+      "guarantees": [
+        "60-Day Money Back Guarantee",
+        "Free USA Shipping $30+",
+        "Back Guarantee"
+      ],
+      "features": [
+        "Complimentary Toiletry Bag ($50) while stock lasts",
+        "Instant Non-Greasy, Sleek & Flowy Looks",
+        "All Day Medium Hold",
+        "Premium Non-Toxic Ingredients",
+        "Scent: Santal Sandalwood, Masculine, Clean, and Addictive"
+      ],
+      "scents": [
+        "Santal Sandalwood",
+        "Masculine",
+        "Clean",
+        "Addictive"
+      ],
+      "brand_messaging": "Get Your Routine",
+      "socialProof": [
+        {
+          "metric": "reviews",
+          "value": "427"
+        }
+      ]
+    },
+    {
+      "url": "https://basedbodyworks.com/products/sea-salt-spray",
+      "productName": "Sea Salt Spray – BASED",
+      "visionRawOutput": "1. PRODUCT_DESCRIPTION:\n   The \"Sea Salt Spray\" is a styling product designed to add texture and volume to hair. It is suitable for straightening curly hair and can also be used for a 0.6-inch curl.\n\n2. INGREDIENTS:\n   The ingredients listed on the product page include:\n   - Scent: Sandalwood & Musc\n   - Other ingredients may vary and are not fully visible in the screenshot.\n\n3. PRICING:\n   - Tier 1: $20.00 (Original price $20.00, no discount)\n   - Tier 2: $36.00 (Original price $40.00, discount $4.00)\n   - Tier 3: $78.20 (Original price $88.00, discount $9.80)\n\n4. TESTIMONIALS:\n   - Not visible in the screenshot.\n\n5. GUARANTEE:\n   - \"60-Day Money-Back Guarantee\"\n   - \"Back Guarantee\"\n\n6. FEATURES:\n   - Instant Beachy & Textured Look\n   - Premium Non-Toxic Ingredients\n   - Zero Artificial Fragrance\n\n7. SCENTS:\n   - Available scent: \"Sandalwood & Musc\"\n\n8. BRAND_MESSAGING:\n   - \"Get Your Routine\"\n   - \"Complete Styling Kit\" with a free toiletry bag and additional items\n   - \"Free USA Shipping\" and \"60-Day Money-Back Guarantee\"\n\n9. SOCIAL_PROOF:\n   - \"1690 Reviews\"\n   - \"Complimentary Toiletry Bag\" (Only while stock lasts)\n   - \"Best for: Straight to Curly Hair, 0.6 Inches\"",
+      "description": "The Sea Salt Spray is a styling product designed to add texture and volume to hair. It is suitable for straightening curly hair and can also be used for a 0.6-inch curl.",
+      "ingredients": [
+        "Sandalwood & Musc"
+      ],
+      "pricing": [
+        {
+          "tier": "Tier 1",
+          "price": "$20.00",
+          "discount": "0%"
+        },
+        {
+          "tier": "Tier 2",
+          "price": "$36.00",
+          "discount": "10%"
+        },
+        {
+          "tier": "Tier 3",
+          "price": "$78.20",
+          "discount": "11.14%"
+        }
+      ],
+      "testimonials": [],
+      "guarantees": [
+        "60-Day Money-Back Guarantee",
+        "Back Guarantee"
+      ],
+      "features": [
+        "Instant Beachy & Textured Look",
+        "Premium Non-Toxic Ingredients",
+        "Zero Artificial Fragrance"
+      ],
+      "scents": [
+        "Sandalwood & Musc"
+      ],
+      "brand_messaging": "Get Your Routine",
+      "socialProof": [
+        {
+          "metric": "Reviews",
+          "value": "1690"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "totalProducts": 14,
+    "avgPrice": "$50.19",
+    "priceRange": "$20.00 - $100.00",
+    "commonIngredients": [
+      "sandalwood & musc"
+    ],
+    "commonFeatures": [
+      "premium non-toxic ingredients",
+      "transforming flat hair into instant volume & texture",
+      "precision styling with zero mess",
+      "containing premium non-toxic ingredients",
+      "complimentary with a toiletry bag",
+      "scent of sandalwood masculine",
+      "clean and addictive",
+      "instant definition & hydration",
+      "advanced frizz control",
+      "available in two sizes: 8.1 fl oz / 200 ml and 6.8 fl oz / 200 ml"
+    ],
+    "brandPositioning": "Transforms Flat Hair—Instant Volume & Texture",
+    "guarantees": [
+      "Only while stock lasts.",
+      "60-Day Money Back Guarantee",
+      "Free USA shipping on orders over $30",
+      "Free international shipping on orders over $100",
+      "Money-back guarantee for 60 days",
+      "Free USA Shipping $30+",
+      "Back Guarantee",
+      "60-Day Money-Back Guarantee"
+    ],
+    "socialProofHighlights": [
+      "reviews: 2,211",
+      "Reviews: 715",
+      "Rating: 4.3",
+      "Best Seller: Yes",
+      "reviews: 1465",
+      "rating: 4.5 stars",
+      "Products Sold: 3,000,000+",
+      "Reviews: 1278",
+      "Reviews: 304 reviews",
+      "Rating: 4.5 stars",
+      "reviews: 1,289",
+      "reviews: 427",
+      "Reviews: 1690"
+    ]
+  },
+  "crawledUrls": [
+    "https://basedbodyworks.com/products/texturizing-powder",
+    "https://basedbodyworks.com/products/curl-cream",
+    "https://basedbodyworks.com/products/leave-in-conditioner",
+    "https://basedbodyworks.com/products/shampoo",
+    "https://basedbodyworks.com/products/hair-elixir",
+    "https://basedbodyworks.com/products/daily-skincare-duo",
+    "https://basedbodyworks.com/products/pomade",
+    "https://basedbodyworks.com/products/sea-salt-spray",
+    "https://basedbodyworks.com/products/shower-duo",
+    "https://basedbodyworks.com/products/bodywash",
+    "https://basedbodyworks.com/products/hair-clay",
+    "https://basedbodyworks.com/products/complete-styling-kit",
+    "https://basedbodyworks.com/products/under-eye-elixir",
+    "https://basedbodyworks.com/products/skin-revival-spray"
+  ],
+  "visionAnalyzed": 8,
+  "elapsed": 1363677
+}

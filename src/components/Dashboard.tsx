@@ -12,7 +12,11 @@ import { QuestionModal } from './QuestionModal';
 import { ResearchReviewModal } from './ResearchReviewModal';
 import type { StageName } from '../types';
 
-export function Dashboard() {
+interface DashboardProps {
+  embedded?: boolean; // When true, hides ControlPanel (nav is handled by AppShell)
+}
+
+export function Dashboard({ embedded = false }: DashboardProps) {
   const { systemStatus, error, currentCycle, cycles, campaign, pendingQuestion, answerQuestion, reviewingStage, reviewFindings, resumeAfterReview } = useCampaign();
   const { isDarkMode } = useTheme();
   const isRunning = systemStatus === 'running';
@@ -31,8 +35,8 @@ export function Dashboard() {
   const secondaryTextClass = isDarkMode ? 'text-zinc-600' : 'text-zinc-500';
 
   return (
-    <div className={`min-h-screen ${bgClass} ${textClass}`}>
-      <ControlPanel />
+    <div className={`${embedded ? 'flex-1 overflow-y-auto' : 'min-h-screen'} ${bgClass} ${textClass}`}>
+      {!embedded && <ControlPanel />}
 
       <div className="max-w-7xl mx-auto px-6 py-5">
 
