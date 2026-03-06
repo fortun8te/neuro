@@ -169,13 +169,14 @@ export function MakeStudio() {
       }
 
       .nomad-grid-bg {
-        background-image:
-          radial-gradient(circle, rgba(113, 113, 122, 0.3) 1px, transparent 1px),
-          radial-gradient(circle, rgba(113, 113, 122, 0.15) 1px, transparent 1px);
-        background-size: 80px 80px, 160px 160px;
-        background-position: 0 0, 40px 40px;
-        animation: nomad-grid-drift 12s linear infinite, nomad-grid-pulse 6s ease-in-out infinite;
-        mask-image: radial-gradient(ellipse 60% 60% at 50% 50%, black 0%, transparent 100%);
+        background:
+          linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.3) 50%, rgba(99,102,241,0.08) 100%),
+          radial-gradient(circle, rgba(113, 113, 122, 0.4) 1.5px, transparent 1.5px),
+          radial-gradient(circle, rgba(113, 113, 122, 0.2) 1px, transparent 1px);
+        background-size: 100% 100%, 80px 80px, 160px 160px;
+        background-position: 0 0, 0 0, 40px 40px;
+        background-attachment: fixed;
+        animation: nomad-grid-drift 18s linear infinite, nomad-grid-pulse 7s ease-in-out infinite;
         pointer-events: none;
       }
     `;
