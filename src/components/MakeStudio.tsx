@@ -140,7 +140,7 @@ export function MakeStudio() {
     }
   }, [showSettings]);
 
-  // Inject delete animation keyframes
+  // Inject delete animation + grid background keyframes
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const id = 'nomad-card-delete-keyframes';
@@ -152,6 +152,27 @@ export function MakeStudio() {
         0% { opacity: 1; transform: scale(1) rotate(0deg); filter: blur(0px); }
         40% { opacity: 0.5; transform: scale(0.9) rotate(1.5deg); filter: blur(1px); }
         100% { opacity: 0; transform: scale(0.6) rotate(4deg); filter: blur(6px); }
+      }
+
+      @keyframes nomad-grid-pulse {
+        0%, 100% { opacity: 0.15; }
+        50% { opacity: 0.25; }
+      }
+
+      @keyframes nomad-grid-drift {
+        0% { transform: translate(0, 0); }
+        100% { transform: translate(40px, 40px); }
+      }
+
+      .nomad-grid-bg {
+        background-image:
+          radial-gradient(circle, rgba(113, 113, 122, 0.3) 1px, transparent 1px),
+          radial-gradient(circle, rgba(113, 113, 122, 0.15) 1px, transparent 1px);
+        background-size: 80px 80px, 160px 160px;
+        background-position: 0 0, 40px 40px;
+        animation: nomad-grid-drift 12s linear infinite, nomad-grid-pulse 6s ease-in-out infinite;
+        mask-image: radial-gradient(ellipse 60% 60% at 50% 50%, black 0%, transparent 100%);
+        pointer-events: none;
       }
     `;
     document.head.appendChild(style);
@@ -687,10 +708,12 @@ Make it look like a real, professional ad creative.`;
     <div className="h-full bg-[#f7f7f8] flex flex-col overflow-hidden">
 
       {/* ── Gallery / Canvas Area ── */}
-      <div className="flex-1 min-h-0 flex overflow-hidden">
+      <div className="flex-1 min-h-0 flex overflow-hidden relative">
+        {/* ── Animated Dotted Grid Background ── */}
+        <div className="absolute inset-0 nomad-grid-bg" />
 
         {/* ── Main Content Area ── */}
-        <div ref={galleryScrollRef} className="flex-1 h-full overflow-y-auto px-6 py-6">
+        <div ref={galleryScrollRef} className="flex-1 h-full overflow-y-auto px-6 py-6 relative z-10">
 
           {/* ── Full Loading Screen (no images yet) ── */}
           {isGenerating && storedImages.length === 0 && (
