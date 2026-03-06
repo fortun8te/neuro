@@ -159,22 +159,22 @@ export function MakeStudio() {
       }
 
       @keyframes nomad-grid-pulse {
-        0%, 100% { opacity: 0.45; }
-        50% { opacity: 0.65; }
+        0%, 100% { opacity: 0.18; }
+        50% { opacity: 0.28; }
       }
 
       @keyframes nomad-grid-drift {
         0% { transform: translate(0, 0); }
-        100% { transform: translate(40px, 40px); }
+        100% { transform: translate(20px, 20px); }
       }
 
       .nomad-grid-bg {
         background-image:
-          radial-gradient(circle, rgba(100, 116, 139, 0.5) 2px, transparent 2px),
-          radial-gradient(circle, rgba(100, 116, 139, 0.25) 1px, transparent 1px);
-        background-size: 100px 100px, 200px 200px;
-        background-position: 0 0, 50px 50px;
-        animation: nomad-grid-drift 20s linear infinite, nomad-grid-pulse 8s ease-in-out infinite;
+          radial-gradient(circle, rgba(113, 113, 122, 0.4) 1px, transparent 1px),
+          radial-gradient(circle, rgba(113, 113, 122, 0.2) 0.5px, transparent 0.5px);
+        background-size: 30px 30px, 60px 60px;
+        background-position: 0 0, 15px 15px;
+        animation: nomad-grid-drift 25s linear infinite, nomad-grid-pulse 9s ease-in-out infinite;
         pointer-events: none;
       }
     `;
