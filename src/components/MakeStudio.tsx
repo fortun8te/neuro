@@ -159,27 +159,20 @@ export function MakeStudio() {
       }
 
       @keyframes nomad-grid-noise {
-        0% { opacity: 0.28; }
-        5% { opacity: 0.19; }
-        10% { opacity: 0.36; }
-        15% { opacity: 0.22; }
-        20% { opacity: 0.41; }
-        25% { opacity: 0.25; }
-        30% { opacity: 0.38; }
-        35% { opacity: 0.21; }
-        40% { opacity: 0.43; }
-        45% { opacity: 0.27; }
-        50% { opacity: 0.39; }
-        55% { opacity: 0.23; }
-        60% { opacity: 0.37; }
-        65% { opacity: 0.20; }
-        70% { opacity: 0.42; }
-        75% { opacity: 0.26; }
-        80% { opacity: 0.35; }
-        85% { opacity: 0.24; }
-        90% { opacity: 0.40; }
-        95% { opacity: 0.29; }
-        100% { opacity: 0.28; }
+        0% { opacity: 0.25; }
+        8% { opacity: 0.32; }
+        16% { opacity: 0.38; }
+        24% { opacity: 0.34; }
+        32% { opacity: 0.26; }
+        40% { opacity: 0.19; }
+        48% { opacity: 0.23; }
+        56% { opacity: 0.31; }
+        64% { opacity: 0.40; }
+        72% { opacity: 0.36; }
+        80% { opacity: 0.28; }
+        88% { opacity: 0.20; }
+        96% { opacity: 0.25; }
+        100% { opacity: 0.25; }
       }
 
       @keyframes nomad-grid-drift {
