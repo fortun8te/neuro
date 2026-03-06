@@ -158,30 +158,42 @@ export function MakeStudio() {
         100% { opacity: 0; transform: scale(0.6) rotate(4deg); filter: blur(6px); }
       }
 
-      @keyframes nomad-grid-pulse {
-        0%, 100% { opacity: 0.25; }
-        50% { opacity: 0.45; }
+      @keyframes nomad-grid-noise {
+        0% { opacity: 0.28; }
+        5% { opacity: 0.19; }
+        10% { opacity: 0.36; }
+        15% { opacity: 0.22; }
+        20% { opacity: 0.41; }
+        25% { opacity: 0.25; }
+        30% { opacity: 0.38; }
+        35% { opacity: 0.21; }
+        40% { opacity: 0.43; }
+        45% { opacity: 0.27; }
+        50% { opacity: 0.39; }
+        55% { opacity: 0.23; }
+        60% { opacity: 0.37; }
+        65% { opacity: 0.20; }
+        70% { opacity: 0.42; }
+        75% { opacity: 0.26; }
+        80% { opacity: 0.35; }
+        85% { opacity: 0.24; }
+        90% { opacity: 0.40; }
+        95% { opacity: 0.29; }
+        100% { opacity: 0.28; }
       }
 
       @keyframes nomad-grid-drift {
         0% { transform: translate(0, 0); }
-        100% { transform: translate(15px, 15px); }
-      }
-
-      @keyframes nomad-grid-spotlight {
-        0% { background-position: 0% 0%, 0 0, 7.5px 7.5px; }
-        100% { background-position: 100% 100%, 15px 15px, 22.5px 22.5px; }
+        100% { transform: translate(13.5px, 13.5px); }
       }
 
       .nomad-grid-bg {
         background-image:
-          radial-gradient(circle at 30% 40%, rgba(99, 102, 241, 0.15) 20%, transparent 50%),
-          radial-gradient(circle at 70% 60%, rgba(99, 102, 241, 0.12) 25%, transparent 55%),
-          radial-gradient(circle, rgba(113, 113, 122, 0.5) 1px, transparent 1px),
-          radial-gradient(circle, rgba(113, 113, 122, 0.25) 0.5px, transparent 0.5px);
-        background-size: 100% 100%, 100% 100%, 15px 15px, 30px 30px;
-        background-position: 0 0, 0 0, 0 0, 7.5px 7.5px;
-        animation: nomad-grid-drift 30s linear infinite, nomad-grid-pulse 10s ease-in-out infinite;
+          radial-gradient(circle, rgba(113, 113, 122, 0.5) 0.8px, transparent 0.8px),
+          radial-gradient(circle, rgba(113, 113, 122, 0.25) 0.4px, transparent 0.4px);
+        background-size: 13.5px 13.5px, 27px 27px;
+        background-position: 0 0, 6.75px 6.75px;
+        animation: nomad-grid-drift 30s linear infinite, nomad-grid-noise 11s ease-in-out infinite;
         pointer-events: none;
         filter: blur(0.3px);
       }
