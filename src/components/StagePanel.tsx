@@ -261,60 +261,59 @@ export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewSta
       )}
 
       {/* ── Output area ── */}
-      <div
-        ref={outputRef}
-        className={`flex-1 overflow-y-auto min-h-0 ${isDark ? 'bg-[#0a0a0a]' : 'bg-zinc-50'}`}
-      >
-        {stageData.agentOutput ? (
-          <div className={`px-5 py-4 ${currentStage !== 'research' ? 'max-w-3xl' : ''}`}>
-            {currentStage === 'research' ? (
-              <ResearchOutput output={stageData.agentOutput} isDarkMode={isDark} />
-            ) : (
-              <div>
-                <div className={isDark ? 'text-zinc-300' : 'text-zinc-700'}>
-                  {stageData.agentOutput.split('\n').map((line, idx) => (
-                    <div key={idx} className={`text-[13px] leading-relaxed ${
-                      line.startsWith('§')
-                        ? isDark ? 'text-blue-400 font-semibold' : 'text-blue-600 font-semibold'
-                        : ''
-                    }`} style={{ lineHeight: '1.6' }}>
-                      {line.startsWith('§') ? line.substring(1) : line || <span>&nbsp;</span>}
-                    </div>
-                  ))}
-                </div>
-                <ModelOutputDebug
-                  rawOutput={stageData.rawOutput}
-                  model={stageData.model}
-                  tokensUsed={stageData.tokensUsed}
-                  processingTime={stageData.processingTime}
-                  stageName={currentStage}
-                />
-              </div>
-            )}
+      {stageData.agentOutput ? (
+        currentStage === 'research' ? (
+          /* Research gets the full-height Manus two-column layout — no padding wrapper */
+          <div className={`flex-1 min-h-0 ${isDark ? 'bg-[#0a0a0a]' : 'bg-zinc-50'}`}>
+            <ResearchOutput output={stageData.agentOutput} isDarkMode={isDark} />
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center h-full gap-3">
-            {currentStage === 'production' && !isRunning ? (
-              <MakeTestPanel isDarkMode={isDark} />
-            ) : isRunning ? (
-              <>
-                <div className="w-24 h-0.5 rounded-full overflow-hidden" style={{ backgroundColor: isDark ? 'rgba(43,121,255,0.08)' : 'rgba(43,121,255,0.06)' }}>
-                  <div className="h-full rounded-full" style={{
-                    width: '40%',
-                    backgroundColor: 'rgba(43,121,255,0.4)',
-                    animation: 'nomad-shimmer-bar 1.5s ease-in-out infinite',
-                  }} />
-                </div>
-                <ShineText variant={isDark ? 'dark' : 'light'} className="text-[11px]" speed={4}>
-                  <span style={{ color: 'rgba(43,121,255,0.5)' }}>Awaiting output</span>
-                </ShineText>
-              </>
-            ) : (
-              <span className={`text-[12px] ${isDark ? 'text-zinc-700' : 'text-zinc-300'}`}>No output yet</span>
-            )}
+          /* Other stages keep the scrolling wrapper */
+          <div ref={outputRef} className={`flex-1 overflow-y-auto min-h-0 ${isDark ? 'bg-[#0a0a0a]' : 'bg-zinc-50'}`}>
+            <div className="px-5 py-4 max-w-3xl">
+              <div className={isDark ? 'text-zinc-300' : 'text-zinc-700'}>
+                {stageData.agentOutput.split('\n').map((line, idx) => (
+                  <div key={idx} className={`text-[13px] leading-relaxed ${
+                    line.startsWith('§')
+                      ? isDark ? 'text-blue-400 font-semibold' : 'text-blue-600 font-semibold'
+                      : ''
+                  }`} style={{ lineHeight: '1.6' }}>
+                    {line.startsWith('§') ? line.substring(1) : line || <span>&nbsp;</span>}
+                  </div>
+                ))}
+              </div>
+              <ModelOutputDebug
+                rawOutput={stageData.rawOutput}
+                model={stageData.model}
+                tokensUsed={stageData.tokensUsed}
+                processingTime={stageData.processingTime}
+                stageName={currentStage}
+              />
+            </div>
           </div>
-        )}
-      </div>
+        )
+      ) : (
+        <div className={`flex-1 flex flex-col items-center justify-center gap-3 ${isDark ? 'bg-[#0a0a0a]' : 'bg-zinc-50'}`}>
+          {currentStage === 'production' && !isRunning ? (
+            <MakeTestPanel isDarkMode={isDark} />
+          ) : isRunning ? (
+            <>
+              <div className="w-24 h-0.5 rounded-full overflow-hidden" style={{ backgroundColor: isDark ? 'rgba(43,121,255,0.08)' : 'rgba(43,121,255,0.06)' }}>
+                <div className="h-full rounded-full" style={{
+                  width: '40%',
+                  backgroundColor: 'rgba(43,121,255,0.4)',
+                  animation: 'nomad-shimmer-bar 1.5s ease-in-out infinite',
+                }} />
+              </div>
+              <ShineText variant={isDark ? 'dark' : 'light'} className="text-[11px]" speed={4}>
+                <span style={{ color: 'rgba(43,121,255,0.5)' }}>Awaiting output</span>
+              </ShineText>
+            </>
+          ) : (
+            <span className={`text-[12px] ${isDark ? 'text-zinc-700' : 'text-zinc-300'}`}>No output yet</span>
+          )}
+        </div>
+      )}
 
       {/* ── Token bar — always visible when running ── */}
       {isActive && (

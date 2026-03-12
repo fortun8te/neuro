@@ -9,29 +9,29 @@ import type { VisualBatchState } from '../utils/visualProgressStore';
 // ─────────────────────────────────────────────────────────────
 
 type SectionKind =
-  | 'phase'                // [PHASE 1], [PHASE 2]
-  | 'campaign'             // [CAMPAIGN_DATA]
-  | 'step'                 // STEP 1: ..., STEP 2: ...
-  | 'layer'                // LAYER 1-7: desire analysis layers
-  | 'orchestrator'         // [Orchestrator] ...
-  | 'researcher'           // [Researcher] ...
-  | 'reflection'           // [Reflection] / Running reflection agent
-  | 'reflection-perspective' // [Reflection: Devil's Advocate/Depth Auditor/Coverage Checker]
-  | 'visual'               // [Visual Scout] — minicpm-v screenshot analysis
-  | 'thinking'             // [Orchestrator thinking] — live reasoning stream
-  | 'metrics'              // [METRICS] — per-iteration stats
-  | 'coverage'             // Coverage: ...
-  | 'deploy'               // Deploying ...
-  | 'complete'             // research complete / RESEARCH COMPLETE
-  | 'timelimit'            // Time limit
-  | 'error'                // ERROR
-  | 'findings'             // Desire/objection findings
-  | 'ads'                  // [Ads] — Phase 3 competitor ad intelligence
-  | 'brain'                // [BRAIN:id] — Council marketing brain output
-  | 'council-head'         // [HEAD:id] — Council head synthesis
-  | 'council'              // [COUNCIL] — Council status/verdict
-  | 'report'               // [REPORT] — Research report generation
-  | 'raw';                 // Fallback
+  | 'phase'
+  | 'campaign'
+  | 'step'
+  | 'layer'
+  | 'orchestrator'
+  | 'researcher'
+  | 'reflection'
+  | 'reflection-perspective'
+  | 'visual'
+  | 'thinking'
+  | 'metrics'
+  | 'coverage'
+  | 'deploy'
+  | 'complete'
+  | 'timelimit'
+  | 'error'
+  | 'findings'
+  | 'ads'
+  | 'brain'
+  | 'council-head'
+  | 'council'
+  | 'report'
+  | 'raw';
 
 interface Section {
   kind: SectionKind;
@@ -39,11 +39,12 @@ interface Section {
   lines: string[];
   badge?: string;
   icon?: string;
-  isStreaming?: boolean; // currently receiving data
+  isStreaming?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────
 // Parser — turns progressive text stream into structured sections
+// (unchanged from previous version — robust, battle-tested)
 // ─────────────────────────────────────────────────────────────
 
 function parseOutput(text: string): Section[] {
@@ -53,335 +54,169 @@ function parseOutput(text: string): Section[] {
 
   const push = () => {
     if (current) {
-      while (current.lines.length > 0 && current.lines[current.lines.length - 1].trim() === '') {
-        current.lines.pop();
-      }
-      if (current.lines.length > 0 || current.kind !== 'raw') {
-        sections.push(current);
-      }
+      while (current.lines.length > 0 && current.lines[current.lines.length - 1].trim() === '') current.lines.pop();
+      if (current.lines.length > 0 || current.kind !== 'raw') sections.push(current);
     }
   };
 
   for (const line of rawLines) {
     const t = line.trim();
-    if (!t || t === '────────────────────────────────────────────────' || t === '════════════════════════════════════════════════════════════════════') continue;
+    if (!t || /^[─═]{10,}$/.test(t)) continue;
 
     // ── Phase headers ──
     if (t.startsWith('[PHASE 1]') && (t.includes('Council') || t.includes('Marketing Brains'))) {
-      push();
-      current = { kind: 'phase', title: 'Council of Marketing Brains', badge: 'Phase 1', lines: [] };
-      continue;
+      push(); current = { kind: 'phase', title: 'Council of Marketing Brains', badge: 'Phase 1', lines: [] }; continue;
     }
-
     if (t.startsWith('[PHASE 1]') || t.includes('ORCHESTRATED RESEARCH:') || t.includes('Desire-Driven') || t.startsWith('RESEARCH PHASE:')) {
       if (!current || current.kind !== 'phase' || current.title !== 'Desire-Driven Analysis') {
-        push();
-        current = { kind: 'phase', title: 'Desire-Driven Analysis', badge: 'Phase 1', lines: [] };
+        push(); current = { kind: 'phase', title: 'Desire-Driven Analysis', badge: 'Phase 1', lines: [] };
       }
       continue;
     }
-
-    if (t.startsWith('[PHASE 1+2 COMPLETE]')) {
-      if (current) current.lines.push('Council verdict delivered');
-      continue;
-    }
-
+    if (t.startsWith('[PHASE 1+2 COMPLETE]')) { if (current) current.lines.push('Council verdict delivered'); continue; }
     if (t.startsWith('[PHASE 2]') || t.includes('Orchestrating Web Search')) {
-      push();
-      current = { kind: 'phase', title: 'Web Research Agents', badge: 'Phase 2', lines: [] };
-      continue;
+      push(); current = { kind: 'phase', title: 'Web Research Agents', badge: 'Phase 2', lines: [] }; continue;
     }
-
     if (t.startsWith('[PHASE 3]') && t.includes('Desire-Driven')) {
-      push();
-      current = { kind: 'phase', title: 'Desire-Driven Deep Dive', badge: 'Phase 3', lines: [] };
-      continue;
+      push(); current = { kind: 'phase', title: 'Desire-Driven Deep Dive', badge: 'Phase 3', lines: [] }; continue;
     }
-
     if (t.startsWith('[PHASE 3]') || t.includes('Competitor Ad Intelligence')) {
-      push();
-      current = { kind: 'phase', title: 'Ad Intelligence', badge: 'Phase 3', lines: [] };
-      continue;
+      push(); current = { kind: 'phase', title: 'Ad Intelligence', badge: 'Phase 3', lines: [] }; continue;
     }
-
     if (t.startsWith('[PHASE 4]') && t.includes('Web Research')) {
-      push();
-      current = { kind: 'phase', title: 'Web Research — Gap Filling', badge: 'Phase 4', lines: [] };
-      continue;
+      push(); current = { kind: 'phase', title: 'Web Research - Gap Filling', badge: 'Phase 4', lines: [] }; continue;
     }
-
     if (t.startsWith('[PHASE 5]') && t.includes('Council Re-run')) {
-      push();
-      current = { kind: 'phase', title: 'Council Re-analysis', badge: 'Phase 5', lines: [] };
-      continue;
+      push(); current = { kind: 'phase', title: 'Council Re-analysis', badge: 'Phase 5', lines: [] }; continue;
     }
-
     if (t.startsWith('[PHASE 6]') && t.includes('Competitor')) {
-      push();
-      current = { kind: 'phase', title: 'Competitor Ad Intelligence', badge: 'Phase 6', lines: [] };
-      continue;
+      push(); current = { kind: 'phase', title: 'Competitor Ad Intelligence', badge: 'Phase 6', lines: [] }; continue;
     }
 
-    // ── Competitor Ads [Ads] ──
+    // ── Competitor Ads ──
     if (t.includes('[Ads]')) {
       const inner = t.replace(/.*\[Ads\]\s*/, '').trim();
-      if (!current || current.kind !== 'ads') {
-        push();
-        current = { kind: 'ads', title: 'Competitor Ads', badge: 'fetching', lines: [] };
-      }
+      if (!current || current.kind !== 'ads') { push(); current = { kind: 'ads', title: 'Competitor Ads', badge: 'fetching', lines: [] }; }
       const metaMatch = inner.match(/Meta API:\s*(\d+)\s*ads found for "(.+?)"/);
-      if (metaMatch) {
-        const prevCount = parseInt(current.badge?.match(/\d+/)?.[0] || '0') || 0;
-        const newCount = prevCount + parseInt(metaMatch[1]);
-        current.badge = `${newCount} ads`;
-      }
+      if (metaMatch) { const prev = parseInt(current.badge?.match(/\d+/)?.[0] || '0') || 0; current.badge = `${prev + parseInt(metaMatch[1])} ads`; }
       const completeMatch = inner.match(/Complete:\s*(\d+)\s*ad examples.*?(\d+)\s*vision/);
       if (completeMatch) current.badge = `${completeMatch[1]} ads`;
-      if (inner.includes('Creative opportunities found:')) {
-        current.lines.push(`Opportunities: ${inner.replace('Creative opportunities found:', '').trim()}`);
-        continue;
-      }
+      if (inner.includes('Creative opportunities found:')) { current.lines.push(`Opportunities: ${inner.replace('Creative opportunities found:', '').trim()}`); continue; }
       if (inner) current.lines.push(inner);
       continue;
     }
 
-    if (/^\[PHASE \d/.test(t) && t.includes('COMPLETE]')) {
-      if (current) {
-        const label = t.replace(/\[PHASE \d+ COMPLETE\]\s*/, '').trim() || 'Complete';
-        current.lines.push(label);
-      }
-      continue;
-    }
+    if (/^\[PHASE \d/.test(t) && t.includes('COMPLETE]')) { if (current) current.lines.push(t.replace(/\[PHASE \d+ COMPLETE\]\s*/, '').trim() || 'Complete'); continue; }
+    if (/^\[PHASE \d/.test(t) && t.includes('ERROR]')) { if (current) current.lines.push(t.replace(/\[PHASE \d+ ERROR\]\s*/, '').trim()); continue; }
 
-    if (/^\[PHASE \d/.test(t) && t.includes('ERROR]')) {
-      if (current) current.lines.push(t.replace(/\[PHASE \d+ ERROR\]\s*/, '').trim());
-      continue;
-    }
-
-    // ── Council of Marketing Brains ──
+    // ── Council ──
     if (t.startsWith('[COUNCIL]') && t.includes('Council of Marketing Brains')) {
-      push();
-      const iterMatch = t.match(/Iteration\s+(\d+)\/(\d+)/);
-      current = { kind: 'council', title: 'Council of Marketing Brains', badge: iterMatch ? `Run ${iterMatch[1]}` : 'starting', lines: [] };
-      continue;
+      push(); const m = t.match(/Iteration\s+(\d+)\/(\d+)/);
+      current = { kind: 'council', title: 'Council of Marketing Brains', badge: m ? `Run ${m[1]}` : 'starting', lines: [] }; continue;
     }
-
-    if (t.startsWith('[COUNCIL]') && t.includes('Round 1')) {
-      push();
-      current = { kind: 'council', title: 'Round 1 — 7 Brains Analyzing', badge: 'parallel', lines: [] };
-      continue;
-    }
-
-    if (t.startsWith('[COUNCIL]') && t.includes('Round 2')) {
-      push();
-      current = { kind: 'council-head', title: 'Round 2 — Council Heads', badge: 'synthesizing', lines: [] };
-      continue;
-    }
-
-    if (t.startsWith('[COUNCIL]') && t.includes('Round 3')) {
-      push();
-      current = { kind: 'council', title: 'Round 3 — Master Verdict', badge: 'deciding', lines: [] };
-      continue;
-    }
-
+    if (t.startsWith('[COUNCIL]') && t.includes('Round 1')) { push(); current = { kind: 'council', title: 'Round 1 - 7 Brains', badge: 'parallel', lines: [] }; continue; }
+    if (t.startsWith('[COUNCIL]') && t.includes('Round 2')) { push(); current = { kind: 'council-head', title: 'Round 2 - Council Heads', badge: 'synthesizing', lines: [] }; continue; }
+    if (t.startsWith('[COUNCIL]') && t.includes('Round 3')) { push(); current = { kind: 'council', title: 'Round 3 - Master Verdict', badge: 'deciding', lines: [] }; continue; }
     if (t.startsWith('[COUNCIL]') && t.includes('Verdict delivered')) {
-      const confMatch = t.match(/confidence:\s*(\d+)/);
-      if (current) {
-        current.badge = confMatch ? `${confMatch[1]}/10` : 'done';
-        current.lines.push(t.replace('[COUNCIL] ', ''));
-      }
+      const m = t.match(/confidence:\s*(\d+)/);
+      if (current) { current.badge = m ? `${m[1]}/10` : 'done'; current.lines.push(t.replace('[COUNCIL] ', '')); }
       continue;
     }
-
     if (t.startsWith('[COUNCIL]')) {
-      if (!current || (current.kind !== 'council' && current.kind !== 'council-head')) {
-        push();
-        current = { kind: 'council', title: 'Council', lines: [] };
-      }
-      current.lines.push(t.replace('[COUNCIL] ', ''));
-      continue;
+      if (!current || (current.kind !== 'council' && current.kind !== 'council-head')) { push(); current = { kind: 'council', title: 'Council', lines: [] }; }
+      current.lines.push(t.replace('[COUNCIL] ', '')); continue;
     }
 
-    // ── Report generation ──
+    // ── Report ──
     if (t.startsWith('[REPORT]')) {
-      if (!current || current.kind !== 'report') {
-        push();
-        current = { kind: 'report', title: 'Research Report', lines: [] };
-      }
-      const content = t.replace('[REPORT] ', '').replace('[REPORT]', '');
-      if (content.trim()) current.lines.push(content);
-      continue;
+      if (!current || current.kind !== 'report') { push(); current = { kind: 'report', title: 'Research Report', lines: [] }; }
+      const c = t.replace('[REPORT] ', '').replace('[REPORT]', ''); if (c.trim()) current.lines.push(c); continue;
     }
 
-    // ── Brain outputs ──
+    // ── Brain ──
     const brainMatch = t.match(/^\[BRAIN:(\w+)\]\s*(.+)/);
     if (brainMatch) {
-      const brainId = brainMatch[1];
-      const inner = brainMatch[2];
-      const brainNames: Record<string, string> = {
-        desire: 'Desire Brain', persuasion: 'Persuasion Brain', offer: 'Offer Brain',
-        creative: 'Creative Brain', avatar: 'Avatar Brain', contrarian: 'Contrarian Brain',
-        visual: 'Visual Brain',
-      };
-      if (inner.includes('analyzing')) {
-        push();
-        current = { kind: 'brain', title: brainNames[brainId] || brainId, badge: 'analyzing', lines: [] };
-      } else if (inner.includes('Failed')) {
-        if (current?.kind === 'brain') current.badge = 'failed';
-        if (current) current.lines.push(inner);
-      } else {
-        if (current) current.lines.push(inner);
-      }
+      const names: Record<string, string> = { desire: 'Desire Brain', persuasion: 'Persuasion Brain', offer: 'Offer Brain', creative: 'Creative Brain', avatar: 'Avatar Brain', contrarian: 'Contrarian Brain', visual: 'Visual Brain' };
+      if (brainMatch[2].includes('analyzing')) { push(); current = { kind: 'brain', title: names[brainMatch[1]] || brainMatch[1], badge: 'analyzing', lines: [] }; }
+      else if (brainMatch[2].includes('Failed')) { if (current?.kind === 'brain') current.badge = 'failed'; if (current) current.lines.push(brainMatch[2]); }
+      else { if (current) current.lines.push(brainMatch[2]); }
       continue;
     }
 
-    // ── Council Head outputs ──
+    // ── Council Head ──
     const headMatch = t.match(/^\[HEAD:(\S+)\]\s*(.+)/);
     if (headMatch) {
-      const headId = headMatch[1];
-      const inner = headMatch[2];
-      const headNames: Record<string, string> = {
-        'strategy-head': 'Strategy Head', 'creative-head': 'Creative Head', 'challenge-head': 'Challenge Head',
-      };
-      if (inner.includes('synthesizing')) {
-        push();
-        current = { kind: 'council-head', title: headNames[headId] || headId, badge: 'synthesizing', lines: [] };
-      } else {
-        if (current) current.lines.push(inner);
-      }
+      const names: Record<string, string> = { 'strategy-head': 'Strategy Head', 'creative-head': 'Creative Head', 'challenge-head': 'Challenge Head' };
+      if (headMatch[2].includes('synthesizing')) { push(); current = { kind: 'council-head', title: names[headMatch[1]] || headMatch[1], badge: 'synthesizing', lines: [] }; }
+      else { if (current) current.lines.push(headMatch[2]); }
       continue;
     }
 
-    // ── Campaign data ──
-    if (t.startsWith('[CAMPAIGN_DATA]')) {
-      push();
-      current = { kind: 'campaign', title: 'Campaign Brief', lines: [] };
-      continue;
-    }
+    // ── Campaign ──
+    if (t.startsWith('[CAMPAIGN_DATA]')) { push(); current = { kind: 'campaign', title: 'Campaign Brief', lines: [] }; continue; }
 
     // ── Steps ──
     const stepMatch = t.match(/^STEP\s+(\d+):\s*(.+)/i);
-    if (stepMatch) {
-      push();
-      current = { kind: 'step', title: stepMatch[2], badge: `Step ${stepMatch[1]}`, lines: [] };
-      continue;
-    }
+    if (stepMatch) { push(); current = { kind: 'step', title: stepMatch[2], badge: `Step ${stepMatch[1]}`, lines: [] }; continue; }
 
-    // ── Layers (LAYER 1-7: desire analysis) ──
+    // ── Layers ──
     const layerMatch = t.match(/^LAYER\s+(\d+)[:\s—]+(.+)/i);
-    if (layerMatch) {
-      push();
-      current = { kind: 'layer', title: layerMatch[2].trim(), badge: `Layer ${layerMatch[1]}`, lines: [] };
-      continue;
-    }
-
-    // ── Layer sub-progress ──
+    if (layerMatch) { push(); current = { kind: 'layer', title: layerMatch[2].trim(), badge: `Layer ${layerMatch[1]}`, lines: [] }; continue; }
     const layerSubMatch = t.match(/^\s*\[Layer\s+(\d+)\]\s*(.+)/);
-    if (layerSubMatch) {
-      if (current?.kind === 'layer') {
-        current.lines.push(layerSubMatch[2]);
-      }
-      continue;
-    }
+    if (layerSubMatch) { if (current?.kind === 'layer') current.lines.push(layerSubMatch[2]); continue; }
 
-    // ── Reflection perspectives (3 agents) ──
+    // ── Reflection perspectives ──
     const reflPerspMatch = t.match(/\[Reflection:\s*(Devil's Advocate|Depth Auditor|Coverage Checker)\]\s*(.*)/);
     if (reflPerspMatch) {
       push();
-      current = {
-        kind: 'reflection-perspective',
-        title: reflPerspMatch[1],
-        badge: reflPerspMatch[1] === "Devil's Advocate" ? 'bias check' : reflPerspMatch[1] === 'Depth Auditor' ? 'specifics' : 'gaps',
-        lines: [],
-      };
-      if (reflPerspMatch[2]) current.lines.push(reflPerspMatch[2]);
-      continue;
+      current = { kind: 'reflection-perspective', title: reflPerspMatch[1], badge: reflPerspMatch[1] === "Devil's Advocate" ? 'bias check' : reflPerspMatch[1] === 'Depth Auditor' ? 'specifics' : 'gaps', lines: [] };
+      if (reflPerspMatch[2]) current.lines.push(reflPerspMatch[2]); continue;
     }
 
-    // ── Findings: desire hierarchies ──
-    if (t.startsWith('Identified') && t.includes('desire hierarch')) {
-      if (current?.kind === 'step') {
-        current.badge = (current.badge || '') + ` · ${t.match(/(\d+)/)?.[1]} desires`;
-        current.lines.push(t);
-      }
-      continue;
-    }
+    // ── Findings ──
+    if (t.startsWith('Identified') && t.includes('desire hierarch')) { if (current?.kind === 'step') { current.badge = (current.badge || '') + ` · ${t.match(/(\d+)/)?.[1]} desires`; current.lines.push(t); } continue; }
+    if (t.startsWith('Found') && t.includes('objection')) { if (current?.kind === 'step') { current.badge = (current.badge || '') + ` · ${t.match(/(\d+)/)?.[1]} objections`; current.lines.push(t); } continue; }
 
-    // ── Findings: objections ──
-    if (t.startsWith('Found') && t.includes('objection')) {
-      if (current?.kind === 'step') {
-        current.badge = (current.badge || '') + ` · ${t.match(/(\d+)/)?.[1]} objections`;
-        current.lines.push(t);
-      }
-      continue;
-    }
-
-    // ── Orchestrator iteration ──
+    // ── Orchestrator ──
     if (t.includes('[Orchestrator]')) {
       push();
       const iterMatch = t.match(/Iteration\s+(\d+)\/(\d+)/);
       const timeMatch = t.match(/\((\d+)s elapsed\)/);
-      current = {
-        kind: 'orchestrator',
-        title: iterMatch ? `Iteration ${iterMatch[1]}/${iterMatch[2]}` : 'Orchestrator',
-        badge: timeMatch ? `${timeMatch[1]}s` : undefined,
-        lines: [],
-      };
+      current = { kind: 'orchestrator', title: iterMatch ? `Iteration ${iterMatch[1]}/${iterMatch[2]}` : 'Orchestrator', badge: timeMatch ? `${timeMatch[1]}s` : undefined, lines: [] };
       if (t.includes('Pausing')) current.lines.push('Waiting for user input...');
       continue;
     }
-
-    // ── Deploying researchers ──
     if (t.includes('Deploying') && t.includes('researcher')) {
-      const countMatch = t.match(/Deploying\s+(\d+)/);
-      if (current?.kind === 'orchestrator') {
-        current.badge = countMatch ? `${countMatch[1]} agents` : current.badge;
-        current.lines.push(`Deploying ${countMatch?.[1] || ''} agents`);
-      }
+      const m = t.match(/Deploying\s+(\d+)/);
+      if (current?.kind === 'orchestrator') { current.badge = m ? `${m[1]} agents` : current.badge; current.lines.push(`Deploying ${m?.[1] || ''} agents`); }
       continue;
     }
-
-    // ── Orchestrator chosen queries ──
     if (t.includes('[Orchestrator]') && t.includes('→')) {
-      const queryMatch = t.match(/→\s*"(.+?)"/);
-      if (queryMatch && current?.kind === 'orchestrator') {
-        current.lines.push(`→ "${queryMatch[1]}"`);
-      }
+      const m = t.match(/→\s*"(.+?)"/);
+      if (m && current?.kind === 'orchestrator') current.lines.push(`→ "${m[1]}"`);
       continue;
     }
-
-    // ── Orchestrator decision preview ──
     if (t.includes('[Orchestrator]') && t.includes('Decision:')) {
-      const preview = t.replace(/.*\[Orchestrator\]\s*Decision:\s*/, '');
-      if (current?.kind === 'orchestrator') current.lines.push(preview);
+      if (current?.kind === 'orchestrator') current.lines.push(t.replace(/.*\[Orchestrator\]\s*Decision:\s*/, ''));
       continue;
     }
 
-    // ── Researcher activity ──
+    // ── Researcher ──
     if (t.includes('[Researcher]')) {
       const inner = t.replace(/.*\[Researcher\]\s*/, '').replace(/^[🔎📄⚠️]\s*/, '');
       if (inner.includes('Searching:')) {
         push();
-        const topicMatch = inner.match(/Searching:\s*"?(.+?)"?\s*\.{0,3}$/);
-        current = {
-          kind: 'researcher',
-          title: topicMatch ? topicMatch[1].slice(0, 50) : 'Web Search',
-          badge: 'searching',
-          lines: [],
-        };
+        const m = inner.match(/Searching:\s*"?(.+?)"?\s*\.{0,3}$/);
+        current = { kind: 'researcher', title: m ? m[1].slice(0, 50) : 'Web Search', badge: 'searching', lines: [] };
         continue;
       }
       if (inner.includes('Fetched')) {
-        const fetchMatch = inner.match(/Fetched\s+(\d+)\/(\d+)\s+pages\s+\((.+?)s\)/);
-        if (fetchMatch && current?.kind === 'researcher') {
-          current.badge = `${fetchMatch[1]}/${fetchMatch[2]} pages`;
-        }
-        if (current) current.lines.push(inner);
-        continue;
+        const m = inner.match(/Fetched\s+(\d+)\/(\d+)\s+pages\s+\((.+?)s\)/);
+        if (m && current?.kind === 'researcher') current.badge = `${m[1]}/${m[2]} pages`;
+        if (current) current.lines.push(inner); continue;
       }
       if (inner.includes('Compress')) { if (current) current.lines.push(inner); continue; }
-      if (current) current.lines.push(inner);
-      continue;
+      if (current) current.lines.push(inner); continue;
     }
 
     // ── Visual Scout ──
@@ -389,39 +224,21 @@ function parseOutput(text: string): Section[] {
       const inner = t.replace(/.*\[Visual Scout\]\s*/, '');
       if (inner.includes('Screenshotting') || inner.includes('Orchestrator requested') || inner.includes('Reflection agent requested')) {
         push();
-        const countMatch = inner.match(/(\d+)/);
-        current = {
-          kind: 'visual',
-          title: inner.includes('Screenshotting') ? 'Capturing Screenshots' : 'Visual Analysis',
-          badge: countMatch ? `${countMatch[1]} pages` : undefined,
-          lines: [],
-        };
+        const m = inner.match(/(\d+)/);
+        current = { kind: 'visual', title: inner.includes('Screenshotting') ? 'Capturing Screenshots' : 'Visual Analysis', badge: m ? `${m[1]} pages` : undefined, lines: [] };
         continue;
       }
-      if (!current || current.kind !== 'visual') {
-        push();
-        current = { kind: 'visual', title: 'Visual Scout', badge: undefined, lines: [] };
-      }
-      if (inner.includes('Analyzed') && inner.includes('competitor')) {
-        const countMatch = inner.match(/(\d+)/);
-        if (countMatch) current.badge = `${countMatch[1]} analyzed`;
-      }
-      if (inner.includes('complete')) {
-        current.badge = inner.match(/(\d+)\s+sites/)?.[0] || current.badge;
-      }
-      current.lines.push(inner);
-      continue;
+      if (!current || current.kind !== 'visual') { push(); current = { kind: 'visual', title: 'Visual Scout', badge: undefined, lines: [] }; }
+      if (inner.includes('Analyzed') && inner.includes('competitor')) { const m = inner.match(/(\d+)/); if (m) current.badge = `${m[1]} analyzed`; }
+      if (inner.includes('complete')) { current.badge = inner.match(/(\d+)\s+sites/)?.[0] || current.badge; }
+      current.lines.push(inner); continue;
     }
 
-    // ── Orchestrator thinking ──
+    // ── Thinking ──
     if (t.startsWith('[Orchestrator thinking]') || t.startsWith('[Thinking]')) {
       const inner = t.replace(/.*\[(Orchestrator thinking|Thinking)\]\s*/, '');
-      if (!current || current.kind !== 'thinking') {
-        push();
-        current = { kind: 'thinking', title: 'Reasoning', badge: 'live', lines: [] };
-      }
-      if (inner) current.lines.push(inner);
-      continue;
+      if (!current || current.kind !== 'thinking') { push(); current = { kind: 'thinking', title: 'Reasoning', badge: 'live', lines: [] }; }
+      if (inner) current.lines.push(inner); continue;
     }
 
     // ── Metrics ──
@@ -429,96 +246,47 @@ function parseOutput(text: string): Section[] {
       push();
       try {
         const json = JSON.parse(t.replace('[METRICS] ', ''));
-        const elapsed = json.elapsedSec >= 60
-          ? `${Math.floor(json.elapsedSec / 60)}m ${json.elapsedSec % 60}s`
-          : `${json.elapsedSec}s`;
-        current = {
-          kind: 'metrics',
-          title: `${json.coveragePct}% Coverage`,
-          badge: elapsed,
-          lines: [
-            `${json.coveredDims}/${json.totalDims} dimensions covered`,
-            `${json.totalSources || 0} sources · ${json.totalQueries} queries`,
-          ],
-        };
-      } catch {
-        current = { kind: 'raw', title: 'Metrics', lines: [t] };
-      }
+        const elapsed = json.elapsedSec >= 60 ? `${Math.floor(json.elapsedSec / 60)}m ${json.elapsedSec % 60}s` : `${json.elapsedSec}s`;
+        current = { kind: 'metrics', title: `${json.coveragePct}% Coverage`, badge: elapsed, lines: [`${json.coveredDims}/${json.totalDims} dimensions covered`, `${json.totalSources || 0} sources · ${json.totalQueries} queries`] };
+      } catch { current = { kind: 'raw', title: 'Metrics', lines: [t] }; }
       continue;
     }
 
-    // ── Reflection agent ──
-    if (t.includes('Running reflection agent') || t.includes('150% bar mode')) {
-      push();
-      current = { kind: 'reflection', title: 'Reflection', badge: '150% bar', lines: [] };
-      continue;
-    }
+    // ── Reflection ──
+    if (t.includes('Running reflection agent') || t.includes('150% bar mode')) { push(); current = { kind: 'reflection', title: 'Reflection', badge: '150% bar', lines: [] }; continue; }
     if (t.includes('[Reflection]')) {
       const inner = t.replace(/.*\[Reflection\]\s*/, '');
-      if (!current || current.kind !== 'reflection') {
-        push();
-        current = { kind: 'reflection', title: 'Reflection', badge: '150% bar', lines: [] };
-      }
-      current.lines.push(inner);
-      continue;
+      if (!current || current.kind !== 'reflection') { push(); current = { kind: 'reflection', title: 'Reflection', badge: '150% bar', lines: [] }; }
+      current.lines.push(inner); continue;
     }
     if (t.includes('Reflection found')) {
-      const gapMatch = t.match(/found\s+(\d+)\s+gaps/);
-      if (current?.kind === 'reflection') {
-        current.badge = gapMatch ? `${gapMatch[1]} gaps` : current.badge;
-        current.lines.push(t.replace(/^.*?🎯\s*/, ''));
-      }
+      const m = t.match(/found\s+(\d+)\s+gaps/);
+      if (current?.kind === 'reflection') { current.badge = m ? `${m[1]} gaps` : current.badge; current.lines.push(t.replace(/^.*?🎯\s*/, '')); }
       continue;
     }
 
     // ── Coverage ──
     if (t.includes('Coverage:') && t.includes('dimensions')) {
       push();
-      const covMatch = t.match(/Coverage:\s*(\d+)%\s*\((\d+)\/(\d+)/);
+      const m = t.match(/Coverage:\s*(\d+)%\s*\((\d+)\/(\d+)/);
       const threshMatch = t.match(/threshold:\s*(\d+)%/);
-      current = {
-        kind: 'coverage',
-        title: covMatch ? `${covMatch[1]}% Coverage` : 'Coverage',
-        badge: covMatch ? `${covMatch[2]}/${covMatch[3]}` : undefined,
-        lines: threshMatch ? [`Target: ${threshMatch[1]}%`] : [],
-      };
+      current = { kind: 'coverage', title: m ? `${m[1]}% Coverage` : 'Coverage', badge: m ? `${m[2]}/${m[3]}` : undefined, lines: threshMatch ? [`Target: ${threshMatch[1]}%`] : [] };
       continue;
     }
 
-    // ── Complete ──
+    // ── Terminal states ──
     if (t.includes('research complete') || t.includes('RESEARCH COMPLETE') || t.includes('Coverage threshold reached') || t.includes('Orchestrator satisfied')) {
-      push();
-      current = { kind: 'complete', title: 'Research Complete', lines: [t.replace(/^.*?[✓✅]\s*/, '')] };
-      continue;
+      push(); current = { kind: 'complete', title: 'Research Complete', lines: [t.replace(/^.*?[✓✅]\s*/, '')] }; continue;
     }
-
-    // ── Time limit ──
-    if (t.includes('Time limit reached')) {
-      push();
-      current = { kind: 'timelimit', title: 'Time Limit', lines: [t.replace(/^.*?⏱️\s*/, '')] };
-      continue;
-    }
-
-    // ── Error ──
-    if (t.startsWith('ERROR') || (t.startsWith('⚠️') && !t.includes('[Reflection]'))) {
-      push();
-      current = { kind: 'error', title: 'Error', lines: [t] };
-      continue;
-    }
+    if (t.includes('Time limit reached')) { push(); current = { kind: 'timelimit', title: 'Time Limit', lines: [t.replace(/^.*?⏱️\s*/, '')] }; continue; }
+    if (t.startsWith('ERROR') || (t.startsWith('⚠️') && !t.includes('[Reflection]'))) { push(); current = { kind: 'error', title: 'Error', lines: [t] }; continue; }
 
     // ── Skip boilerplate ──
-    if (t.includes('orchestrator deciding what additional research') || t.includes('orchestrator evaluating')) {
-      if (current) current.lines.push('Evaluating research gaps...');
-      continue;
-    }
+    if (t.includes('orchestrator deciding what additional research') || t.includes('orchestrator evaluating')) { if (current) current.lines.push('Evaluating research gaps...'); continue; }
     if (t.startsWith('User provided:') && current) { current.lines.push(t); continue; }
 
     // ── Fallback ──
-    if (current) {
-      current.lines.push(t);
-    } else {
-      current = { kind: 'raw', title: 'Output', lines: [t] };
-    }
+    if (current) { current.lines.push(t); } else { current = { kind: 'raw', title: 'Output', lines: [t] }; }
   }
 
   push();
@@ -526,13 +294,18 @@ function parseOutput(text: string): Section[] {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Color system — minimal, clean
+// Incremental parse header regex
 // ─────────────────────────────────────────────────────────────
 
-type ColorKey = 'indigo' | 'emerald' | 'blue' | 'teal' | 'amber' | 'purple' | 'rose' | 'sky' | 'cyan' | 'green' | 'orange' | 'red' | 'zinc';
+const SECTION_HEADER_RE = /\[PHASE [1-6]\]|Competitor Ad Intelligence|ORCHESTRATED RESEARCH:|Council of Marketing Brains|Desire-Driven|Orchestrating Web Search|\[CAMPAIGN_DATA\]|STEP \d+:|LAYER \d+[:\s—]|Iteration \d+\/|Searching:\s*"|Screenshotting|Orchestrator requested visual|Reflection agent requested visual|Running reflection agent|150% bar mode|\[Reflection:\s*(Devil's Advocate|Depth Auditor|Coverage Checker)\]|Coverage:\s*\d+%.*dimensions|research complete|RESEARCH COMPLETE|Coverage threshold|Orchestrator satisfied|Time limit reached|^ERROR|\[METRICS\]|\[Orchestrator thinking\]|\[Thinking\]|\[Ads\]|\[BRAIN:\w+\]|\[HEAD:\S+\]|\[COUNCIL\]/im;
+
+// ─────────────────────────────────────────────────────────────
+// Color system
+// ─────────────────────────────────────────────────────────────
+
+type ColorKey = 'emerald' | 'blue' | 'teal' | 'amber' | 'red' | 'zinc';
 
 function kindColor(kind: SectionKind): ColorKey {
-  // Simplified to 3 main accents: blue (orchestrator/thinking), teal (researcher/brain), amber (reflection/analysis)
   const map: Record<string, ColorKey> = {
     phase: 'zinc', step: 'blue', layer: 'blue', orchestrator: 'blue', researcher: 'teal',
     reflection: 'amber', 'reflection-perspective': 'amber', coverage: 'zinc', visual: 'teal', thinking: 'zinc',
@@ -543,338 +316,286 @@ function kindColor(kind: SectionKind): ColorKey {
   return map[kind] || 'zinc';
 }
 
-
-function textColor(color: ColorKey, dark: boolean): string {
-  if (dark) {
-    const map: Record<ColorKey, string> = {
-      indigo: 'text-indigo-400', emerald: 'text-emerald-400', blue: 'text-blue-400', teal: 'text-teal-400',
-      amber: 'text-amber-400', purple: 'text-purple-400', rose: 'text-rose-400', sky: 'text-sky-400',
-      cyan: 'text-cyan-400', green: 'text-green-400', orange: 'text-orange-400', red: 'text-red-400', zinc: 'text-zinc-500',
-    };
-    return map[color];
-  }
-  const map: Record<ColorKey, string> = {
-    indigo: 'text-indigo-600', emerald: 'text-emerald-600', blue: 'text-blue-600', teal: 'text-teal-600',
-    amber: 'text-amber-600', purple: 'text-purple-600', rose: 'text-rose-600', sky: 'text-sky-600',
-    cyan: 'text-cyan-600', green: 'text-green-600', orange: 'text-orange-600', red: 'text-red-600', zinc: 'text-zinc-500',
-  };
-  return map[color];
-}
-
+const DARK_COLORS: Record<ColorKey, string> = {
+  emerald: '#34d399', blue: '#60a5fa', teal: '#2dd4bf', amber: '#fbbf24', red: '#f87171', zinc: '#71717a',
+};
+const LIGHT_COLORS: Record<ColorKey, string> = {
+  emerald: '#059669', blue: '#2563eb', teal: '#0d9488', amber: '#d97706', red: '#dc2626', zinc: '#a1a1aa',
+};
 
 // ─────────────────────────────────────────────────────────────
 // Coverage Bar
 // ─────────────────────────────────────────────────────────────
 
-function CoverageBar({ pct, dark }: { pct: number; dark: boolean }) {
-  const barColor = pct >= 80
-    ? 'bg-emerald-500'
-    : pct >= 50
-    ? 'bg-amber-500'
-    : 'bg-red-500';
-
+function CoverageBar({ pct, dark, compact }: { pct: number; dark: boolean; compact?: boolean }) {
+  const color = pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444';
   return (
-    <div className="flex items-center gap-2.5 w-full">
-      <div className={`flex-1 h-1.5 rounded-full ${dark ? 'bg-zinc-800' : 'bg-zinc-100'} overflow-hidden`}>
-        <div
-          className={`h-full ${barColor} rounded-full transition-all duration-700 ease-out`}
-          style={{ width: `${Math.min(pct, 100)}%` }}
-        />
+    <div className={`flex items-center gap-2 ${compact ? '' : 'w-full'}`}>
+      <div className={`${compact ? 'w-12' : 'flex-1'} h-1 rounded-full overflow-hidden ${dark ? 'bg-zinc-800' : 'bg-zinc-200'}`}>
+        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }} />
       </div>
-      <span className={`text-[10px] font-semibold tabular-nums ${dark ? 'text-zinc-300' : 'text-zinc-600'}`}>
-        {pct}%
-      </span>
+      <span className={`text-[10px] font-bold tabular-nums`} style={{ color }}>{pct}%</span>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────
-// Line renderer
+// Timeline Action — single item in the left timeline
 // ─────────────────────────────────────────────────────────────
 
-function RenderLine({ line, dark, accentClass }: { line: string; dark: boolean; accentClass: string }) {
-  const txt = dark ? 'text-zinc-300' : 'text-[#414243]';
-  const dim = dark ? 'text-zinc-600' : 'text-zinc-400';
-
-  // Query line
-  if (line.startsWith('→ "')) {
-    return (
-      <div className="flex items-start gap-2 py-0.5">
-        <span className={`${accentClass} text-[11px] mt-px shrink-0`}>→</span>
-        <span className={`text-[12px] ${txt} italic font-medium leading-5`}>{line.slice(2)}</span>
-      </div>
-    );
-  }
-
-  // Numbered finding
-  const findingMatch = line.match(/^\s*\[(\d+)\]\s*(.+)/);
-  if (findingMatch) {
-    return (
-      <div className="flex gap-2 items-start py-0.5">
-        <span className={`text-[11px] font-bold ${accentClass} w-4 shrink-0 text-right tabular-nums`}>{findingMatch[1]}</span>
-        <span className={`text-[12px] ${txt} font-medium leading-5`}>{findingMatch[2]}</span>
-      </div>
-    );
-  }
-
-  // Sub-lines
-  if (line.match(/^\s*(Surface|Intensity):/i)) {
-    return <div className={`text-[11px] ${dim} ml-6 italic`}>{line.trim()}</div>;
-  }
-
-  // KV lines
-  const kvMatch = line.match(/^(Brand|Target Audience|Marketing Goal|Audience congregates|Key language|Market gap):\s*(.+)/);
-  if (kvMatch) {
-    return (
-      <div className="flex gap-1.5 py-0.5">
-        <span className={`text-[12px] font-semibold ${accentClass} shrink-0`}>{kvMatch[1]}:</span>
-        <span className={`text-[12px] font-medium ${txt} leading-5`}>{kvMatch[2]}</span>
-      </div>
-    );
-  }
-
-  // Compression / fetch
-  if (line.match(/Compress|Fetched/i)) {
-    return <div className={`text-[10px] ${dim} font-mono`}>{line}</div>;
-  }
-
-  // JSON tokens
-  if (line.match(/^\s*[\[{\]},"]/) || line.match(/^\s*"[a-zA-Z_]+"\s*:/)) {
-    return <div className={`text-[9px] ${dim} font-mono leading-snug`}>{line}</div>;
-  }
-
-  return <div className={`text-[12px] font-medium ${txt} leading-5`}>{line}</div>;
-}
-
-// ─────────────────────────────────────────────────────────────
-// SectionRow — flat log-feed row (Manus-style)
-// ─────────────────────────────────────────────────────────────
-
-function SectionRow({
-  section,
-  isExpanded,
-  isLast,
-  onToggle,
-  dark,
+function TimelineAction({
+  section, isFirst, isLast, isActive, isSelected, onClick, dark,
 }: {
   section: Section;
-  isExpanded: boolean;
+  isFirst: boolean;
   isLast: boolean;
-  onToggle: () => void;
+  isActive: boolean;
+  isSelected: boolean;
+  onClick: () => void;
   dark: boolean;
 }) {
   const color = kindColor(section.kind);
-  const accent = textColor(color, dark);
-  const isPhase = section.kind === 'phase';
-  const isComplete = section.kind === 'complete';
+  const accent = dark ? DARK_COLORS[color] : LIGHT_COLORS[color];
+  const isDone = section.kind === 'complete';
   const isError = section.kind === 'error';
-  const isActive = isLast && !isComplete && !isError;
+  const isTimeout = section.kind === 'timelimit';
   const covPct = (section.kind === 'coverage' || section.kind === 'metrics')
-    ? parseInt(section.title.match(/(\d+)%/)?.[1] || '0')
-    : null;
+    ? parseInt(section.title.match(/(\d+)%/)?.[1] || '0') : null;
 
-  // Phase divider — not a row, just a section break
-  if (isPhase) {
+  // Phase divider — horizontal break in the timeline
+  if (section.kind === 'phase') {
     return (
-      <div className={`flex items-center gap-3 pt-4 pb-1.5 first:pt-1`}>
-        <div className={`h-px flex-1 ${dark ? 'bg-zinc-800/80' : 'bg-zinc-200'}`} />
-        <span className={`text-[9px] uppercase tracking-widest font-semibold shrink-0 ${dark ? 'text-zinc-500' : 'text-zinc-400'}`}>
-          {section.badge ? `${section.badge} · ${section.title}` : section.title}
+      <div className="relative flex items-center py-3 px-4">
+        <div className={`h-px flex-1 ${dark ? 'bg-zinc-800' : 'bg-zinc-200'}`} />
+        <span className={`px-2.5 text-[9px] uppercase tracking-[0.15em] font-semibold ${dark ? 'text-zinc-600' : 'text-zinc-400'}`}>
+          {section.badge ? `${section.badge}` : ''} {section.title}
         </span>
-        <div className={`h-px flex-1 ${dark ? 'bg-zinc-800/80' : 'bg-zinc-200'}`} />
+        <div className={`h-px flex-1 ${dark ? 'bg-zinc-800' : 'bg-zinc-200'}`} />
       </div>
     );
   }
 
-  // Status dot color
-  const dotStyle: React.CSSProperties = (() => {
-    if (isActive) return { backgroundColor: '#2B79FF' };
-    if (isComplete) return { backgroundColor: '#22c55e' };
-    if (isError) return { backgroundColor: '#ef4444' };
-    if (color === 'teal') return { backgroundColor: dark ? '#2dd4bf' : '#0d9488' };
-    if (color === 'amber') return { backgroundColor: dark ? '#fbbf24' : '#d97706' };
-    if (color === 'blue') return { backgroundColor: dark ? '#60a5fa' : '#3b82f6' };
-    return { backgroundColor: dark ? '#52525b' : '#d4d4d8' };
+  // Status circle
+  const circleColor = (() => {
+    if (isActive) return '#3b82f6';
+    if (isDone) return '#22c55e';
+    if (isError) return '#ef4444';
+    if (isTimeout) return '#f59e0b';
+    return accent;
   })();
 
   return (
-    <div className="group">
+    <div className="relative flex">
+      {/* Connector column */}
+      <div className="flex flex-col items-center" style={{ width: 28, flexShrink: 0 }}>
+        {/* Top line */}
+        <div className={`w-px flex-1 ${isFirst ? 'bg-transparent' : dark ? 'bg-zinc-800/80' : 'bg-zinc-200'}`} />
+        {/* Circle */}
+        <div
+          className={`w-2.5 h-2.5 rounded-full flex-shrink-0 transition-all duration-300 ${isActive ? 'animate-pulse' : ''}`}
+          style={{
+            backgroundColor: (isActive || isDone || isError || isTimeout) ? circleColor : 'transparent',
+            border: `2px solid ${circleColor}`,
+            boxShadow: isActive ? `0 0 8px ${circleColor}40` : 'none',
+          }}
+        />
+        {/* Bottom line */}
+        <div className={`w-px flex-1 ${isLast ? 'bg-transparent' : dark ? 'bg-zinc-800/80' : 'bg-zinc-200'}`} />
+      </div>
+
+      {/* Content */}
       <button
-        onClick={onToggle}
-        className={`w-full flex items-center gap-2.5 py-1 px-1 rounded transition-colors duration-100 text-left ${
-          dark ? 'hover:bg-zinc-800/30' : 'hover:bg-zinc-100/60'
+        onClick={onClick}
+        className={`flex-1 flex items-center gap-2 py-2 pl-2 pr-3 text-left rounded-r-lg transition-all duration-150 min-w-0 ${
+          isSelected
+            ? dark ? 'bg-zinc-800/70' : 'bg-blue-50/80'
+            : dark ? 'hover:bg-zinc-800/30' : 'hover:bg-zinc-50'
         }`}
       >
-        {/* Status dot */}
-        <span
-          className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isActive ? 'animate-pulse' : ''}`}
-          style={dotStyle}
-        />
-
         {/* Title */}
-        <span className={`flex-1 text-[12px] font-medium truncate ${
-          isActive ? (dark ? 'text-zinc-200' : 'text-zinc-700') :
-          isComplete ? (dark ? 'text-emerald-400' : 'text-emerald-600') :
-          isError ? 'text-red-400' :
+        <span className={`flex-1 text-[12px] truncate ${
+          isActive ? (dark ? 'text-zinc-100 font-medium' : 'text-zinc-800 font-medium') :
+          isDone ? (dark ? 'text-emerald-400/80' : 'text-emerald-600') :
+          isError ? (dark ? 'text-red-400' : 'text-red-600') :
           dark ? 'text-zinc-400' : 'text-zinc-600'
         }`}>
           {section.title}
         </span>
 
-        {/* Coverage bar */}
+        {/* Coverage bar (inline) */}
         {covPct !== null && (
-          <div className="w-16 shrink-0">
-            <CoverageBar pct={covPct} dark={dark} />
+          <div className="flex-shrink-0">
+            <CoverageBar pct={covPct} dark={dark} compact />
           </div>
         )}
 
         {/* Badge */}
-        {section.badge && (
-          <span className={`text-[9px] tabular-nums shrink-0 ${accent} opacity-80`}>
-            {section.badge === 'live' || section.badge === 'searching' || section.badge === 'fetching' || section.badge.endsWith('...') ? (
-              <ShineText variant={dark ? 'dark' : 'light'} className="text-[9px]" speed={2}>
-                {section.badge}
-              </ShineText>
+        {section.badge && covPct === null && (
+          <span className={`text-[9px] tabular-nums flex-shrink-0 font-medium`} style={{ color: accent, opacity: 0.7 }}>
+            {(section.badge === 'live' || section.badge === 'searching' || section.badge === 'fetching' || section.badge === 'analyzing' || section.badge === 'synthesizing') ? (
+              <ShineText variant={dark ? 'dark' : 'light'} className="text-[9px]" speed={2}>{section.badge}</ShineText>
             ) : section.badge}
           </span>
         )}
-
-        {/* Expand chevron — only visible on hover when there's content */}
-        {section.lines.length > 0 && (
-          <svg
-            width="8" height="8" viewBox="0 0 24 24" fill="none"
-            stroke={dark ? '#3f3f46' : '#d4d4d8'} strokeWidth="3" strokeLinecap="round"
-            className={`shrink-0 transition-all duration-150 opacity-0 group-hover:opacity-100 ${isExpanded ? 'rotate-90' : ''}`}
-          >
-            <path d="M9 18l6-6-6-6" />
-          </svg>
-        )}
       </button>
-
-      {/* Expanded content — indented, minimal */}
-      {isExpanded && section.lines.length > 0 && (
-        <div className={`ml-4 pl-2 border-l mb-1 max-h-52 overflow-y-auto ${
-          dark ? 'border-zinc-800' : 'border-zinc-200'
-        }`}>
-          {section.kind === 'thinking' ? (
-            <pre className={`text-[9px] font-mono leading-relaxed whitespace-pre-wrap py-1 ${dark ? 'text-zinc-700' : 'text-zinc-400'}`}>
-              {section.lines.join('\n')}
-            </pre>
-          ) : (
-            <div className="py-0.5 space-y-px">
-              {section.lines.map((line, li) => (
-                <RenderLine key={li} line={line} dark={dark} accentClass={accent} />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
 
+
 // ─────────────────────────────────────────────────────────────
-// Summary strip — compact stats above the feed
+// Workspace Content — renders selected section detail
 // ─────────────────────────────────────────────────────────────
 
-function SummaryStrip({ sections, dark }: { sections: Section[]; dark: boolean }) {
-  const searches = sections.filter(s => s.kind === 'researcher').length;
-  const metricsSecs = sections.filter(s => s.kind === 'metrics');
-  const lastMetrics = metricsSecs[metricsSecs.length - 1];
-  const coverageSec = sections.find(s => s.kind === 'coverage');
-  const covStr = lastMetrics?.title.match(/(\d+)%/)?.[1] || coverageSec?.title.match(/(\d+)%/)?.[1];
-  const covPct = covStr ? parseInt(covStr) : 0;
-  const isDone = sections.some(s => s.kind === 'complete');
-  const isTimeout = sections.some(s => s.kind === 'timelimit');
-  const isRunning = !isDone && !isTimeout;
+function WorkspaceContent({
+  section, visualBatch, dark,
+}: {
+  section: Section;
+  visualBatch: VisualBatchState | null;
+  dark: boolean;
+}) {
+  const color = kindColor(section.kind);
+  const accent = dark ? DARK_COLORS[color] : LIGHT_COLORS[color];
+  const txtCls = dark ? 'text-zinc-300' : 'text-zinc-700';
+  const dimCls = dark ? 'text-zinc-600' : 'text-zinc-400';
+
+  const covPct = (section.kind === 'coverage' || section.kind === 'metrics')
+    ? parseInt(section.title.match(/(\d+)%/)?.[1] || '0') : null;
 
   return (
-    <div className={`flex items-center gap-3 mb-3 pb-2.5 border-b ${dark ? 'border-zinc-800/50' : 'border-zinc-200'}`}>
-      {/* Status */}
-      <div className="flex items-center gap-1.5">
-        {isRunning && <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${dark ? 'bg-blue-400' : 'bg-blue-500'}`} />}
-        <span className={`text-[11px] font-medium ${
-          isDone ? (dark ? 'text-emerald-400' : 'text-emerald-600') :
-          isTimeout ? (dark ? 'text-amber-400' : 'text-amber-600') :
-          dark ? 'text-zinc-400' : 'text-zinc-500'
-        }`}>
-          {isDone ? 'Complete' : isTimeout ? 'Timeout' : 'Researching'}
-        </span>
-      </div>
-
-      {/* Coverage bar */}
-      {covPct > 0 && (
-        <div className="flex-1">
+    <div className="space-y-3">
+      {/* Coverage visualization */}
+      {covPct !== null && (
+        <div className={`rounded-lg p-4 ${dark ? 'bg-zinc-800/30' : 'bg-zinc-100/60'}`}>
           <CoverageBar pct={covPct} dark={dark} />
         </div>
       )}
 
-      {/* Search count */}
-      {searches > 0 && (
-        <span className={`text-[10px] tabular-nums shrink-0 ${dark ? 'text-zinc-600' : 'text-zinc-400'}`}>
-          {searches} searches
-        </span>
+      {/* Visual thumbnails */}
+      {section.kind === 'visual' && visualBatch && visualBatch.sites.length > 0 && (
+        <VisualGrid batch={visualBatch} dark={dark} />
+      )}
+
+      {/* Lines */}
+      {section.lines.length > 0 && (
+        <div className="space-y-0.5">
+          {section.lines.map((line, i) => {
+            // Query line
+            if (line.startsWith('→ "')) {
+              return (
+                <div key={i} className="flex items-start gap-2.5 py-1">
+                  <span className="text-[12px] mt-px flex-shrink-0" style={{ color: accent }}>→</span>
+                  <span className={`text-[12px] ${txtCls} italic font-medium leading-relaxed`}>{line.slice(2)}</span>
+                </div>
+              );
+            }
+            // Numbered
+            const findingMatch = line.match(/^\s*\[(\d+)\]\s*(.+)/);
+            if (findingMatch) {
+              return (
+                <div key={i} className="flex gap-2.5 items-start py-1">
+                  <span className="text-[11px] font-bold w-4 text-right tabular-nums flex-shrink-0" style={{ color: accent }}>{findingMatch[1]}</span>
+                  <span className={`text-[12px] ${txtCls} font-medium leading-relaxed`}>{findingMatch[2]}</span>
+                </div>
+              );
+            }
+            // KV
+            const kvMatch = line.match(/^(Brand|Target Audience|Marketing Goal|Audience congregates|Key language|Market gap|Patterns|Gaps):\s*(.+)/);
+            if (kvMatch) {
+              return (
+                <div key={i} className="flex gap-1.5 py-0.5">
+                  <span className="text-[12px] font-semibold flex-shrink-0" style={{ color: accent }}>{kvMatch[1]}:</span>
+                  <span className={`text-[12px] font-medium ${txtCls} leading-relaxed`}>{kvMatch[2]}</span>
+                </div>
+              );
+            }
+            // Compress/fetch
+            if (line.match(/Compress|Fetched/i)) {
+              return <div key={i} className={`text-[10px] font-mono ${dimCls}`}>{line}</div>;
+            }
+            // JSON
+            if (line.match(/^\s*[\[{\]},"]/) || line.match(/^\s*"[a-zA-Z_]+"\s*:/)) {
+              return <div key={i} className={`text-[9px] font-mono leading-snug ${dimCls}`}>{line}</div>;
+            }
+            // Sub-lines
+            if (line.match(/^\s*(Surface|Intensity):/i)) {
+              return <div key={i} className={`text-[11px] ${dimCls} ml-6 italic`}>{line.trim()}</div>;
+            }
+            // Default
+            return <div key={i} className={`text-[12px] font-medium ${txtCls} leading-relaxed`}>{line}</div>;
+          })}
+        </div>
+      )}
+
+      {/* Thinking content */}
+      {section.kind === 'thinking' && section.lines.length > 0 && (
+        <pre className={`text-[10px] font-mono leading-relaxed whitespace-pre-wrap ${dark ? 'text-zinc-700' : 'text-zinc-400'}`}>
+          {section.lines.join('\n')}
+        </pre>
+      )}
+
+      {/* Empty state for active section with no lines yet */}
+      {section.lines.length === 0 && section.kind !== 'phase' && section.kind !== 'coverage' && section.kind !== 'metrics' && (
+        <div className="flex items-center gap-2 py-4">
+          <span className={`w-1.5 h-1.5 rounded-full animate-pulse`} style={{ backgroundColor: accent }} />
+          <span className={`text-[11px] ${dimCls}`}>Processing...</span>
+        </div>
       )}
     </div>
   );
 }
 
+
 // ─────────────────────────────────────────────────────────────
-// Visual Progress Panel — live screenshot thumbnails + analysis
+// Visual Grid — screenshot thumbnails in workspace
 // ─────────────────────────────────────────────────────────────
 
-function VisualProgressPanel({ batch, dark }: { batch: VisualBatchState; dark: boolean }) {
-  const statusDot = (status: string) => {
-    if (status === 'pending') return { color: dark ? '#3f3f46' : '#d4d4d8', pulse: false };
-    if (status === 'capturing') return { color: '#f59e0b', pulse: true };
-    if (status === 'captured') return { color: '#2B79FF', pulse: false };
-    if (status === 'analyzing') return { color: '#7c3aed', pulse: true };
-    if (status === 'done') return { color: '#10b981', pulse: false };
-    return { color: '#ef4444', pulse: false }; // error
-  };
+function VisualGrid({ batch, dark }: { batch: VisualBatchState; dark: boolean }) {
+  const statusColor = (s: string) =>
+    s === 'pending' ? (dark ? '#3f3f46' : '#d4d4d8') :
+    s === 'capturing' ? '#f59e0b' :
+    s === 'captured' ? '#3b82f6' :
+    s === 'analyzing' ? '#7c3aed' :
+    s === 'done' ? '#10b981' : '#ef4444';
 
   return (
-    <div className={`mt-2 rounded-lg overflow-hidden border ${dark ? 'border-zinc-800/60 bg-[#0f0f0f]' : 'border-zinc-200 bg-zinc-50'}`}>
-      {/* Thumbnail grid */}
-      <div className="flex flex-wrap gap-2 p-3">
+    <div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
         {batch.sites.map((site) => {
-          const dot = statusDot(site.status);
-          const hostname = (() => { try { return new URL(site.url).hostname.replace('www.', ''); } catch { return site.url.slice(0, 30); } })();
+          const hostname = (() => { try { return new URL(site.url).hostname.replace('www.', ''); } catch { return site.url.slice(0, 25); } })();
+          const sc = statusColor(site.status);
+          const isWorking = site.status === 'capturing' || site.status === 'analyzing';
           return (
-            <div key={site.url} className="flex flex-col gap-1" style={{ width: 120 }}>
-              {/* Thumbnail or placeholder */}
-              <div className={`relative rounded overflow-hidden flex items-center justify-center ${dark ? 'bg-zinc-900' : 'bg-zinc-100'}`} style={{ width: 120, height: 72 }}>
+            <div key={site.url} className={`rounded-lg overflow-hidden border ${dark ? 'border-zinc-800/80 bg-zinc-900/50' : 'border-zinc-200 bg-zinc-50'}`}>
+              {/* Thumbnail */}
+              <div className="relative aspect-[5/3]" style={{ minHeight: 72 }}>
                 {site.thumbnail ? (
                   <img
                     src={`data:image/jpeg;base64,${site.thumbnail}`}
                     alt={hostname}
                     className="w-full h-full object-cover"
-                    style={{ filter: site.status === 'analyzing' ? 'brightness(0.6)' : 'none', transition: 'filter 0.3s' }}
+                    style={{ filter: isWorking ? 'brightness(0.5)' : 'none', transition: 'filter 0.3s' }}
                   />
                 ) : (
-                  <div className="flex flex-col items-center gap-1">
-                    <span className={`w-2 h-2 rounded-full ${dot.pulse ? 'animate-pulse' : ''}`} style={{ backgroundColor: dot.color }} />
-                    <span className={`text-[8px] ${dark ? 'text-zinc-700' : 'text-zinc-400'}`}>
-                      {site.status === 'pending' ? 'queued' : site.status}
-                    </span>
+                  <div className={`w-full h-full flex items-center justify-center ${dark ? 'bg-zinc-900' : 'bg-zinc-100'}`}>
+                    <span className={`w-2 h-2 rounded-full ${isWorking ? 'animate-pulse' : ''}`} style={{ backgroundColor: sc }} />
                   </div>
                 )}
-                {/* Status overlay for active states */}
-                {(site.status === 'capturing' || site.status === 'analyzing') && (
+                {isWorking && (
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: dot.color }} />
+                    <span className="w-3 h-3 rounded-full animate-pulse" style={{ backgroundColor: sc, opacity: 0.8 }} />
                   </div>
                 )}
-                {/* Status dot bottom-right */}
-                <div className="absolute bottom-1 right-1">
-                  <span className={`w-1.5 h-1.5 rounded-full block ${dot.pulse ? 'animate-pulse' : ''}`} style={{ backgroundColor: dot.color }} />
+                {/* Status badge */}
+                <div className="absolute top-1.5 right-1.5">
+                  <span className={`w-2 h-2 rounded-full block ${isWorking ? 'animate-pulse' : ''}`} style={{ backgroundColor: sc }} />
                 </div>
               </div>
               {/* Label */}
-              <div className="px-0.5">
-                <p className={`text-[8px] truncate leading-tight ${dark ? 'text-zinc-500' : 'text-zinc-500'}`} title={site.url}>{hostname}</p>
+              <div className={`px-2 py-1.5 border-t ${dark ? 'border-zinc-800/60' : 'border-zinc-200'}`}>
+                <p className={`text-[9px] truncate font-medium ${dark ? 'text-zinc-400' : 'text-zinc-600'}`} title={site.url}>{hostname}</p>
                 {site.findings && (
-                  <p className={`text-[8px] truncate leading-tight ${dark ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                  <p className={`text-[8px] truncate ${dark ? 'text-zinc-600' : 'text-zinc-400'}`}>
                     {site.findings.tone || ''}{site.findings.colors?.length ? ` · ${site.findings.colors[0]}` : ''}
                   </p>
                 )}
@@ -884,19 +605,17 @@ function VisualProgressPanel({ batch, dark }: { batch: VisualBatchState; dark: b
         })}
       </div>
 
-      {/* Synthesis results */}
+      {/* Synthesis */}
       {batch.synthesisStatus === 'done' && (batch.commonPatterns?.length || batch.visualGaps?.length) && (
-        <div className={`border-t px-3 py-2 ${dark ? 'border-zinc-800/60' : 'border-zinc-200'}`}>
+        <div className={`mt-3 rounded-lg p-3 ${dark ? 'bg-zinc-800/30' : 'bg-zinc-100/60'}`}>
           {batch.commonPatterns?.length ? (
-            <p className={`text-[9px] leading-relaxed ${dark ? 'text-zinc-500' : 'text-zinc-500'}`}>
-              <span className={`font-medium ${dark ? 'text-zinc-400' : 'text-zinc-600'}`}>Patterns: </span>
-              {batch.commonPatterns.slice(0, 2).join(' · ')}
+            <p className={`text-[10px] leading-relaxed ${dark ? 'text-zinc-400' : 'text-zinc-600'}`}>
+              <span className="font-semibold">Patterns:</span> {batch.commonPatterns.slice(0, 3).join(' · ')}
             </p>
           ) : null}
           {batch.visualGaps?.length ? (
-            <p className={`text-[9px] leading-relaxed mt-0.5 ${dark ? 'text-teal-600' : 'text-teal-700'}`}>
-              <span className="font-medium">Gaps: </span>
-              {batch.visualGaps.slice(0, 2).join(' · ')}
+            <p className={`text-[10px] leading-relaxed mt-1 ${dark ? 'text-teal-500' : 'text-teal-700'}`}>
+              <span className="font-semibold">Gaps:</span> {batch.visualGaps.slice(0, 3).join(' · ')}
             </p>
           ) : null}
         </div>
@@ -905,8 +624,9 @@ function VisualProgressPanel({ batch, dark }: { batch: VisualBatchState; dark: b
   );
 }
 
+
 // ─────────────────────────────────────────────────────────────
-// Main Component
+// Main Component — Manus-style two-column layout
 // ─────────────────────────────────────────────────────────────
 
 interface ResearchOutputProps {
@@ -914,15 +634,15 @@ interface ResearchOutputProps {
   isDarkMode: boolean;
 }
 
-const SECTION_HEADER_RE = /\[PHASE [1-6]\]|Competitor Ad Intelligence|ORCHESTRATED RESEARCH:|Council of Marketing Brains|Desire-Driven|Orchestrating Web Search|\[CAMPAIGN_DATA\]|STEP \d+:|LAYER \d+[:\s—]|Iteration \d+\/|Searching:\s*"|Screenshotting|Orchestrator requested visual|Reflection agent requested visual|Running reflection agent|150% bar mode|\[Reflection:\s*(Devil's Advocate|Depth Auditor|Coverage Checker)\]|Coverage:\s*\d+%.*dimensions|research complete|RESEARCH COMPLETE|Coverage threshold|Orchestrator satisfied|Time limit reached|^ERROR|\[METRICS\]|\[Orchestrator thinking\]|\[Thinking\]|\[Ads\]|\[BRAIN:\w+\]|\[HEAD:\S+\]|\[COUNCIL\]/im;
-
-export function ResearchOutput({ output, isDarkMode }: ResearchOutputProps) {
+export function ResearchOutput({ output, isDarkMode: dark }: ResearchOutputProps) {
   const [sections, setSections] = useState<Section[]>([]);
   const cacheRef = useRef<{ len: number; sections: Section[] }>({ len: 0, sections: [] });
-  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const prevLenRef = useRef(0);
+  const timelineRef = useRef<HTMLDivElement>(null);
   const visualBatches = useSyncExternalStore(visualProgressStore.subscribe, visualProgressStore.getSnapshot);
 
-  // Incremental parsing
+  // ── Incremental parsing ──
   useEffect(() => {
     if (!output) {
       cacheRef.current = { len: 0, sections: [] };
@@ -931,17 +651,13 @@ export function ResearchOutput({ output, isDarkMode }: ResearchOutputProps) {
     }
 
     const cache = cacheRef.current;
-
-    if (output.length < cache.len) {
-      cache.len = 0;
-      cache.sections = [];
-    }
+    if (output.length < cache.len) { cache.len = 0; cache.sections = []; }
     if (output.length === cache.len) return;
 
     const delta = output.slice(cache.len);
     cache.len = output.length;
 
-    // Fast path: no new section header → append to last
+    // Fast path
     if (!SECTION_HEADER_RE.test(delta) && cache.sections.length > 0) {
       const last = cache.sections[cache.sections.length - 1];
       for (const line of delta.split('\n')) {
@@ -950,25 +666,18 @@ export function ResearchOutput({ output, isDarkMode }: ResearchOutputProps) {
 
         if (last.kind === 'researcher' && t.includes('[Researcher]')) {
           const inner = t.replace(/.*\[Researcher\]\s*/, '').replace(/^[🔎📄⚠️]\s*/, '');
-          if (inner.includes('Fetched')) {
-            const m = inner.match(/Fetched\s+(\d+)\/(\d+)\s+pages\s+\((.+?)s\)/);
-            if (m) last.badge = `${m[1]}/${m[2]} pages`;
-          }
+          if (inner.includes('Fetched')) { const m = inner.match(/Fetched\s+(\d+)\/(\d+)\s+pages\s+\((.+?)s\)/); if (m) last.badge = `${m[1]}/${m[2]} pages`; }
           last.lines.push(inner);
         } else if (last.kind === 'visual' && t.includes('[Visual Scout]')) {
           const inner = t.replace(/.*\[Visual Scout\]\s*/, '');
-          if (inner.includes('Analyzed') || inner.includes('complete')) {
-            const m = inner.match(/(\d+)/);
-            if (m) last.badge = `${m[1]} analyzed`;
-          }
+          if (inner.includes('Analyzed') || inner.includes('complete')) { const m = inner.match(/(\d+)/); if (m) last.badge = `${m[1]} analyzed`; }
           last.lines.push(inner);
         } else if (last.kind === 'reflection' && t.includes('[Reflection]')) {
           last.lines.push(t.replace(/.*\[Reflection\]\s*/, ''));
         } else if (last.kind === 'thinking' && (t.startsWith('[Orchestrator thinking]') || t.startsWith('[Thinking]'))) {
           last.lines.push(t.replace(/.*\[(Orchestrator thinking|Thinking)\]\s*/, ''));
         } else if (last.kind === 'brain' && t.match(/^\[BRAIN:\w+\]/)) {
-          const inner = t.replace(/\[BRAIN:\w+\]\s*/, '');
-          last.lines.push(inner);
+          last.lines.push(t.replace(/\[BRAIN:\w+\]\s*/, ''));
         } else if (last.kind === 'council-head' && t.match(/^\[HEAD:\S+\]/)) {
           last.lines.push(t.replace(/\[HEAD:\S+\]\s*/, ''));
         } else if ((last.kind === 'council' || last.kind === 'council-head') && t.startsWith('[COUNCIL]')) {
@@ -985,97 +694,179 @@ export function ResearchOutput({ output, isDarkMode }: ResearchOutputProps) {
       return;
     }
 
-    // Slow path: full re-parse
+    // Full re-parse
     cache.sections = parseOutput(output);
     setSections(cache.sections);
   }, [output]);
 
-  // Auto-expand latest + phases
+  // ── Auto-follow: select latest non-phase section when new ones arrive ──
   useEffect(() => {
-    if (sections.length > 0) {
-      setExpanded(prev => {
-        const next = new Set(prev);
-        next.add(sections.length - 1);
-        sections.forEach((s, i) => {
-          if (s.kind === 'phase' || s.kind === 'step' || s.kind === 'layer' || s.kind === 'coverage' || s.kind === 'complete' || s.kind === 'error' || s.kind === 'visual' || s.kind === 'metrics' || s.kind === 'ads' || s.kind === 'council' || s.kind === 'council-head' || s.kind === 'reflection-perspective') {
-            next.add(i);
-          }
-        });
-        return next;
-      });
+    if (sections.length > prevLenRef.current) {
+      // New section arrived — auto-follow
+      const lastNonPhase = (() => {
+        for (let i = sections.length - 1; i >= 0; i--) {
+          if (sections[i].kind !== 'phase') return i;
+        }
+        return sections.length - 1;
+      })();
+      setSelectedIdx(lastNonPhase);
+    }
+    prevLenRef.current = sections.length;
+  }, [sections.length]);
+
+  // ── Auto-scroll timeline to bottom ──
+  useEffect(() => {
+    if (timelineRef.current) {
+      timelineRef.current.scrollTo({ top: timelineRef.current.scrollHeight, behavior: 'smooth' });
     }
   }, [sections.length]);
 
-  const toggle = (i: number) => {
-    setExpanded(prev => {
-      const next = new Set(prev);
-      if (next.has(i)) {
-        next.delete(i);
-        playSound('collapse');
-      } else {
-        next.add(i);
-        playSound('expand');
-      }
-      return next;
-    });
-  };
+  // Sound on complete
+  useEffect(() => {
+    if (sections.some(s => s.kind === 'complete')) playSound('stageComplete');
+  }, [sections.some(s => s.kind === 'complete')]);
 
+  const activeSection = selectedIdx !== null ? sections[selectedIdx] : null;
+  const isDone = sections.some(s => s.kind === 'complete');
+  const isTimeout = sections.some(s => s.kind === 'timelimit');
+  const isRunning = !isDone && !isTimeout && sections.length > 0;
+
+  // Find last visual batch for workspace
+  const activeBatch = visualBatches.length > 0 ? visualBatches[visualBatches.length - 1] : null;
+
+  // ── Stats for header ──
+  const searches = sections.filter(s => s.kind === 'researcher').length;
+  const metricsSecs = sections.filter(s => s.kind === 'metrics');
+  const lastMetrics = metricsSecs[metricsSecs.length - 1];
+  const coverageSec = sections.find(s => s.kind === 'coverage');
+  const covStr = lastMetrics?.title.match(/(\d+)%/)?.[1] || coverageSec?.title.match(/(\d+)%/)?.[1];
+  const covPct = covStr ? parseInt(covStr) : 0;
+
+  // ── Empty state ──
   if (sections.length === 0) {
     return (
-      <div className="flex items-center gap-2 py-8 justify-center">
-        <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${isDarkMode ? 'bg-blue-400' : 'bg-blue-500'}`} />
-        <ShineText variant={isDarkMode ? 'dark' : 'light'} className="text-xs" speed={2.5}>
-          Starting research...
-        </ShineText>
+      <div className="flex items-center justify-center h-full">
+        <div className="flex items-center gap-3">
+          <span className={`w-2 h-2 rounded-full animate-pulse ${dark ? 'bg-blue-400' : 'bg-blue-500'}`} />
+          <ShineText variant={dark ? 'dark' : 'light'} className="text-sm" speed={2.5}>
+            Starting research agents...
+          </ShineText>
+        </div>
       </div>
     );
   }
 
-  return (
-    <div>
-      {/* Summary strip */}
-      <SummaryStrip sections={sections} dark={isDarkMode} />
+  // Count non-phase items for numbering
+  const nonPhaseItems = sections.filter(s => s.kind !== 'phase');
 
-      {/* Controls */}
-      <div className="flex items-center gap-3 mb-2">
-        <button
-          onClick={() => setExpanded(new Set(sections.map((_, i) => i)))}
-          className={`text-[9px] font-medium transition-colors ${isDarkMode ? 'text-zinc-600 hover:text-zinc-400' : 'text-zinc-400 hover:text-zinc-600'}`}
-        >
-          expand all
-        </button>
-        <span className={`text-[9px] ${isDarkMode ? 'text-zinc-800' : 'text-zinc-200'}`}>·</span>
-        <button
-          onClick={() => setExpanded(new Set())}
-          className={`text-[9px] font-medium transition-colors ${isDarkMode ? 'text-zinc-600 hover:text-zinc-400' : 'text-zinc-400 hover:text-zinc-600'}`}
-        >
-          collapse all
-        </button>
+  return (
+    <div className="flex h-full min-h-0">
+      {/* ══════════════════════════════════════════════
+           LEFT — Timeline
+         ══════════════════════════════════════════════ */}
+      <div className={`flex flex-col flex-shrink-0 border-r ${dark ? 'border-zinc-800/60' : 'border-zinc-200'}`} style={{ width: 280 }}>
+        {/* Timeline header */}
+        <div className={`flex items-center gap-3 px-4 py-2.5 border-b flex-shrink-0 ${dark ? 'border-zinc-800/60' : 'border-zinc-200'}`}>
+          {/* Status */}
+          <div className="flex items-center gap-1.5">
+            {isRunning && <span className="w-1.5 h-1.5 rounded-full animate-pulse bg-blue-500" />}
+            <span className={`text-[11px] font-semibold ${
+              isDone ? (dark ? 'text-emerald-400' : 'text-emerald-600') :
+              isTimeout ? (dark ? 'text-amber-400' : 'text-amber-600') :
+              dark ? 'text-zinc-300' : 'text-zinc-600'
+            }`}>
+              {isDone ? 'Complete' : isTimeout ? 'Timeout' : 'Agent Activity'}
+            </span>
+          </div>
+          {/* Stats */}
+          <div className={`ml-auto flex items-center gap-2 text-[9px] tabular-nums ${dark ? 'text-zinc-600' : 'text-zinc-400'}`}>
+            {searches > 0 && <span>{searches} searches</span>}
+            {covPct > 0 && <span>{covPct}%</span>}
+          </div>
+        </div>
+
+        {/* Coverage bar (sticky below header when coverage exists) */}
+        {covPct > 0 && (
+          <div className={`px-4 py-1.5 border-b flex-shrink-0 ${dark ? 'border-zinc-800/40' : 'border-zinc-100'}`}>
+            <CoverageBar pct={covPct} dark={dark} />
+          </div>
+        )}
+
+        {/* Timeline items */}
+        <div ref={timelineRef} className="flex-1 overflow-y-auto min-h-0 py-1">
+          {sections.map((section, idx) => {
+            const isLast = idx === sections.length - 1;
+            const isActve = isLast && !isDone && !isTimeout && section.kind !== 'phase';
+            // Find first/last non-phase for connector lines
+            const firstNonPhaseIdx = sections.findIndex(s => s.kind !== 'phase');
+            const lastNonPhaseIdx = (() => { for (let i = sections.length - 1; i >= 0; i--) { if (sections[i].kind !== 'phase') return i; } return 0; })();
+            return (
+              <TimelineAction
+                key={idx}
+                section={section}
+                isFirst={idx <= firstNonPhaseIdx}
+                isLast={idx >= lastNonPhaseIdx}
+                isActive={isActve}
+                isSelected={selectedIdx === idx}
+                onClick={() => {
+                  setSelectedIdx(idx);
+                  playSound('click');
+                }}
+                dark={dark}
+              />
+            );
+          })}
+        </div>
+
+        {/* Timeline footer — item count */}
+        <div className={`flex-shrink-0 px-4 py-2 border-t text-[9px] tabular-nums ${dark ? 'border-zinc-800/60 text-zinc-700' : 'border-zinc-200 text-zinc-400'}`}>
+          {nonPhaseItems.length} actions
+        </div>
       </div>
 
-      {/* Feed */}
-      <div>
-        {sections.map((section, idx) => (
-          <div key={idx}>
-            <SectionRow
-              section={section}
-              isExpanded={expanded.has(idx)}
-              isLast={idx === sections.length - 1}
-              onToggle={() => toggle(idx)}
-              dark={isDarkMode}
-            />
-            {/* Visual progress panel after visual sections */}
-            {section.kind === 'visual' && visualBatches.length > 0 && (() => {
-              // Find the batch that matches this visual section (latest batch)
-              const batch = visualBatches[visualBatches.length - 1];
-              return batch && batch.sites.length > 0 ? (
-                <div className="px-4 pb-2">
-                  <VisualProgressPanel batch={batch} dark={isDarkMode} />
-                </div>
-              ) : null;
-            })()}
+      {/* ══════════════════════════════════════════════
+           RIGHT — Workspace ("Agent's Computer")
+         ══════════════════════════════════════════════ */}
+      <div className={`flex-1 flex flex-col min-h-0 min-w-0 ${dark ? 'bg-[#0a0a0a]' : 'bg-zinc-50'}`}>
+        {/* Window title bar */}
+        <div className={`flex items-center gap-3 px-4 py-2 border-b flex-shrink-0 ${dark ? 'border-zinc-800/60 bg-[#0f0f0f]' : 'border-zinc-200 bg-white'}`}>
+          {/* Traffic light dots */}
+          <div className="flex gap-1.5 flex-shrink-0">
+            <span className="w-[7px] h-[7px] rounded-full" style={{ backgroundColor: dark ? '#27272a' : '#e4e4e7' }} />
+            <span className="w-[7px] h-[7px] rounded-full" style={{ backgroundColor: dark ? '#27272a' : '#e4e4e7' }} />
+            <span className="w-[7px] h-[7px] rounded-full" style={{ backgroundColor: dark ? '#27272a' : '#e4e4e7' }} />
           </div>
-        ))}
+          {/* Title */}
+          {activeSection && (
+            <>
+              <span className={`text-[11px] font-medium truncate flex-1 text-center ${dark ? 'text-zinc-500' : 'text-zinc-500'}`}>
+                {activeSection.title}
+              </span>
+              {activeSection.badge && (
+                <span className="text-[9px] tabular-nums flex-shrink-0" style={{ color: dark ? DARK_COLORS[kindColor(activeSection.kind)] : LIGHT_COLORS[kindColor(activeSection.kind)], opacity: 0.7 }}>
+                  {activeSection.badge}
+                </span>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Workspace content */}
+        <div className="flex-1 overflow-y-auto min-h-0 p-5">
+          {activeSection ? (
+            <WorkspaceContent
+              section={activeSection}
+              visualBatch={activeSection.kind === 'visual' ? activeBatch : null}
+              dark={dark}
+            />
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <span className={`text-[12px] ${dark ? 'text-zinc-700' : 'text-zinc-400'}`}>
+                Select an action to view details
+              </span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
