@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { Cycle, StageName } from '../types';
 import { useTheme } from '../context/ThemeContext';
+import { useCampaign } from '../context/CampaignContext';
 import { ResearchOutput } from './ResearchOutput';
 import { ModelOutputDebug } from './ModelOutputDebug';
 import { MakeTestPanel } from './MakeTestPanel';
@@ -53,12 +54,27 @@ interface StagePanelProps {
 
 export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewStage }: StagePanelProps) {
   const { isDarkMode: themeDarkMode } = useTheme();
+  const { campaign } = useCampaign();
   const isDark = propDarkMode !== undefined ? propDarkMode : themeDarkMode;
   const outputRef = useRef<HTMLDivElement>(null);
   const thinkRef = useRef<HTMLDivElement>(null);
   const [, setTick] = useState(0);
   const [thinkExpanded, setThinkExpanded] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const tokenInfo = useSyncExternalStore(tokenTracker.subscribe, tokenTracker.getSnapshot);
+
+  const handleExportPDF = useCallback(async () => {
+    if (!campaign || !cycle || exporting) return;
+    setExporting(true);
+    try {
+      const { exportResearchPDF } = await import('../utils/pdfExport');
+      await exportResearchPDF(campaign, cycle);
+    } catch (err) {
+      console.error('PDF export failed:', err);
+    } finally {
+      setExporting(false);
+    }
+  }, [campaign, cycle, exporting]);
 
   useEffect(() => {
     if (!isRunning) return;
@@ -78,6 +94,21 @@ export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewSta
       thinkRef.current.scrollTop = thinkRef.current.scrollHeight;
     }
   }, [tokenInfo.liveThinkSnippet, tokenInfo.liveResponseSnippet, thinkExpanded]);
+
+  // Auto-expand on generation start, collapse when model goes idle
+  const wasActiveRef = useRef(false);
+  useEffect(() => {
+    const isActive = tokenInfo.isGenerating || tokenInfo.isThinking || tokenInfo.isModelLoading;
+    if (isActive && !wasActiveRef.current) {
+      setThinkExpanded(true); // expand when new call starts
+    }
+    if (!isActive && wasActiveRef.current) {
+      // Collapse after a short delay so user can see the final token flash
+      const t = setTimeout(() => setThinkExpanded(false), 1800);
+      return () => clearTimeout(t);
+    }
+    wasActiveRef.current = isActive;
+  }, [tokenInfo.isGenerating, tokenInfo.isThinking, tokenInfo.isModelLoading]);
 
   if (!cycle) return null;
 
@@ -129,6 +160,25 @@ export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewSta
           <span className={`text-[11px] tabular-nums ${isDark ? 'text-zinc-600' : 'text-zinc-400'}`}>
             {formatTime(elapsed)}
           </span>
+        )}
+
+        {/* PDF export — only shown when research is complete */}
+        {currentStage === 'research' && isComplete && campaign && (
+          <button
+            onClick={handleExportPDF}
+            disabled={exporting}
+            title="Export research PDF"
+            className={`ml-1 flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-medium transition-all ${
+              isDark
+                ? 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60'
+                : 'text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100'
+            } ${exporting ? 'opacity-50 cursor-wait' : ''}`}
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            {exporting ? 'Exporting…' : 'PDF'}
+          </button>
         )}
 
         {/* Live token badge in header (only when active) */}

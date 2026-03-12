@@ -394,7 +394,8 @@ function LeftPanel({
       </div>
 
       {/* ── Bottom actions ── */}
-      <div className={`flex-shrink-0 px-3 py-3 border-t ${divider}`}>
+      <div className={`flex-shrink-0 px-3 py-3 border-t ${divider} space-y-2`}>
+        {/* Start — shown when no cycle exists yet */}
         {!isRunning && !currentCycle && (
           <button
             onClick={onStart}
@@ -407,6 +408,7 @@ function LeftPanel({
             Start Research
           </button>
         )}
+        {/* Stop — shown while running */}
         {isRunning && (
           <button
             onClick={onStop}
@@ -417,6 +419,19 @@ function LeftPanel({
             }`}
           >
             Stop
+          </button>
+        )}
+        {/* Run Again — shown when a cycle exists and not running */}
+        {!isRunning && currentCycle && (
+          <button
+            onClick={onStart}
+            className={`w-full py-2 rounded-lg text-[12px] font-medium tracking-wide transition-all ${
+              isDark
+                ? 'bg-zinc-800/60 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 border border-zinc-700/50'
+                : 'bg-zinc-100 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-700 border border-zinc-200'
+            }`}
+          >
+            New Cycle
           </button>
         )}
       </div>

@@ -44,7 +44,7 @@ export function AppShell() {
   const [activeView, setActiveView] = useState<AppView>('research');
   const [showSettings, setShowSettings] = useState(false);
   const [showBrandHub, setShowBrandHub] = useState(false);
-  const [, setHealthState] = useState<Record<string, ServiceStatus>>({});
+  const [healthState, setHealthState] = useState<Record<string, ServiceStatus>>({});
   const { systemStatus, currentCycle, campaign } = useCampaign() as any;
   const { startCycle, stopCycle, clearCampaign } = useCampaign() as any;
   const { isDarkMode } = useTheme();
@@ -197,6 +197,30 @@ export function AppShell() {
             <span className="text-[12px] font-medium tracking-[0.01em]">Settings</span>
             <kbd className="ml-auto text-[9px] text-white/15 font-mono font-light">⇧S</kbd>
           </motion.button>
+        </div>
+
+        {/* ── Service health dots ── */}
+        <div className="relative z-10 px-5 mb-3 flex items-center gap-2.5">
+          {[
+            { key: 'wayfarer', label: 'WF' },
+            { key: 'ollama', label: 'AI' },
+            { key: 'searxng', label: 'SX' },
+          ].map(({ key, label }) => {
+            const status = healthState[key] || 'unknown';
+            const color = status === 'healthy' ? '#22c55e'
+              : status === 'degraded' ? '#f59e0b'
+              : status === 'down' ? '#ef4444'
+              : 'rgba(255,255,255,0.15)';
+            return (
+              <div key={key} className="flex items-center gap-1" title={`${key}: ${status}`}>
+                <span
+                  className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${status === 'healthy' ? '' : 'animate-pulse'}`}
+                  style={{ backgroundColor: color }}
+                />
+                <span className="text-[8px] font-mono" style={{ color: 'rgba(255,255,255,0.2)' }}>{label}</span>
+              </div>
+            );
+          })}
         </div>
 
         {/* ── Pipeline Controls — fixed height container to prevent layout shift ── */}

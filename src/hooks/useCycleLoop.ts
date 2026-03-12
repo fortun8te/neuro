@@ -9,6 +9,7 @@ import { getModelForStage } from '../utils/modelConfig';
 import { playSound, startSoundLoop, stopSoundLoop } from './useSoundEngine';
 import { generateResearchReport } from '../utils/reportGenerator';
 import { visualProgressStore } from '../utils/visualProgressStore';
+import { tokenTracker } from '../utils/tokenStats';
 
 
 const FULL_STAGE_ORDER: StageName[] = ['research', 'brand-dna', 'persona-dna', 'angles', 'strategy', 'copywriting', 'production', 'test'];
@@ -534,6 +535,7 @@ RANKING + VERDICT:
       // Reset per-run stores
       userAnswersRef.current = {};
       visualProgressStore.reset();
+      tokenTracker.resetSession();
 
       // Pre-research checkpoint
       const stageOutputs: Record<string, string> = {};
