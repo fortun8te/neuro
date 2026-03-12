@@ -16,51 +16,58 @@ export function SidebarGradient() {
     s.id = 'nomad-sidebar-anim';
     s.textContent = `
       @keyframes nsg-float1 {
-        0% { transform: translate(0, 0) scale(1); }
-        20% { transform: translate(8%, -6%) scale(1.08); }
-        45% { transform: translate(-5%, 10%) scale(0.93); }
-        70% { transform: translate(6%, 4%) scale(1.05); }
+        0%   { transform: translate(0, 0) scale(1); }
+        15%  { transform: translate(18%, -14%) scale(1.14); }
+        35%  { transform: translate(-12%, 22%) scale(0.88); }
+        55%  { transform: translate(22%, 8%) scale(1.12); }
+        80%  { transform: translate(-8%, -16%) scale(0.94); }
         100% { transform: translate(0, 0) scale(1); }
       }
       @keyframes nsg-float2 {
-        0% { transform: translate(0, 0) scale(1); }
-        30% { transform: translate(-10%, 8%) scale(1.1); }
-        60% { transform: translate(7%, -5%) scale(0.92); }
+        0%   { transform: translate(0, 0) scale(1); }
+        25%  { transform: translate(-22%, 16%) scale(1.18); }
+        50%  { transform: translate(16%, -18%) scale(0.86); }
+        75%  { transform: translate(-14%, 10%) scale(1.1); }
         100% { transform: translate(0, 0) scale(1); }
       }
       @keyframes nsg-float3 {
-        0% { transform: translate(0, 0) scale(1) rotate(0deg); }
-        25% { transform: translate(12%, 5%) scale(1.06) rotate(1.5deg); }
-        50% { transform: translate(-4%, -8%) scale(0.95) rotate(-1deg); }
-        75% { transform: translate(-9%, 6%) scale(1.04) rotate(0.5deg); }
+        0%   { transform: translate(0, 0) scale(1) rotate(0deg); }
+        20%  { transform: translate(24%, 10%) scale(1.12) rotate(3deg); }
+        45%  { transform: translate(-10%, -20%) scale(0.89) rotate(-2.5deg); }
+        65%  { transform: translate(-20%, 14%) scale(1.08) rotate(1.5deg); }
+        85%  { transform: translate(14%, -8%) scale(0.95) rotate(-1deg); }
         100% { transform: translate(0, 0) scale(1) rotate(0deg); }
       }
       @keyframes nsg-pulse {
-        0%, 100% { opacity: 0.35; }
-        30% { opacity: 0.75; }
-        60% { opacity: 0.5; }
-        80% { opacity: 0.85; }
+        0%, 100% { opacity: 0.25; }
+        20%  { opacity: 0.85; }
+        50%  { opacity: 0.45; }
+        70%  { opacity: 0.95; }
+        90%  { opacity: 0.35; }
       }
       @keyframes nsg-breathe {
-        0%, 100% { opacity: 0.15; transform: scale(1); }
-        50% { opacity: 0.35; transform: scale(1.08); }
+        0%, 100% { opacity: 0.12; transform: scale(1); }
+        30%  { opacity: 0.45; transform: scale(1.18); }
+        65%  { opacity: 0.2; transform: scale(0.92); }
       }
       @keyframes nsg-sway {
-        0%, 100% { transform: rotate(0deg) translateY(0); }
-        25% { transform: rotate(3deg) translateY(-2%); }
-        75% { transform: rotate(-2deg) translateY(1%); }
+        0%, 100% { transform: rotate(0deg) translateY(0) translateX(0); }
+        20%  { transform: rotate(5deg) translateY(-4%) translateX(3%); }
+        50%  { transform: rotate(-3.5deg) translateY(3%) translateX(-4%); }
+        75%  { transform: rotate(4deg) translateY(-2%) translateX(5%); }
       }
       @keyframes nsg-lightray {
-        0% { transform: rotate(-35deg) translateX(-120%); opacity: 0; }
-        15% { opacity: 0.5; }
-        50% { opacity: 0.7; }
-        85% { opacity: 0.5; }
+        0%   { transform: rotate(-35deg) translateX(-120%); opacity: 0; }
+        10%  { opacity: 0.6; }
+        50%  { opacity: 0.9; }
+        90%  { opacity: 0.5; }
         100% { transform: rotate(-35deg) translateX(60%); opacity: 0; }
       }
       @keyframes nsg-drift {
-        0% { transform: translate(0, 0); }
-        33% { transform: translate(-15px, 20px); }
-        66% { transform: translate(10px, -12px); }
+        0%   { transform: translate(0, 0); }
+        25%  { transform: translate(-28px, 36px); }
+        50%  { transform: translate(22px, -20px); }
+        75%  { transform: translate(-18px, 28px); }
         100% { transform: translate(0, 0); }
       }
       @keyframes nomad-btn-shimmer {

@@ -19,6 +19,8 @@ you describe a product. NOMADS runs a full cycle:
 
 the whole thing streams in real-time. you watch it think.
 
+the UI is designed like Manus — narrow left panel with the pipeline stage list and controls, full-height right panel showing the live output. always-on token counter shows model loading / thinking / generating states and tokens-per-second.
+
 ---
 
 ## the stack
@@ -126,12 +128,13 @@ you'll need Ollama running somewhere with GLM-4.7-flash, LFM-2.5, and gpt-oss:20
 src/
   components/
     MakeStudio.tsx          the big one — ad generation engine, gallery, detail modal, settings
-    Dashboard.tsx           main layout shell
+    Dashboard.tsx           Manus-style split pane: left panel (pipeline controls) + right panel (live output)
     AdLibraryBrowser.tsx    browse 250 pre-analyzed real ads for inspo
-    ResearchOutput.tsx      collapsible streaming research UI
+    ResearchOutput.tsx      flat log-feed streaming UI — phase headers, per-event rows with badges
+    StagePanel.tsx          right panel with always-on token bar (loading/thinking/generating + t/s)
+    CycleTimeline.tsx       vertical stage list with live status dots and elapsed timers
     SettingsModal.tsx       model config, debug tools, kill LLM button
     OrbitalLoader.tsx       the loading animation
-    CycleTimeline.tsx       clickable stage tabs
 
   hooks/
     useCycleLoop.ts         orchestrates all stages, streams via onChunk

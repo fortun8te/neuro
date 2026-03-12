@@ -541,22 +541,6 @@ function kindColor(kind: SectionKind): ColorKey {
   return map[kind] || 'zinc';
 }
 
-function dotColor(color: ColorKey, dark: boolean): string {
-  if (dark) {
-    const map: Record<ColorKey, string> = {
-      indigo: 'bg-indigo-400', emerald: 'bg-emerald-400', blue: 'bg-blue-400', teal: 'bg-teal-400',
-      amber: 'bg-amber-400', purple: 'bg-purple-400', rose: 'bg-rose-400', sky: 'bg-sky-400',
-      cyan: 'bg-cyan-400', green: 'bg-green-400', orange: 'bg-orange-400', red: 'bg-red-400', zinc: 'bg-zinc-500',
-    };
-    return map[color];
-  }
-  const map: Record<ColorKey, string> = {
-    indigo: 'bg-indigo-500', emerald: 'bg-emerald-500', blue: 'bg-blue-500', teal: 'bg-teal-500',
-    amber: 'bg-amber-500', purple: 'bg-purple-500', rose: 'bg-rose-500', sky: 'bg-sky-500',
-    cyan: 'bg-cyan-500', green: 'bg-green-500', orange: 'bg-orange-500', red: 'bg-red-500', zinc: 'bg-zinc-400',
-  };
-  return map[color];
-}
 
 function textColor(color: ColorKey, dark: boolean): string {
   if (dark) {
@@ -575,22 +559,6 @@ function textColor(color: ColorKey, dark: boolean): string {
   return map[color];
 }
 
-function badgeBg(color: ColorKey, dark: boolean): string {
-  if (dark) {
-    const map: Record<ColorKey, string> = {
-      indigo: 'bg-indigo-500/10', emerald: 'bg-emerald-500/10', blue: 'bg-blue-500/10', teal: 'bg-teal-500/10',
-      amber: 'bg-amber-500/10', purple: 'bg-purple-500/10', rose: 'bg-rose-500/10', sky: 'bg-sky-500/10',
-      cyan: 'bg-cyan-500/10', green: 'bg-green-500/10', orange: 'bg-orange-500/10', red: 'bg-red-500/10', zinc: 'bg-zinc-700/50',
-    };
-    return map[color];
-  }
-  const map: Record<ColorKey, string> = {
-    indigo: 'bg-indigo-50', emerald: 'bg-emerald-50', blue: 'bg-blue-50', teal: 'bg-teal-50',
-    amber: 'bg-amber-50', purple: 'bg-purple-50', rose: 'bg-rose-50', sky: 'bg-sky-50',
-    cyan: 'bg-cyan-50', green: 'bg-green-50', orange: 'bg-orange-50', red: 'bg-red-50', zinc: 'bg-zinc-100',
-  };
-  return map[color];
-}
 
 // ─────────────────────────────────────────────────────────────
 // Coverage Bar
@@ -677,10 +645,10 @@ function RenderLine({ line, dark, accentClass }: { line: string; dark: boolean; 
 }
 
 // ─────────────────────────────────────────────────────────────
-// Section Component — clean, minimal card
+// SectionRow — flat log-feed row (Manus-style)
 // ─────────────────────────────────────────────────────────────
 
-function SectionBlock({
+function SectionRow({
   section,
   isExpanded,
   isLast,
@@ -694,178 +662,154 @@ function SectionBlock({
   dark: boolean;
 }) {
   const color = kindColor(section.kind);
+  const accent = textColor(color, dark);
   const isPhase = section.kind === 'phase';
   const isComplete = section.kind === 'complete';
   const isError = section.kind === 'error';
-  const accent = textColor(color, dark);
-  const dot = dotColor(color, dark);
-  const badge = badgeBg(color, dark);
+  const isActive = isLast && !isComplete && !isError;
   const covPct = (section.kind === 'coverage' || section.kind === 'metrics')
     ? parseInt(section.title.match(/(\d+)%/)?.[1] || '0')
     : null;
 
-  // Left border color for card accent
-  const borderAccent = (() => {
-    if (isComplete) return dark ? 'border-l-emerald-400' : 'border-l-emerald-500';
-    if (isError) return dark ? 'border-l-red-400' : 'border-l-red-500';
-    const map: Record<ColorKey, string> = {
-      blue: dark ? 'border-l-blue-400' : 'border-l-blue-500',
-      teal: dark ? 'border-l-teal-400' : 'border-l-teal-500',
-      amber: dark ? 'border-l-amber-400' : 'border-l-amber-500',
-      emerald: dark ? 'border-l-emerald-400' : 'border-l-emerald-500',
-      red: dark ? 'border-l-red-400' : 'border-l-red-500',
-      indigo: dark ? 'border-l-indigo-400' : 'border-l-indigo-500',
-      purple: dark ? 'border-l-purple-400' : 'border-l-purple-500',
-      rose: dark ? 'border-l-rose-400' : 'border-l-rose-500',
-      sky: dark ? 'border-l-sky-400' : 'border-l-sky-500',
-      cyan: dark ? 'border-l-cyan-400' : 'border-l-cyan-500',
-      green: dark ? 'border-l-green-400' : 'border-l-green-500',
-      orange: dark ? 'border-l-orange-400' : 'border-l-orange-500',
-      zinc: dark ? 'border-l-zinc-600' : 'border-l-zinc-300',
-    };
-    return map[color] || (dark ? 'border-l-zinc-600' : 'border-l-zinc-300');
+  // Phase divider — not a row, just a section break
+  if (isPhase) {
+    return (
+      <div className={`flex items-center gap-3 pt-4 pb-1.5 first:pt-1`}>
+        <div className={`h-px flex-1 ${dark ? 'bg-zinc-800/80' : 'bg-zinc-200'}`} />
+        <span className={`text-[9px] uppercase tracking-widest font-semibold shrink-0 ${dark ? 'text-zinc-500' : 'text-zinc-400'}`}>
+          {section.badge ? `${section.badge} · ${section.title}` : section.title}
+        </span>
+        <div className={`h-px flex-1 ${dark ? 'bg-zinc-800/80' : 'bg-zinc-200'}`} />
+      </div>
+    );
+  }
+
+  // Status dot color
+  const dotStyle: React.CSSProperties = (() => {
+    if (isActive) return { backgroundColor: '#2B79FF' };
+    if (isComplete) return { backgroundColor: '#22c55e' };
+    if (isError) return { backgroundColor: '#ef4444' };
+    if (color === 'teal') return { backgroundColor: dark ? '#2dd4bf' : '#0d9488' };
+    if (color === 'amber') return { backgroundColor: dark ? '#fbbf24' : '#d97706' };
+    if (color === 'blue') return { backgroundColor: dark ? '#60a5fa' : '#3b82f6' };
+    return { backgroundColor: dark ? '#52525b' : '#d4d4d8' };
   })();
 
   return (
-    <div className={`group ${isPhase ? 'mt-4 first:mt-0' : ''}`}>
-      {/* Phase divider */}
-      {isPhase && (
-        <div className="flex items-center gap-3 mb-2 px-1">
-          <div className={`h-px flex-1 ${dark ? 'bg-zinc-800' : 'bg-zinc-100'}`} />
-          <span className={`text-[10px] uppercase tracking-widest font-semibold ${dark ? 'text-zinc-400' : 'text-zinc-500'}`}>
-            {section.badge}
-          </span>
-          <div className={`h-px flex-1 ${dark ? 'bg-zinc-800' : 'bg-zinc-100'}`} />
-        </div>
-      )}
+    <div className="group">
+      <button
+        onClick={onToggle}
+        className={`w-full flex items-center gap-2.5 py-1 px-1 rounded transition-colors duration-100 text-left ${
+          dark ? 'hover:bg-zinc-800/30' : 'hover:bg-zinc-100/60'
+        }`}
+      >
+        {/* Status dot */}
+        <span
+          className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isActive ? 'animate-pulse' : ''}`}
+          style={dotStyle}
+        />
 
-      {/* Card wrapper */}
-      <div className={`rounded-xl border-l-2 ${borderAccent} ${
-        isPhase
-          ? ''
-          : dark
-            ? 'bg-zinc-900/40 border border-zinc-800/40 border-l-2'
-            : 'bg-white border border-zinc-100 border-l-2 shadow-[0_1px_2px_rgba(0,0,0,0.03)]'
-      } ${isPhase ? '' : 'mb-1.5'}`}>
-        <button
-          onClick={onToggle}
-          className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-xl transition-colors duration-100 ${
-            !isPhase && (dark ? 'hover:bg-zinc-800/40' : 'hover:bg-zinc-50/80')
-          }`}
-        >
-          {/* Status dot — only for active items */}
-          {isLast && !isComplete && !isError && (
-            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot} animate-pulse`} />
-          )}
+        {/* Title */}
+        <span className={`flex-1 text-[12px] font-medium truncate ${
+          isActive ? (dark ? 'text-zinc-200' : 'text-zinc-700') :
+          isComplete ? (dark ? 'text-emerald-400' : 'text-emerald-600') :
+          isError ? 'text-red-400' :
+          dark ? 'text-zinc-400' : 'text-zinc-600'
+        }`}>
+          {section.title}
+        </span>
 
-          {/* Title */}
-          <span className={`flex-1 truncate ${
-            isPhase
-              ? `text-[13px] font-semibold ${dark ? 'text-zinc-100' : 'text-[#414243]'}`
-              : `text-[12px] font-medium ${dark ? 'text-zinc-300' : 'text-[#414243]'}`
-          }`}>
-            {section.title}
-          </span>
-
-          {/* Coverage bar inline */}
-          {covPct !== null && (
-            <div className="w-20 shrink-0">
-              <CoverageBar pct={covPct} dark={dark} />
-            </div>
-          )}
-
-          {/* Badge */}
-          {section.badge && section.kind !== 'phase' && (
-            <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-medium ${badge} ${accent} shrink-0`}>
-              {section.badge.includes('...') || section.badge === 'live' || section.badge === 'searching' || section.badge === 'fetching' ? (
-                <ShineText variant={dark ? 'dark' : 'light'} className="text-[9px]" speed={2}>
-                  {section.badge}
-                </ShineText>
-              ) : section.badge}
-            </span>
-          )}
-
-          {/* Line count */}
-          {section.lines.length > 0 && !isPhase && (
-            <span className={`text-[9px] tabular-nums ${dark ? 'text-zinc-600' : 'text-zinc-400'} shrink-0`}>
-              {section.lines.length}
-            </span>
-          )}
-
-          {/* Chevron */}
-          {section.lines.length > 0 && (
-            <svg
-              width="10" height="10" viewBox="0 0 24 24" fill="none"
-              stroke={dark ? '#52525b' : '#d4d4d8'} strokeWidth="2.5" strokeLinecap="round"
-              className={`shrink-0 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}
-            >
-              <path d="M9 18l6-6-6-6" />
-            </svg>
-          )}
-        </button>
-
-        {/* Content */}
-        {isExpanded && section.lines.length > 0 && (
-          <div className={`px-3 pb-2.5 pt-0.5 space-y-px max-h-64 overflow-y-auto`}>
-            {section.kind === 'thinking' ? (
-              <div className={`font-mono text-[9px] leading-snug whitespace-pre-wrap ${dark ? 'text-zinc-600' : 'text-zinc-400'}`}>
-                {section.lines.join('\n')}
-              </div>
-            ) : (
-              section.lines.map((line, li) => (
-                <RenderLine key={li} line={line} dark={dark} accentClass={accent} />
-              ))
-            )}
+        {/* Coverage bar */}
+        {covPct !== null && (
+          <div className="w-16 shrink-0">
+            <CoverageBar pct={covPct} dark={dark} />
           </div>
         )}
-      </div>
+
+        {/* Badge */}
+        {section.badge && (
+          <span className={`text-[9px] tabular-nums shrink-0 ${accent} opacity-80`}>
+            {section.badge === 'live' || section.badge === 'searching' || section.badge === 'fetching' || section.badge.endsWith('...') ? (
+              <ShineText variant={dark ? 'dark' : 'light'} className="text-[9px]" speed={2}>
+                {section.badge}
+              </ShineText>
+            ) : section.badge}
+          </span>
+        )}
+
+        {/* Expand chevron — only visible on hover when there's content */}
+        {section.lines.length > 0 && (
+          <svg
+            width="8" height="8" viewBox="0 0 24 24" fill="none"
+            stroke={dark ? '#3f3f46' : '#d4d4d8'} strokeWidth="3" strokeLinecap="round"
+            className={`shrink-0 transition-all duration-150 opacity-0 group-hover:opacity-100 ${isExpanded ? 'rotate-90' : ''}`}
+          >
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        )}
+      </button>
+
+      {/* Expanded content — indented, minimal */}
+      {isExpanded && section.lines.length > 0 && (
+        <div className={`ml-4 pl-2 border-l mb-1 max-h-52 overflow-y-auto ${
+          dark ? 'border-zinc-800' : 'border-zinc-200'
+        }`}>
+          {section.kind === 'thinking' ? (
+            <pre className={`text-[9px] font-mono leading-relaxed whitespace-pre-wrap py-1 ${dark ? 'text-zinc-700' : 'text-zinc-400'}`}>
+              {section.lines.join('\n')}
+            </pre>
+          ) : (
+            <div className="py-0.5 space-y-px">
+              {section.lines.map((line, li) => (
+                <RenderLine key={li} line={line} dark={dark} accentClass={accent} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────
-// Status header
+// Summary strip — compact stats above the feed
 // ─────────────────────────────────────────────────────────────
 
-function StatusHeader({ sections, dark }: { sections: Section[]; dark: boolean }) {
+function SummaryStrip({ sections, dark }: { sections: Section[]; dark: boolean }) {
   const searches = sections.filter(s => s.kind === 'researcher').length;
-  const metricsSections = sections.filter(s => s.kind === 'metrics');
-  const lastMetrics = metricsSections[metricsSections.length - 1];
-  const coverage = sections.find(s => s.kind === 'coverage');
-  const covStr = lastMetrics?.title.match(/(\d+)%/)?.[1] || coverage?.title.match(/(\d+)%/)?.[1];
+  const metricsSecs = sections.filter(s => s.kind === 'metrics');
+  const lastMetrics = metricsSecs[metricsSecs.length - 1];
+  const coverageSec = sections.find(s => s.kind === 'coverage');
+  const covStr = lastMetrics?.title.match(/(\d+)%/)?.[1] || coverageSec?.title.match(/(\d+)%/)?.[1];
   const covPct = covStr ? parseInt(covStr) : 0;
   const isDone = sections.some(s => s.kind === 'complete');
   const isTimeout = sections.some(s => s.kind === 'timelimit');
   const isRunning = !isDone && !isTimeout;
 
   return (
-    <div className={`flex items-center gap-3 mb-2 pb-2 border-b ${dark ? 'border-zinc-800/50' : 'border-zinc-200/80'}`}>
-      {/* Status indicator */}
+    <div className={`flex items-center gap-3 mb-3 pb-2.5 border-b ${dark ? 'border-zinc-800/50' : 'border-zinc-200'}`}>
+      {/* Status */}
       <div className="flex items-center gap-1.5">
-        {isRunning && (
-          <span className={`w-1.5 h-1.5 rounded-full ${dark ? 'bg-emerald-400' : 'bg-emerald-500'} animate-pulse`} />
-        )}
+        {isRunning && <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${dark ? 'bg-blue-400' : 'bg-blue-500'}`} />}
         <span className={`text-[11px] font-medium ${
-          isDone
-            ? (dark ? 'text-emerald-400' : 'text-emerald-600')
-            : isTimeout
-            ? (dark ? 'text-orange-400' : 'text-orange-600')
-            : (dark ? 'text-zinc-400' : 'text-zinc-500')
+          isDone ? (dark ? 'text-emerald-400' : 'text-emerald-600') :
+          isTimeout ? (dark ? 'text-amber-400' : 'text-amber-600') :
+          dark ? 'text-zinc-400' : 'text-zinc-500'
         }`}>
           {isDone ? 'Complete' : isTimeout ? 'Timeout' : 'Researching'}
         </span>
       </div>
 
-      {/* Coverage */}
+      {/* Coverage bar */}
       {covPct > 0 && (
         <div className="flex-1">
           <CoverageBar pct={covPct} dark={dark} />
         </div>
       )}
 
-      {/* Stats */}
+      {/* Search count */}
       {searches > 0 && (
-        <span className={`text-[10px] tabular-nums ${dark ? 'text-zinc-600' : 'text-zinc-400'}`}>
+        <span className={`text-[10px] tabular-nums shrink-0 ${dark ? 'text-zinc-600' : 'text-zinc-400'}`}>
           {searches} searches
         </span>
       )}
@@ -989,8 +933,8 @@ export function ResearchOutput({ output, isDarkMode }: ResearchOutputProps) {
 
   if (sections.length === 0) {
     return (
-      <div className={`flex items-center gap-2 py-6 justify-center`}>
-        <span className={`w-1.5 h-1.5 rounded-full ${isDarkMode ? 'bg-emerald-400' : 'bg-emerald-500'} animate-pulse`} />
+      <div className="flex items-center gap-2 py-8 justify-center">
+        <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${isDarkMode ? 'bg-blue-400' : 'bg-blue-500'}`} />
         <ShineText variant={isDarkMode ? 'dark' : 'light'} className="text-xs" speed={2.5}>
           Starting research...
         </ShineText>
@@ -1000,30 +944,30 @@ export function ResearchOutput({ output, isDarkMode }: ResearchOutputProps) {
 
   return (
     <div>
-      {/* Status bar */}
-      <StatusHeader sections={sections} dark={isDarkMode} />
+      {/* Summary strip */}
+      <SummaryStrip sections={sections} dark={isDarkMode} />
 
-      {/* Expand/Collapse */}
+      {/* Controls */}
       <div className="flex items-center gap-3 mb-2">
         <button
           onClick={() => setExpanded(new Set(sections.map((_, i) => i)))}
-          className={`text-[10px] font-medium ${isDarkMode ? 'text-zinc-500 hover:text-zinc-300' : 'text-zinc-400 hover:text-zinc-600'} transition-colors`}
+          className={`text-[9px] font-medium transition-colors ${isDarkMode ? 'text-zinc-600 hover:text-zinc-400' : 'text-zinc-400 hover:text-zinc-600'}`}
         >
-          Expand all
+          expand all
         </button>
-        <span className={`text-[10px] ${isDarkMode ? 'text-zinc-700' : 'text-zinc-200'}`}>|</span>
+        <span className={`text-[9px] ${isDarkMode ? 'text-zinc-800' : 'text-zinc-200'}`}>·</span>
         <button
           onClick={() => setExpanded(new Set())}
-          className={`text-[10px] font-medium ${isDarkMode ? 'text-zinc-500 hover:text-zinc-300' : 'text-zinc-400 hover:text-zinc-600'} transition-colors`}
+          className={`text-[9px] font-medium transition-colors ${isDarkMode ? 'text-zinc-600 hover:text-zinc-400' : 'text-zinc-400 hover:text-zinc-600'}`}
         >
-          Collapse all
+          collapse all
         </button>
       </div>
 
-      {/* Sections */}
-      <div className="space-y-0.5">
+      {/* Feed */}
+      <div>
         {sections.map((section, idx) => (
-          <SectionBlock
+          <SectionRow
             key={idx}
             section={section}
             isExpanded={expanded.has(idx)}

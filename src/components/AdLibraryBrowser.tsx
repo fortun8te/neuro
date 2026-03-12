@@ -235,7 +235,7 @@ Be specific enough that this description alone could be used as a prompt to gene
       {/* Modal content */}
       <div className={`relative z-10 h-full flex flex-col m-4 rounded-2xl overflow-hidden ${
         isDark ? 'bg-zinc-900 border border-zinc-700/50' : 'bg-white border border-zinc-200'
-      }`}>
+      }`} style={{ position: 'relative' }}>
         {/* Header */}
         <div className={`flex-shrink-0 border-b ${
           isDark ? 'border-zinc-700/50' : 'border-zinc-200'
@@ -493,13 +493,13 @@ Be specific enough that this description alone could be used as a prompt to gene
         </div>
       </div>
 
-      {/* Detail popup modal with blur backdrop */}
+      {/* Detail popup modal with blur backdrop — absolute to stay within modal container */}
       {selectedImage && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center" onClick={() => setSelectedImage(null)}>
+        <div className="absolute inset-0 z-40 flex items-center justify-center" onClick={() => setSelectedImage(null)}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-md" />
           <div
             onClick={e => e.stopPropagation()}
-            className={`relative z-10 w-[520px] max-h-[85vh] rounded-2xl overflow-hidden shadow-2xl flex flex-col ${
+            className={`relative z-50 w-[520px] max-h-[85vh] rounded-2xl overflow-hidden shadow-2xl flex flex-col ${
               isDark ? 'bg-zinc-900 border border-zinc-700/50' : 'bg-white border border-zinc-200'
             }`}
           >

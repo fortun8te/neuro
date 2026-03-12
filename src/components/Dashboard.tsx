@@ -31,65 +31,59 @@ export function Dashboard({ embedded = false }: DashboardProps) {
   }, [currentCycle?.currentStage]);
 
   return (
-    <div className={`${embedded ? 'flex-1 overflow-y-auto' : 'min-h-screen'} ${isDarkMode ? 'bg-transparent text-white' : 'bg-transparent text-zinc-900'}`}>
+    <div className={`${embedded ? 'flex-1' : 'h-screen'} flex flex-col overflow-hidden ${isDarkMode ? 'bg-[#0a0a0a] text-white' : 'bg-zinc-50 text-zinc-900'}`}>
       {!embedded && <ControlPanel />}
 
-      <div className="max-w-7xl mx-auto px-6 py-5">
-        {/* Error banner */}
-        {error && (
-          <div className={`rounded-xl p-4 mb-5 flex items-start gap-3 ${
-            isDarkMode ? 'bg-red-500/10 border border-red-500/20' : 'bg-red-50 border border-red-200'
-          }`}>
-            <span className={`text-[10px] uppercase tracking-wider font-semibold ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}>Error</span>
-            <span className={`text-xs ${isDarkMode ? 'text-red-300/80' : 'text-red-700'}`}>{error}</span>
-          </div>
-        )}
-
-        {!campaign ? (
-          /* ── No campaign: full-width selector ── */
-          <div className="max-w-3xl mx-auto">
+      {!campaign ? (
+        <div className="flex-1 flex items-center justify-center overflow-y-auto p-6">
+          <div className="max-w-2xl w-full">
             <CampaignSelector />
           </div>
-        ) : (
-          /* ── Campaign loaded: sidebar + pipeline ── */
-          <div className="grid grid-cols-12 gap-5">
-            {/* Left — unified side panel */}
-            <div className="col-span-3">
-              <SidePanel
-                campaign={campaign}
-                isDark={isDarkMode}
-                cycles={cycles}
-                onClear={clearCampaign}
-                onStart={startCycle}
-                onStop={stopCycle}
-                isRunning={isRunning}
-                hasCycle={!!currentCycle}
-              />
-            </div>
+        </div>
+      ) : (
+        <div className="flex flex-1 min-h-0">
+          {/* ── LEFT PANEL ── */}
+          <LeftPanel
+            campaign={campaign}
+            isDark={isDarkMode}
+            cycles={cycles}
+            currentCycle={currentCycle}
+            onClear={clearCampaign}
+            onStart={startCycle}
+            onStop={stopCycle}
+            isRunning={isRunning}
+            selectedStage={selectedStage}
+            onSelectStage={setSelectedStage}
+          />
 
-            {/* Right — pipeline output */}
-            <div className="col-span-9 space-y-3">
-              {currentCycle ? (
-                <>
-                  <CycleTimeline cycle={currentCycle} selectedStage={selectedStage} onSelectStage={setSelectedStage} />
-                  <StagePanel cycle={currentCycle} isRunning={isRunning} isDarkMode={isDarkMode} viewStage={selectedStage} />
-                </>
-              ) : (
-                <div className={`rounded-2xl p-20 text-center ${
-                  isDarkMode ? 'bg-zinc-900/30' : 'bg-zinc-50/30'
-                }`}>
-                  <p className={`text-[13px] font-medium ${isDarkMode ? 'text-zinc-600' : 'text-zinc-300'}`}>
-                    Ready to run
-                  </p>
-                  <p className={`text-[11px] mt-1 ${isDarkMode ? 'text-zinc-700' : 'text-zinc-300/70'}`}>
-                    Press Start to begin the research pipeline
-                  </p>
+          {/* ── RIGHT PANEL ── */}
+          <div className={`flex-1 flex flex-col min-h-0 min-w-0 border-l ${isDarkMode ? 'border-zinc-800/60' : 'border-zinc-200'}`}>
+            {error && (
+              <div className={`flex-shrink-0 px-5 py-2 flex items-center gap-2 text-xs border-b ${
+                isDarkMode ? 'bg-red-950/20 border-red-900/30 text-red-400' : 'bg-red-50 border-red-100 text-red-600'
+              }`}>
+                <span className="font-semibold">Error</span>
+                <span className="opacity-70">{error}</span>
+              </div>
+            )}
+            {currentCycle ? (
+              <StagePanel
+                cycle={currentCycle}
+                isRunning={isRunning}
+                isDarkMode={isDarkMode}
+                viewStage={selectedStage}
+              />
+            ) : (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center space-y-1">
+                  <p className={`text-sm ${isDarkMode ? 'text-zinc-600' : 'text-zinc-400'}`}>Ready to run</p>
+                  <p className={`text-xs ${isDarkMode ? 'text-zinc-700' : 'text-zinc-300'}`}>Select a preset and press Start Research</p>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {pendingQuestion && (
         <QuestionModal question={pendingQuestion} onAnswer={answerQuestion} isDarkMode={isDarkMode} />
@@ -99,20 +93,23 @@ export function Dashboard({ embedded = false }: DashboardProps) {
 }
 
 // ══════════════════════════════════════════════════════
-// SidePanel — one unified card, no stacked borders
+// LeftPanel
 // ══════════════════════════════════════════════════════
 
-function SidePanel({ campaign, isDark, cycles, onClear, onStart, onStop, isRunning, hasCycle }: {
+function LeftPanel({
+  campaign, isDark, cycles, currentCycle, onClear, onStart, onStop, isRunning, selectedStage, onSelectStage,
+}: {
   campaign: Campaign;
   isDark: boolean;
   cycles: Cycle[];
+  currentCycle: Cycle | null;
   onClear: () => void;
   onStart: () => void;
   onStop: () => void;
   isRunning: boolean;
-  hasCycle: boolean;
+  selectedStage: StageName | null;
+  onSelectStage: (s: StageName) => void;
 }) {
-  // ── Research config state ──
   const config = getResearchModelConfig();
   const limits = getResearchLimits();
   const [activePreset, setActivePreset] = useState<ResearchDepthPreset | 'custom'>(getActiveResearchPreset());
@@ -182,15 +179,13 @@ function SidePanel({ campaign, isDark, cycles, onClear, onStart, onStop, isRunni
     creative: 'Creative', avatar: 'Avatar', contrarian: 'Contrarian', visual: 'Visual',
   };
 
-  // ── Styling ──
-  const selectCls = `w-full text-[11px] font-medium rounded-lg px-2.5 py-1.5 outline-none cursor-pointer transition-colors ${
-    isDark ? 'text-zinc-300 bg-zinc-800 border border-zinc-700' : 'text-[#414243] bg-zinc-50/80 border border-zinc-100 focus:border-zinc-300'
+  const selectCls = `w-full text-[11px] font-medium rounded-md px-2 py-1.5 outline-none cursor-pointer transition-colors ${
+    isDark ? 'text-zinc-300 bg-zinc-800/60 border border-zinc-700/50' : 'text-zinc-600 bg-zinc-50 border border-zinc-200'
   }`;
-  const divider = isDark ? 'border-zinc-800/60' : 'border-zinc-100/60';
-  const labelCls = isDark ? 'text-zinc-500' : 'text-zinc-400';
-  const sliderTrack = isDark ? '#27272a' : '#e4e4e7';
+  const divider = isDark ? 'border-zinc-800/60' : 'border-zinc-100';
+  const labelCls = isDark ? 'text-zinc-600' : 'text-zinc-400';
+  const sliderTrack = isDark ? '#1f1f23' : '#e4e4e7';
 
-  // ── Brand data ──
   const p = campaign.presetData;
   const brandName = p?.brand?.name || campaign.brand;
   const colorStr = typeof p?.brand?.colors === 'string' ? p.brand.colors : '';
@@ -198,256 +193,233 @@ function SidePanel({ campaign, isDark, cycles, onClear, onStart, onStop, isRunni
   const completed = cycles.filter((c: Cycle) => c.status === 'complete');
 
   return (
-    <div className={`rounded-2xl overflow-hidden ${
-      isDark
-        ? 'bg-zinc-900 border border-zinc-800/60'
-        : 'bg-white border border-zinc-100/80 shadow-[0_1px_3px_rgba(0,0,0,0.04)]'
-    }`}>
-      {/* ── Campaign header ── */}
-      <div className={`px-4 py-3.5 border-b ${divider}`}>
+    <div className={`w-60 flex-shrink-0 flex flex-col overflow-hidden ${isDark ? 'bg-[#0f0f0f]' : 'bg-white'}`}>
+
+      {/* ── Brand header ── */}
+      <div className={`flex-shrink-0 px-4 py-3 border-b ${divider}`}>
         <div className="flex items-center justify-between">
-          <h2 className={`text-[13px] font-semibold tracking-tight ${isDark ? 'text-zinc-100' : 'text-[#414243]'}`}>
-            {brandName}
-          </h2>
-          <button
-            onClick={onClear}
-            className={`text-[10px] font-medium transition-colors ${isDark ? 'text-zinc-600 hover:text-zinc-400' : 'text-zinc-300 hover:text-zinc-500'}`}
-          >
+          <div className="flex items-center gap-2 min-w-0">
+            {hexColors.length > 0 && (
+              <div className="flex -space-x-0.5 flex-shrink-0">
+                {hexColors.slice(0, 3).map((c: string, i: number) => (
+                  <div key={i} className="w-2.5 h-2.5 rounded-full border border-black/20" style={{ backgroundColor: c }} />
+                ))}
+              </div>
+            )}
+            <span className={`text-[12px] font-semibold truncate ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>{brandName}</span>
+          </div>
+          <button onClick={onClear} className={`text-[10px] flex-shrink-0 transition-colors ml-2 ${isDark ? 'text-zinc-700 hover:text-zinc-400' : 'text-zinc-300 hover:text-zinc-500'}`}>
             Switch
           </button>
         </div>
         {p?.brand?.positioning && (
-          <p className={`text-[11px] mt-0.5 line-clamp-2 ${labelCls}`}>
-            {p.brand.positioning}
-          </p>
+          <p className={`text-[10px] mt-0.5 line-clamp-1 ${labelCls}`}>{p.brand.positioning}</p>
         )}
+        <p className={`text-[10px] mt-0.5 ${isDark ? 'text-zinc-700' : 'text-zinc-300'}`}>
+          {completed.length === 0 ? 'No cycles yet' : `${completed.length} cycle${completed.length !== 1 ? 's' : ''} done`}
+        </p>
       </div>
 
-      {/* ── Research depth presets ── */}
-      <div className={`px-4 py-3 border-b ${divider}`}>
-        <div className="grid grid-cols-5 gap-1">
-          {RESEARCH_PRESETS.map(preset => {
-            const isActive = activePreset === preset.id;
+      {/* ── Scrollable body ── */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+
+        {/* Presets */}
+        <div className={`px-3 py-3 border-b ${divider}`}>
+          <span className={`text-[9px] uppercase font-semibold tracking-wider px-1 ${labelCls}`}>Depth</span>
+          <div className="grid grid-cols-5 gap-1 mt-1.5">
+            {RESEARCH_PRESETS.map(preset => {
+              const isActive = activePreset === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  onClick={() => {
+                    applyResearchPreset(preset.id);
+                    setActivePreset(preset.id);
+                    setIntensity({
+                      maxIterations: preset.limits.maxIterations,
+                      minIterations: preset.limits.minIterations,
+                      coverageThreshold: preset.limits.coverageThreshold,
+                      minSources: preset.limits.minSources,
+                      maxResearchersPerIteration: preset.limits.maxResearchersPerIteration,
+                      maxTimeMinutes: preset.limits.maxTimeMinutes,
+                      parallelCompressionCount: preset.limits.parallelCompressionCount,
+                    });
+                  }}
+                  title={`${preset.label} — ${preset.description}`}
+                  className={`flex flex-col items-center gap-0.5 rounded py-1.5 transition-all text-center ${
+                    isActive
+                      ? isDark ? 'bg-zinc-700 text-white' : 'bg-zinc-800 text-white'
+                      : isDark ? 'bg-zinc-800/50 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-400' : 'bg-zinc-100 text-zinc-400 hover:bg-zinc-200'
+                  }`}
+                >
+                  <span className="text-[10px] font-bold leading-none">{preset.shortLabel}</span>
+                  <span className={`text-[8px] leading-none ${isActive ? 'opacity-70' : 'opacity-40'}`}>{preset.time}</span>
+                </button>
+              );
+            })}
+          </div>
+          {activePreset !== 'custom' && (() => {
+            const ap = RESEARCH_PRESETS.find(pr => pr.id === activePreset);
+            if (!ap) return null;
             return (
-              <button
-                key={preset.id}
-                onClick={() => {
-                  applyResearchPreset(preset.id);
-                  setActivePreset(preset.id);
-                  setIntensity({
-                    maxIterations: preset.limits.maxIterations,
-                    minIterations: preset.limits.minIterations,
-                    coverageThreshold: preset.limits.coverageThreshold,
-                    minSources: preset.limits.minSources,
-                    maxResearchersPerIteration: preset.limits.maxResearchersPerIteration,
-                    maxTimeMinutes: preset.limits.maxTimeMinutes,
-                    parallelCompressionCount: preset.limits.parallelCompressionCount,
-                  });
-                }}
-                className={`flex flex-col items-center gap-0.5 rounded-lg py-1.5 px-1 transition-all text-center ${
-                  isActive
-                    ? isDark ? 'bg-zinc-700 text-white ring-1 ring-zinc-600' : 'bg-[#414243] text-white shadow-sm'
-                    : isDark ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700/60' : 'bg-zinc-50 text-zinc-500 hover:bg-zinc-100'
-                }`}
-                title={`${preset.label} — ${preset.description}`}
-              >
-                <span className="text-[10px] font-bold leading-none">{preset.shortLabel}</span>
-                <span className={`text-[8px] leading-none ${isActive ? 'opacity-80' : 'opacity-50'}`}>{preset.time}</span>
-              </button>
+              <p className={`mt-1.5 text-[9px] leading-relaxed line-clamp-1 ${labelCls}`}>
+                {ap.limits.maxIterations} iter · {ap.limits.minSources} src
+              </p>
             );
-          })}
-        </div>
-        {activePreset !== 'custom' && (() => {
-          const ap = RESEARCH_PRESETS.find(pr => pr.id === activePreset);
-          if (!ap) return null;
-          return (
-            <p className={`mt-1.5 text-[9px] leading-relaxed line-clamp-1 ${labelCls}`}>
-              {ap.description} · {ap.limits.maxIterations} iter · {ap.limits.minSources} sources
-            </p>
-          );
-        })()}
-      </div>
-
-      {/* ── Model selects ── */}
-      <div className={`px-4 py-3 border-b ${divider} space-y-2`}>
-        <div>
-          <span className={`text-[10px] font-medium block mb-1 ${labelCls}`}>Brain</span>
-          <select
-            value={models.orchestrator}
-            onChange={(e) => { setModels(prev => ({ ...prev, orchestrator: e.target.value })); save('research_model', e.target.value); }}
-            className={selectCls}
-          >
-            {modelOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </div>
-        <div>
-          <span className={`text-[10px] font-medium block mb-1 ${labelCls}`}>Compression</span>
-          <select
-            value={models.compression}
-            onChange={(e) => { setModels(prev => ({ ...prev, compression: e.target.value })); save('compression_model', e.target.value); }}
-            className={selectCls}
-          >
-            {modelOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+          })()}
         </div>
 
-        {/* Advanced toggle */}
-        <button
-          onClick={() => setShowAdvanced(!showAdvanced)}
-          className={`flex items-center gap-1.5 text-[10px] font-medium pt-0.5 transition-colors ${labelCls} hover:${isDark ? 'text-zinc-300' : 'text-zinc-600'}`}
-        >
-          <svg
-            width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"
-            className={`transition-transform duration-150 ${showAdvanced ? 'rotate-90' : ''}`}
-          >
-            <path d="M9 18l6-6-6-6" />
-          </svg>
-          Advanced
-        </button>
-
-        {showAdvanced && (
-          <div className="space-y-2.5 pt-1">
-            {/* Global Temperature */}
+        {/* Models */}
+        <div className={`px-3 py-3 border-b ${divider}`}>
+          <span className={`text-[9px] uppercase font-semibold tracking-wider px-1 ${labelCls}`}>Models</span>
+          <div className="mt-1.5 space-y-1.5">
             <div>
-              <div className="flex items-center justify-between">
-                <span className={`text-[9px] ${labelCls}`}>Default Temp</span>
-                <span className={`text-[9px] font-mono ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>{temperature.toFixed(1)}</span>
-              </div>
-              <input
-                type="range" min="0" max="1" step="0.1" value={temperature}
-                onChange={(e) => { const v = parseFloat(e.target.value); setTemperature(v); save('research_temperature', String(v)); }}
-                className="w-full h-0.5 rounded-full appearance-none cursor-pointer accent-zinc-400 mt-0.5"
-                style={{ background: sliderTrack }}
-              />
+              <span className={`text-[9px] block mb-0.5 ${labelCls}`}>Brain</span>
+              <select value={models.orchestrator} onChange={(e) => { setModels(p => ({ ...p, orchestrator: e.target.value })); save('research_model', e.target.value); }} className={selectCls}>
+                {modelOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
             </div>
+            <div>
+              <span className={`text-[9px] block mb-0.5 ${labelCls}`}>Compression</span>
+              <select value={models.compression} onChange={(e) => { setModels(p => ({ ...p, compression: e.target.value })); save('compression_model', e.target.value); }} className={selectCls}>
+                {modelOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+          </div>
 
-            {/* Model Roles */}
-            <div className={`text-[9px] uppercase tracking-wider font-semibold pt-1 ${labelCls}`}>Model Roles</div>
-            {modelRoles
-              .filter(r => r.id !== 'orchestrator' && r.id !== 'compression')
-              .map(role => (
+          {/* Advanced */}
+          <button
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className={`flex items-center gap-1.5 mt-2 text-[9px] font-medium transition-colors ${labelCls} hover:text-zinc-400`}
+          >
+            <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"
+              className={`transition-transform duration-150 ${showAdvanced ? 'rotate-90' : ''}`}
+            ><path d="M9 18l6-6-6-6" /></svg>
+            Advanced
+          </button>
+
+          {showAdvanced && (
+            <div className="mt-2 space-y-2">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className={`text-[9px] ${labelCls}`}>Default Temp</span>
+                  <span className={`text-[9px] font-mono ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>{temperature.toFixed(1)}</span>
+                </div>
+                <input type="range" min="0" max="1" step="0.1" value={temperature}
+                  onChange={(e) => { const v = parseFloat(e.target.value); setTemperature(v); save('research_temperature', String(v)); }}
+                  className="w-full h-0.5 rounded-full appearance-none cursor-pointer accent-zinc-400 mt-0.5"
+                  style={{ background: sliderTrack }}
+                />
+              </div>
+              <div className={`text-[9px] uppercase tracking-wider font-semibold ${labelCls}`}>All Models</div>
+              {modelRoles.filter(r => r.id !== 'orchestrator' && r.id !== 'compression').map(role => (
                 <div key={role.id}>
                   <span className={`text-[9px] block mb-0.5 ${labelCls}`}>{role.label}</span>
-                  <select
-                    value={models[role.id]}
-                    onChange={(e) => { setModels(prev => ({ ...prev, [role.id]: e.target.value })); save(role.storageKey, e.target.value); }}
-                    className={selectCls}
-                  >
+                  <select value={models[role.id]} onChange={(e) => { setModels(p => ({ ...p, [role.id]: e.target.value })); save(role.storageKey, e.target.value); }} className={selectCls}>
                     {modelOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 </div>
               ))}
-
-            {/* Research Intensity */}
-            <div className={`text-[9px] uppercase tracking-wider font-semibold pt-1 ${labelCls}`}>Research Intensity</div>
-            {intensityFields.map(field => (
-              <div key={field.id}>
-                <div className="flex items-center justify-between">
-                  <span className={`text-[9px] ${labelCls}`}>{field.label}</span>
-                  <span className={`text-[9px] font-mono ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                    {field.isFloat ? (intensity[field.id] as number).toFixed(2) : intensity[field.id]}
-                  </span>
+              <div className={`text-[9px] uppercase tracking-wider font-semibold ${labelCls}`}>Intensity</div>
+              {intensityFields.map(field => (
+                <div key={field.id}>
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[9px] ${labelCls}`}>{field.label}</span>
+                    <span className={`text-[9px] font-mono ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                      {field.isFloat ? (intensity[field.id] as number).toFixed(2) : intensity[field.id]}
+                    </span>
+                  </div>
+                  <input type="range" min={field.min} max={field.max} step={field.step} value={intensity[field.id]}
+                    onChange={(e) => {
+                      const v = field.isFloat ? parseFloat(e.target.value) : parseInt(e.target.value);
+                      setIntensity(p => ({ ...p, [field.id]: v }));
+                      save(field.storageKey, String(v));
+                    }}
+                    className="w-full h-0.5 rounded-full appearance-none cursor-pointer accent-zinc-400 mt-0.5"
+                    style={{ background: sliderTrack }}
+                  />
                 </div>
-                <input
-                  type="range" min={field.min} max={field.max} step={field.step} value={intensity[field.id]}
-                  onChange={(e) => {
-                    const v = field.isFloat ? parseFloat(e.target.value) : parseInt(e.target.value);
-                    setIntensity(prev => ({ ...prev, [field.id]: v }));
-                    save(field.storageKey, String(v));
-                  }}
-                  className="w-full h-0.5 rounded-full appearance-none cursor-pointer accent-zinc-400 mt-0.5"
-                  style={{ background: sliderTrack }}
-                />
-              </div>
-            ))}
-
-            {/* Brain Temperatures */}
-            <div className={`text-[9px] uppercase tracking-wider font-semibold pt-1 ${labelCls}`}>Brain Temperatures</div>
-            {brainIds.map(id => (
-              <div key={id}>
-                <div className="flex items-center justify-between">
-                  <span className={`text-[9px] ${labelCls}`}>{brainNames[id] || id}</span>
-                  <span className={`text-[9px] font-mono ${isDark ? 'text-zinc-500' : 'text-zinc-500'}`}>{brainTemps[id]?.toFixed(1)}</span>
+              ))}
+              <div className={`text-[9px] uppercase tracking-wider font-semibold ${labelCls}`}>Brain Temps</div>
+              {brainIds.map(id => (
+                <div key={id}>
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[9px] ${labelCls}`}>{brainNames[id] || id}</span>
+                    <span className={`text-[9px] font-mono ${isDark ? 'text-zinc-500' : 'text-zinc-500'}`}>{brainTemps[id]?.toFixed(1)}</span>
+                  </div>
+                  <input type="range" min="0" max="1.5" step="0.05" value={brainTemps[id] ?? 0.7}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      setBrainTemps(p => ({ ...p, [id]: v }));
+                      setBrainTemperature(id, v);
+                    }}
+                    className="w-full h-0.5 rounded-full appearance-none cursor-pointer accent-zinc-400 mt-0.5"
+                    style={{ background: sliderTrack }}
+                  />
                 </div>
-                <input
-                  type="range" min="0" max="1.5" step="0.05" value={brainTemps[id] ?? 0.7}
-                  onChange={(e) => {
-                    const v = parseFloat(e.target.value);
-                    setBrainTemps(prev => ({ ...prev, [id]: v }));
-                    setBrainTemperature(id, v);
-                  }}
-                  className="w-full h-0.5 rounded-full appearance-none cursor-pointer accent-zinc-400 mt-0.5"
-                  style={{ background: sliderTrack }}
-                />
-              </div>
-            ))}
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Brand DNA link */}
+        {(p?.brand?.name || campaign.brand) && (
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('nomad-open-brand-hub'))}
+            className={`w-full px-4 py-2.5 border-b ${divider} flex items-center gap-2 transition-colors text-left ${
+              isDark ? 'hover:bg-zinc-800/30' : 'hover:bg-zinc-50'
+            }`}
+          >
+            <span className={`text-[11px] font-medium flex-1 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>Brand DNA</span>
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke={isDark ? '#3f3f46' : '#d4d4d8'} strokeWidth="2.5" strokeLinecap="round">
+              <path d="M7 17L17 7M17 7H7M17 7V17" />
+            </svg>
+          </button>
+        )}
+
+        {/* Pipeline stages */}
+        {currentCycle && (
+          <div className={`px-3 py-3`}>
+            <span className={`text-[9px] uppercase font-semibold tracking-wider px-1 ${labelCls}`}>Pipeline</span>
+            <div className="mt-2">
+              <CycleTimeline
+                cycle={currentCycle}
+                selectedStage={selectedStage}
+                onSelectStage={onSelectStage}
+                vertical
+              />
+            </div>
           </div>
         )}
       </div>
 
-      {/* ── Brand DNA link ── */}
-      {(p?.brand?.name || campaign.brand) && (
-        <button
-          onClick={() => window.dispatchEvent(new CustomEvent('nomad-open-brand-hub'))}
-          className={`w-full px-4 py-3 border-b ${divider} flex items-center gap-2.5 transition-colors text-left ${
-            isDark ? 'hover:bg-zinc-800/50' : 'hover:bg-zinc-50/50'
-          }`}
-        >
-          {hexColors.length > 0 && (
-            <div className="flex -space-x-1">
-              {hexColors.slice(0, 4).map((c: string, i: number) => (
-                <div key={i} className="w-3.5 h-3.5 rounded-full border-2 border-white" style={{ backgroundColor: c }} />
-              ))}
-            </div>
-          )}
-          <span className={`text-[11px] font-medium flex-1 ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
-            Brand DNA
-          </span>
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={isDark ? '#52525b' : '#d4d4d8'} strokeWidth="2.5" strokeLinecap="round">
-            <path d="M7 17L17 7M17 7H7M17 7V17" />
-          </svg>
-        </button>
-      )}
-
-      {/* ── History count ── */}
-      <div className={`px-4 py-2.5 ${!isRunning && !hasCycle ? `border-b ${divider}` : ''}`}>
-        <span className={`text-[11px] ${isDark ? 'text-zinc-600' : 'text-zinc-300'}`}>
-          {completed.length === 0 ? 'No completed cycles' : `${completed.length} completed cycle${completed.length !== 1 ? 's' : ''}`}
-        </span>
-      </div>
-
-      {/* ── Start Research button ── */}
-      {!isRunning && !hasCycle && (
-        <div className="px-4 py-3">
+      {/* ── Bottom actions ── */}
+      <div className={`flex-shrink-0 px-3 py-3 border-t ${divider}`}>
+        {!isRunning && !currentCycle && (
           <button
             onClick={onStart}
-            className={`w-full py-2.5 rounded-xl text-[12px] font-semibold tracking-wide transition-all ${
+            className={`w-full py-2 rounded-lg text-[12px] font-semibold tracking-wide transition-all ${
               isDark
-                ? 'bg-white/10 text-white/90 hover:bg-white/15 border border-white/10'
-                : 'bg-[#414243] text-white hover:bg-[#333435] shadow-sm'
+                ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
+                : 'bg-zinc-900 text-white hover:bg-zinc-700'
             }`}
           >
             Start Research
           </button>
-        </div>
-      )}
-
-      {/* ── Stop Research button ── */}
-      {isRunning && (
-        <div className="px-4 py-3">
+        )}
+        {isRunning && (
           <button
             onClick={onStop}
-            className={`w-full py-2.5 rounded-xl text-[12px] font-semibold tracking-wide transition-all flex items-center justify-center gap-2 ${
+            className={`w-full py-2 rounded-lg text-[12px] font-semibold tracking-wide transition-all ${
               isDark
-                ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20'
-                : 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200'
+                ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700 border border-zinc-700'
+                : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200 border border-zinc-200'
             }`}
           >
-            <span className="w-2 h-2 rounded-full animate-pulse bg-red-500" />
-            Stop Research
+            Stop
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
