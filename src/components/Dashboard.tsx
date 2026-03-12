@@ -4,6 +4,7 @@ import { useTheme } from '../context/ThemeContext';
 import { CampaignSelector } from './CampaignSelector';
 import { ControlPanel } from './ControlPanel';
 import { CycleTimeline } from './CycleTimeline';
+import { BrandDNAChat } from './BrandDNAChat';
 import { StagePanel } from './StagePanel';
 import { QuestionModal } from './QuestionModal';
 import {
@@ -393,6 +394,11 @@ function LeftPanel({
               <path d="M7 17L17 7M17 7H7M17 7V17" />
             </svg>
           </button>
+        )}
+
+        {/* Brand DNA Chat — natural language editor for presetData */}
+        {campaign.presetData && (
+          <BrandDNAChat campaign={campaign} isDark={isDark} />
         )}
 
         {/* Pipeline stages */}
