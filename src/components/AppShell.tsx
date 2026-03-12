@@ -252,10 +252,17 @@ export function AppShell() {
               >
                 {/* Animated gradient shimmer inside button */}
                 <div className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" style={{
-                  background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.06) 40%, rgba(43, 121, 255, 0.1) 60%, transparent 100%)',
-                  animation: 'nomad-btn-shimmer 3s ease-in-out infinite',
+                  background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 20%, rgba(43, 121, 255, 0.08) 40%, rgba(255,255,255,0.06) 60%, rgba(43, 121, 255, 0.05) 80%, transparent 100%)',
+                  animation: 'nomad-btn-shimmer 6s ease-in-out infinite',
                 }} />
-                <span className="relative z-10">Run Pipeline</span>
+                <span className="relative z-10 flex items-center gap-2.5">
+                  <span>Run Research</span>
+                  {campaign && (
+                    <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, fontWeight: 400, letterSpacing: '0.03em' }}>
+                      {campaign.presetData?.brand?.name || campaign.brand}
+                    </span>
+                  )}
+                </span>
               </motion.button>
             )}
             {isRunning && (

@@ -71,8 +71,14 @@ export function SidebarGradient() {
         100% { transform: translate(0, 0); }
       }
       @keyframes nomad-btn-shimmer {
-        0% { transform: translateX(-100%); }
-        100% { transform: translateX(200%); }
+        0%   { transform: translateX(-120%) scaleX(0.8); opacity: 0; }
+        8%   { opacity: 1; }
+        25%  { transform: translateX(-30%) scaleX(1.1); opacity: 0.8; }
+        40%  { transform: translateX(20%) scaleX(0.9); opacity: 0.5; }
+        55%  { transform: translateX(60%) scaleX(1.15); opacity: 0.9; }
+        70%  { transform: translateX(110%) scaleX(1); opacity: 0.6; }
+        85%  { transform: translateX(160%) scaleX(0.85); opacity: 0.3; }
+        100% { transform: translateX(220%) scaleX(0.7); opacity: 0; }
       }
     `;
     document.head.appendChild(s);
