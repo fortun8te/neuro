@@ -23,6 +23,17 @@ export function Dashboard({ embedded = false }: DashboardProps) {
   const { isDarkMode } = useTheme();
   const isRunning = systemStatus === 'running';
   const [selectedStage, setSelectedStage] = useState<StageName | null>(null);
+  const [viewingCycleIdx, setViewingCycleIdx] = useState<number | null>(null); // null = follow currentCycle
+
+  // Keep viewingCycleIdx pointing at the latest cycle when running
+  useEffect(() => {
+    if (isRunning) setViewingCycleIdx(null); // always follow live cycle when running
+  }, [isRunning]);
+
+  // The cycle to display in the right panel
+  const displayedCycle = viewingCycleIdx !== null
+    ? cycles[viewingCycleIdx] ?? currentCycle
+    : currentCycle;
 
   useEffect(() => {
     if (currentCycle) {
@@ -48,6 +59,9 @@ export function Dashboard({ embedded = false }: DashboardProps) {
             isDark={isDarkMode}
             cycles={cycles}
             currentCycle={currentCycle}
+            displayedCycle={displayedCycle}
+            viewingCycleIdx={viewingCycleIdx}
+            onSelectCycleIdx={setViewingCycleIdx}
             onClear={clearCampaign}
             onStart={startCycle}
             onStop={stopCycle}
@@ -66,10 +80,10 @@ export function Dashboard({ embedded = false }: DashboardProps) {
                 <span className="opacity-70">{error}</span>
               </div>
             )}
-            {currentCycle ? (
+            {displayedCycle ? (
               <StagePanel
-                cycle={currentCycle}
-                isRunning={isRunning}
+                cycle={displayedCycle}
+                isRunning={isRunning && displayedCycle.id === currentCycle?.id}
                 isDarkMode={isDarkMode}
                 viewStage={selectedStage}
               />
@@ -97,12 +111,16 @@ export function Dashboard({ embedded = false }: DashboardProps) {
 // ══════════════════════════════════════════════════════
 
 function LeftPanel({
-  campaign, isDark, cycles, currentCycle, onClear, onStart, onStop, isRunning, selectedStage, onSelectStage,
+  campaign, isDark, cycles, currentCycle, displayedCycle, viewingCycleIdx, onSelectCycleIdx,
+  onClear, onStart, onStop, isRunning, selectedStage, onSelectStage,
 }: {
   campaign: Campaign;
   isDark: boolean;
   cycles: Cycle[];
   currentCycle: Cycle | null;
+  displayedCycle: Cycle | null;
+  viewingCycleIdx: number | null;
+  onSelectCycleIdx: (idx: number | null) => void;
   onClear: () => void;
   onStart: () => void;
   onStop: () => void;
@@ -378,17 +396,52 @@ function LeftPanel({
         )}
 
         {/* Pipeline stages */}
-        {currentCycle && (
+        {displayedCycle && (
           <div className={`px-3 py-3`}>
-            <span className={`text-[9px] uppercase font-semibold tracking-wider px-1 ${labelCls}`}>Pipeline</span>
-            <div className="mt-2">
-              <CycleTimeline
-                cycle={currentCycle}
-                selectedStage={selectedStage}
-                onSelectStage={onSelectStage}
-                vertical
-              />
+            <div className="flex items-center justify-between px-1 mb-2">
+              <span className={`text-[9px] uppercase font-semibold tracking-wider ${labelCls}`}>Pipeline</span>
+              {cycles.length > 1 && (
+                <div className="flex items-center gap-0.5">
+                  <button
+                    onClick={() => {
+                      const cur = viewingCycleIdx ?? cycles.length - 1;
+                      if (cur > 0) onSelectCycleIdx(cur - 1);
+                    }}
+                    disabled={(viewingCycleIdx ?? cycles.length - 1) === 0}
+                    className={`w-4 h-4 flex items-center justify-center rounded transition-colors disabled:opacity-20 ${isDark ? 'text-zinc-500 hover:text-zinc-300' : 'text-zinc-400 hover:text-zinc-600'}`}
+                  >
+                    <svg width="6" height="6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+                  </button>
+                  <span className={`text-[9px] font-mono tabular-nums ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                    {(viewingCycleIdx ?? cycles.length - 1) + 1}/{cycles.length}
+                  </span>
+                  <button
+                    onClick={() => {
+                      const cur = viewingCycleIdx ?? cycles.length - 1;
+                      if (cur < cycles.length - 1) onSelectCycleIdx(cur + 1);
+                      else onSelectCycleIdx(null); // snap back to live
+                    }}
+                    disabled={viewingCycleIdx === null}
+                    className={`w-4 h-4 flex items-center justify-center rounded transition-colors disabled:opacity-20 ${isDark ? 'text-zinc-500 hover:text-zinc-300' : 'text-zinc-400 hover:text-zinc-600'}`}
+                  >
+                    <svg width="6" height="6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                  </button>
+                  {viewingCycleIdx !== null && (
+                    <button
+                      onClick={() => onSelectCycleIdx(null)}
+                      title="Back to live"
+                      className={`ml-0.5 text-[8px] font-medium px-1 py-0.5 rounded transition-colors ${isDark ? 'text-zinc-600 hover:text-zinc-400 bg-zinc-800/60' : 'text-zinc-400 hover:text-zinc-600 bg-zinc-100'}`}
+                    >live</button>
+                  )}
+                </div>
+              )}
             </div>
+            <CycleTimeline
+              cycle={displayedCycle}
+              selectedStage={selectedStage}
+              onSelectStage={onSelectStage}
+              vertical
+            />
           </div>
         )}
       </div>
