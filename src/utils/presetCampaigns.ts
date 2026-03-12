@@ -518,6 +518,43 @@ export const DEFAULT_PRESET = {
       'If conversion stalls at 2% → A/B test messaging (cost/benefit focus), add more testimonials',
     ],
   },
+
+  // Pre-built strategy (used by Brand DNA modal + pipeline seed)
+  strategy: {
+    primaryAngle: 'Radical Transparency — expose beauty industry lies with data, not marketing',
+    supportingAngles: [
+      'Founder credibility (Dr. Marit, 15yr dermatologist)',
+      'Data-backed claims (every ingredient has published research)',
+      'Price-per-use reframe (€0.65/day < coffee)',
+      'Supply chain transparency (visit our Amsterdam lab)',
+    ],
+    toneDirection: 'Educational authority meets friendly skeptic — never talks down, always explains WHY',
+    visualDirection: 'Clean, data-first, real skin (no retouching), measurement tools visible, minimalist aesthetic',
+    targetPlatforms: ['Instagram', 'TikTok', 'Reddit', 'YouTube'],
+    awarenessLevel: 'Problem-Aware → Solution-Aware (they know they need clean skincare but don\'t trust anyone)',
+    hookTypes: ['Curiosity (What if your skincare is lying to you?)', 'Proof (15% vitamin C — and the data to prove it)', 'Identity (For the skeptic who reads every label)'],
+    avoidList: ['Miracle language', 'Influencer shills', 'Before/after without methodology', 'Buzzwords without data', 'Pink tax aesthetics'],
+  },
+
+  // Pre-built personas (used by Brand DNA modal + pipeline seed)
+  personas: [
+    {
+      name: 'Emma, The Conscious Skeptic',
+      age: '32-38',
+      role: 'Senior product manager at tech company (analytical, research-driven)',
+      corePain: 'Fear of being duped by greenwashing — has been burned by "clean" brands that weren\'t clean',
+      deepDesire: 'Confidence in beauty choices, aging gracefully without vanity, being the smart buyer who made the right call',
+      buyingTrigger: 'Bad skin day + reads favorable Reddit testimonial + remembers the brand from data-backed Instagram post',
+      objections: [
+        'Is natural really effective? (needs clinical data)',
+        'Am I paying for packaging? (needs price/use breakdown)',
+        'How do I know the ingredients are what you say? (needs supply chain proof)',
+        'Will this work for MY skin? (needs money-back guarantee)',
+      ],
+      platforms: 'Instagram (3hrs/day), Reddit r/SkincareAddiction (30min/day), YouTube (2x/week)',
+      identityShift: 'From "skeptic burned by marketing lies" → "someone who found a brand worthy of trust"',
+    },
+  ],
 };
 
 export const ALTERNATIVE_PRESET_SAAS = {
@@ -692,17 +729,45 @@ export const SIMPLETICS_PRESET = {
       vsIndie: 'Indie = authentic + limited. Simpletics = authentic + scalable. Indie is your friend. Simpletics is your friend who scaled without selling out.',
     },
 
-    founderPersona: 'Simpletics Founders — Testing-obsessed, Gen-Z native, tired of gatekeeping and lies. Transparent operators. Every claim backed by data. Every ingredient justified. Not influencers. Engineers.',
-    foundingStory: 'Started when founders noticed Based charging $50 for silicone-heavy formulas while claiming "natural". Drugstore brands destroying hair with alcohol. Indie brands authentic but unavailable. Decided to build what actually works + explain it clearly + price it fairly.',
-    firstProduct: 'Sea Salt Spray. R&D: tested 30+ salt sources. Chose pink himalayan (best crystal size + mineral profile). Tested 50+ formulations. Settled on 5-ingredient recipe because adding anything else was unnecessary. Took 2 years of testing to nail it.',
+    founderPersona: 'Dillon Latham (face of brand, ~1.9M TikTok followers) + Oli Maitland (co-founder, runs SocialSellr). Dillon is a Gen-Z creator who built a massive hair/grooming following. Wall Street Journal featured his hair — overwhelming demand led to creating his own line. Oli brought ecommerce + business expertise. Together: creator authenticity + business scale.',
+    foundingStory: 'Founded May 2024. Dillon Latham built 1.9M TikTok following creating hair content. WSJ featured his hair — fans demanded his exact routine. Partnered with Oli Maitland (ecommerce expert) to build Simpletics. Mission: high-quality products that protect from harsh chemicals while delivering exceptional results. Tested 30+ salt sources, 50+ formulations. Chose pink himalayan (best crystal size + mineral profile). Settled on 5-ingredient recipe because adding anything else was unnecessary.',
+    firstProduct: 'Sea Salt Spray. R&D: tested 30+ salt sources. Chose pink himalayan (best crystal size + mineral profile). Tested 50+ formulations. Settled on 5-ingredient recipe because adding anything else was unnecessary.',
     pivotalMilestones: [
-      'Year 1: Launched with clear positioning (not hype). 5 scent variants with distinct color identity. Focused on transparency (full ingredient breakdown on website).',
-      'Year 2: Hit 50k customers. 4.8-star reviews (real, unfiltered). Started seeing organic TikTok mentions (creators loved it, not paid).',
-      'Year 3: 200k+ customers. Featured in GQ, New York Times, FORTUNE (media picked up the "real formula" story). Expanded to Texture Powder + Hair Clay.',
-      'Year 4: 49% repurchase rate (industry-leading signal of trust). Competitors copying format but failing on transparency.',
+      'May 2024: Launched Simpletics with Vanilla Voyage Sea Salt Spray. 5 scent variants with distinct color identity.',
+      '6 months: 1 billion+ social views across TikTok. Best-selling sea salt spray on TikTok Shop.',
+      '2024: 200,000+ customers worldwide. Amazon\'s Choice designation. Expanded to Texture Powder + Hair Clay.',
+      '2025: Featured in GQ, New York Times, FORTUNE. 49% repurchase rate (industry-leading). Available on Amazon, Walmart, Target.',
+      'Now: 3 core SKUs (Spray $23.97, Powder $22.97, Clay $24.97). Subscribe & save program. Free spray on orders $45+.',
     ],
 
-    keyPeople: 'Simpletics Founders & Team — Not influencers, not marketing people. Scientists, product testers, customer obsessives. Respond to customer feedback. Update formulas based on data.',
+    keyPeople: 'Dillon Latham (co-founder, face of brand, 1.9M TikTok) | Oli Maitland (co-founder, ecommerce/SocialSellr) | Based in Miami, Florida.',
+
+    // Real social media presence (from research)
+    socialMediaPresence: {
+      tiktok: '@dillon.latham (1.9M followers) + @simpletics (brand account)',
+      instagram: '@simpletics',
+      snapchat: '@simpleticss',
+      twitter: '@Dillonxlatham',
+      tiktokShop: 'Best-selling sea salt spray on TikTok Shop',
+      hashtagReach: '#Simpletics: 1 billion+ views in first 6 months',
+    },
+
+    // Sales channels (from research)
+    salesChannels: {
+      primary: 'simpletics.com (Shopify DTC)',
+      marketplaces: ['Amazon (Amazon\'s Choice)', 'Walmart', 'Target (online)'],
+      social: 'TikTok Shop (best-seller category)',
+    },
+
+    // Growth metrics
+    growthMetrics: {
+      customersWorldwide: '200,000+',
+      unitsSold: '200,000+',
+      averageRating: '4.8 stars',
+      repurchaseRate: '49%',
+      socialViews: '1 billion+ in first 6 months',
+      mediaFeatures: ['GQ', 'New York Times', 'FORTUNE', 'Wall Street Journal'],
+    },
 
     narrativeArcs: [
       '"Too many products, too many steps" → "One spray, done" (value prop clarity)',

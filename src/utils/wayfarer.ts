@@ -52,7 +52,7 @@ export const wayfarerService = {
     }
   },
 
-  async research(query: string, numResults: number = 10): Promise<WayfarerResult> {
+  async research(query: string, numResults: number = 10, signal?: AbortSignal): Promise<WayfarerResult> {
     try {
       const resp = await fetch(`${getHost()}/research`, {
         method: 'POST',
@@ -63,6 +63,7 @@ export const wayfarerService = {
           concurrency: 20,
           extract_mode: 'article',
         }),
+        signal,
       });
 
       if (!resp.ok) {
@@ -72,50 +73,12 @@ export const wayfarerService = {
 
       return await resp.json();
     } catch (error) {
+      if (signal?.aborted) throw error;
       console.error('Wayfarer fetch error:', error);
       return emptyResult(query);
     }
   },
 
-  async batchResearch(
-    queries: Array<{ query: string; num_results?: number }>
-  ): Promise<WayfarerResult[]> {
-    try {
-      const resp = await fetch(`${getHost()}/batch`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          queries: queries.map((q) => ({
-            query: q.query,
-            num_results: q.num_results ?? 10,
-          })),
-          concurrency: 20,
-          extract_mode: 'article',
-        }),
-      });
-
-      if (!resp.ok) {
-        console.error(`Wayfarer batch error: ${resp.status}`);
-        return queries.map((q) => emptyResult(q.query));
-      }
-
-      const data = await resp.json();
-      return data.results;
-    } catch (error) {
-      console.error('Wayfarer batch error:', error);
-      return queries.map((q) => emptyResult(q.query));
-    }
-  },
-
-  // Drop-in replacement for searxngService.searchAndSummarize()
-  // Returns concatenated page text ready for LLM consumption
-  async searchAndScrape(query: string, maxResults: number = 10): Promise<string> {
-    const result = await this.research(query, maxResults);
-    if (result.text && result.text.length > 0) {
-      return result.text;
-    }
-    return `No web results found for: "${query}"`;
-  },
 };
 
 function emptyResult(query: string): WayfarerResult {
@@ -240,12 +203,12 @@ export const screenshotService = {
 
 import type { ProductPageAnalysis } from '../types';
 import { ollamaService } from './ollama';
-
-const VISION_MODEL = 'minicpm-v:8b';
-const GLM_MODEL = 'qwen3.5:9b';
+import { getModelForStage, getResearchModelConfig } from './modelConfig';
+// wayfarer uses researcherSynthesisModel for product page parsing
 
 async function parseProductPageVision(
-  visionOutput: string
+  visionOutput: string,
+  signal?: AbortSignal
 ): Promise<Partial<ProductPageAnalysis>> {
   // Parse vision output with GLM for structured extraction
   const extractionPrompt = `Parse this product page vision analysis into JSON.
@@ -272,7 +235,7 @@ Return ONLY valid JSON, no markdown, no code blocks.`;
     const response = await ollamaService.generateStream(
       extractionPrompt,
       'Extract product page data into structured JSON.',
-      { model: GLM_MODEL }
+      { model: getResearchModelConfig().researcherSynthesisModel, signal }
     );
 
     // Try to parse JSON from response
@@ -339,7 +302,7 @@ Format output with clear labels. Be thorough — combine what you see in the ima
       visionPrompt,
       'Extract product page information from screenshot and text data.',
       {
-        model: VISION_MODEL,
+        model: getModelForStage('vision'),
         images: [pageData.image_base64],
         signal,
       }
@@ -352,7 +315,7 @@ Format output with clear labels. Be thorough — combine what you see in the ima
     const structuredHint = pageData.page_text.structuredData?.length
       ? `\n\nJSON-LD structured data from page:\n${JSON.stringify(pageData.page_text.structuredData, null, 2).slice(0, 2000)}`
       : '';
-    const parsed = await parseProductPageVision(visionResponse + structuredHint);
+    const parsed = await parseProductPageVision(visionResponse + structuredHint, signal);
     Object.assign(result, parsed);
 
     const counts = [
@@ -814,26 +777,3 @@ function synthesizeCompetitorSummary(
   };
 }
 
-// Re-export as searxngService for backward compatibility during migration
-export const searxngService = {
-  async search(query: string) {
-    const result = await wayfarerService.research(query, 10);
-    return {
-      results: result.sources.map((s) => ({
-        title: s.title,
-        url: s.url,
-        content: s.snippet,
-      })),
-      query,
-      number_of_results: result.sources.length,
-    };
-  },
-
-  async searchAndSummarize(query: string, maxResults: number = 5): Promise<string> {
-    return wayfarerService.searchAndScrape(query, maxResults);
-  },
-
-  async healthCheck(): Promise<boolean> {
-    return wayfarerService.healthCheck();
-  },
-};

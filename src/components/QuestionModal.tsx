@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { UserQuestion } from '../types';
+import { useSoundEngine } from '../hooks/useSoundEngine';
 
 interface QuestionModalProps {
   question: UserQuestion;
@@ -10,11 +11,13 @@ interface QuestionModalProps {
 const OPTION_LETTERS = ['A', 'B', 'C'];
 
 export function QuestionModal({ question, onAnswer, isDarkMode }: QuestionModalProps) {
+  const { play } = useSoundEngine();
   const [selected, setSelected] = useState<number | null>(null);
   const [customText, setCustomText] = useState('');
   const [isCustom, setIsCustom] = useState(false);
 
   const handleSelect = (index: number) => {
+    play('select');
     setSelected(index);
     setIsCustom(false);
   };
@@ -148,7 +151,7 @@ export function QuestionModal({ question, onAnswer, isDarkMode }: QuestionModalP
               <div className="pl-7">
                 <textarea
                   value={customText}
-                  onChange={(e) => setCustomText(e.target.value)}
+                  onChange={(e) => { setCustomText(e.target.value); play('typing'); }}
                   placeholder="Type your direction here..."
                   autoFocus
                   rows={3}

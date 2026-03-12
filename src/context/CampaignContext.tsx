@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useCallback, useEffect, useRef } f
 import type { Campaign, Cycle, CampaignContextType, StageName, CycleMode, UserQuestion, UserQuestionAnswer } from '../types';
 import { useCycleLoop } from '../hooks/useCycleLoop';
 import { useStorage } from '../hooks/useStorage';
+import { storage } from '../utils/storage';
 
 const CampaignContext = createContext<CampaignContextType | undefined>(undefined);
 
@@ -43,16 +44,10 @@ export function CampaignProvider({ children }: { children: React.ReactNode }) {
 
   const {
     isRunning,
-    isPaused,
     currentCycle: cycleLoopCycle,
     error: cycleError,
-    reviewingStage,
-    reviewFindings,
     start,
-    pause,
-    resume,
     stop,
-    resumeAfterReview,
   } = useCycleLoop(askUser);
 
   const { saveCampaign, saveCycle, getCyclesByCampaign, getAllCampaigns } = useStorage();
@@ -149,18 +144,19 @@ export function CampaignProvider({ children }: { children: React.ReactNode }) {
     setCurrentCycle(null);
   }, [stop]);
 
+  // Reset research — delete all cycles for the current campaign, keep campaign itself
+  const resetResearch = useCallback(async () => {
+    if (!campaign) return;
+    stop();
+    await storage.deleteCyclesForCampaign(campaign.id);
+    setCycles([]);
+    setCurrentCycle(null);
+  }, [campaign, stop]);
+
   const startCycle = useCallback(async (mode: CycleMode = cycleMode) => {
     if (!campaign) return;
     await start(campaign, campaign.currentCycle, mode);
   }, [campaign, start, cycleMode]);
-
-  const pauseCycle = useCallback(() => {
-    pause();
-  }, [pause]);
-
-  const resumeCycle = useCallback(() => {
-    resume();
-  }, [resume]);
 
   const stopCycle = useCallback(() => {
     stop();
@@ -191,28 +187,37 @@ export function CampaignProvider({ children }: { children: React.ReactNode }) {
     loadCycles();
   }, [campaign, loadCycles]);
 
-  const value: CampaignContextType & { clearCampaign: () => void; stopCycle: () => void } = {
+  // Load an existing campaign by ID (used when selecting a preset that already has a campaign)
+  const loadCampaignById = useCallback(async (id: string) => {
+    const existing = await storage.getCampaign(id);
+    if (existing) {
+      stop();
+      setCampaign(existing);
+      const campaignCycles = await getCyclesByCampaign(existing.id);
+      setCycles(campaignCycles);
+      setCurrentCycle(null);
+    }
+  }, [stop, getCyclesByCampaign]);
+
+  const value: CampaignContextType & { clearCampaign: () => void; stopCycle: () => void; resetResearch: () => Promise<void>; loadCampaignById: (id: string) => Promise<void> } = {
     campaign,
     cycles,
     currentCycle,
     isLoaded,
-    systemStatus: isRunning ? 'running' : isPaused ? 'paused' : 'idle',
+    systemStatus: isRunning ? 'running' : 'idle',
     error: cycleError,
     pendingQuestion,
     questionAnswers,
     answerQuestion,
-    reviewingStage,
-    reviewFindings,
-    resumeAfterReview,
     createCampaign,
     updateCampaign,
     startCycle,
-    pauseCycle,
-    resumeCycle,
     stopCycle,
     completeStage,
     setCampaign,
     clearCampaign,
+    resetResearch,
+    loadCampaignById,
   };
 
   return (

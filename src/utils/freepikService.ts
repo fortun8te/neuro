@@ -29,6 +29,8 @@ export interface GenerateImageOptions {
   model?: string;
   aspectRatio?: string;  // '1:1' | '9:16' | '16:9' | '4:5' | etc.
   count?: number;  // images per generation (1 = single image, Freepik default can be 2)
+  style?: string;  // style tag: 'photo', 'illustration', '3d', etc. → prepended as #style in prompt
+  styleReference?: string;  // base64 image for Freepik Style slot (custom style)
   referenceImages?: string[];  // base64 images (data URLs or raw base64)
   signal?: AbortSignal;
   onProgress?: (message: string) => void;
@@ -48,6 +50,8 @@ export async function generateImage(
     model = 'nano-banana-2',
     aspectRatio = '1:1',
     count = 1,
+    style = '',
+    styleReference,
     referenceImages = [],
     signal,
     onProgress,
@@ -90,6 +94,8 @@ export async function generateImage(
         model,
         aspect_ratio: aspectRatio,
         count,
+        style,
+        style_reference: styleReference || '',
         reference_images: referenceImages,
       }),
       signal,
@@ -204,6 +210,76 @@ export async function restartFreepikBrowser(): Promise<boolean> {
 }
 
 /**
+ * Preload Freepik: open browser, navigate, upload refs, set model/aspect/style.
+ * Call this while LLM is thinking so generate() can skip setup.
+ * Fire-and-forget — streams progress but we don't need to wait for it.
+ */
+export async function preloadFreepik(opts: {
+  model?: string;
+  aspectRatio?: string;
+  count?: number;
+  style?: string;
+  styleReference?: string;
+  referenceImages?: string[];
+  signal?: AbortSignal;
+  onProgress?: (message: string) => void;
+}): Promise<boolean> {
+  const {
+    model = 'nano-banana-2',
+    aspectRatio = '1:1',
+    count = 1,
+    style = '',
+    styleReference,
+    referenceImages = [],
+    signal,
+    onProgress,
+  } = opts;
+
+  try {
+    const response = await fetch(`${FREEPIK_SERVER}/api/preload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        aspect_ratio: aspectRatio,
+        count,
+        style,
+        style_reference: styleReference || '',
+        reference_images: referenceImages,
+      }),
+      signal,
+    });
+
+    if (!response.ok || !response.body) return false;
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const event = JSON.parse(line);
+          if (event.type === 'progress') onProgress?.(event.message);
+          if (event.type === 'error') { onProgress?.(event.message); return false; }
+          if (event.type === 'complete') { onProgress?.(event.message); return true; }
+        } catch { /* skip */ }
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+
+/**
  * Nuclear kill — kills Playwright browser + orphaned Chrome processes via OS-level pkill.
  * Use when /api/restart doesn't actually stop the browser.
  */
@@ -212,6 +288,40 @@ export async function forceKillFreepik(): Promise<boolean> {
     const resp = await fetch(`${FREEPIK_SERVER}/api/force-kill`, {
       method: 'POST',
       signal: AbortSignal.timeout(10000),
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Get/set auto-minimize setting for the Freepik browser.
+ * When true, browser window is minimized on launch (default).
+ * When false, browser stays visible for debugging.
+ */
+export async function getFreepikAutoMinimize(): Promise<boolean> {
+  try {
+    const resp = await fetch(`${FREEPIK_SERVER}/api/status`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      return data.auto_minimize ?? true;
+    }
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+export async function setFreepikAutoMinimize(minimize: boolean): Promise<boolean> {
+  try {
+    const resp = await fetch(`${FREEPIK_SERVER}/api/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ auto_minimize: minimize }),
+      signal: AbortSignal.timeout(5000),
     });
     return resp.ok;
   } catch {

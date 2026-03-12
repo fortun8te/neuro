@@ -1,13 +1,16 @@
 import type { Cycle, StageName } from '../types';
 import { useTheme } from '../context/ThemeContext';
 
-const ALL_STAGES: { name: StageName; label: string }[] = [
-  { name: 'research', label: 'Research' },
-  { name: 'objections', label: 'Objections' },
-  { name: 'taste', label: 'Taste' },
-  { name: 'make', label: 'Make' },
-  { name: 'test', label: 'Test' },
-  { name: 'memories', label: 'Memories' },
+// Stage groups map to the 3 views
+const ALL_STAGES: { name: StageName; label: string; group: 'research' | 'make' | 'test' }[] = [
+  { name: 'research',    label: 'Research',    group: 'research' },
+  { name: 'brand-dna',   label: 'Brand DNA',   group: 'research' },
+  { name: 'persona-dna', label: 'Persona',     group: 'research' },
+  { name: 'angles',      label: 'Angles',      group: 'research' },
+  { name: 'strategy',    label: 'Strategy',    group: 'make' },
+  { name: 'copywriting', label: 'Copy',        group: 'make' },
+  { name: 'production',  label: 'Production',  group: 'make' },
+  { name: 'test',        label: 'Test',        group: 'test' },
 ];
 
 interface CycleTimelineProps {
@@ -26,8 +29,16 @@ export function CycleTimeline({ cycle, selectedStage, onSelectStage }: CycleTime
 
   // Filter stages based on mode
   const stages = cycle.mode === 'concepting'
-    ? ALL_STAGES.filter(s => ['research', 'objections', 'taste'].includes(s.name))
+    ? ALL_STAGES.filter(s => ['research', 'brand-dna', 'persona-dna', 'angles'].includes(s.name))
     : ALL_STAGES;
+
+  // Group separator positions
+  const groupBoundaries = new Set<number>();
+  for (let i = 1; i < stages.length; i++) {
+    if (stages[i].group !== stages[i - 1].group) {
+      groupBoundaries.add(i);
+    }
+  }
 
   return (
     <div className={`border ${borderClass} p-3`}>
@@ -46,10 +57,10 @@ export function CycleTimeline({ cycle, selectedStage, onSelectStage }: CycleTime
       </div>
 
       <div className="flex gap-px">
-        {stages.map((stage) => {
+        {stages.map((stage, idx) => {
           const stageData = cycle.stages[stage.name];
           const isActive = cycle.currentStage === stage.name;
-          const isComplete = stageData.status === 'complete';
+          const isComplete = stageData?.status === 'complete';
           const isViewing = selectedStage === stage.name;
           const canClick = isComplete || isActive;
 
@@ -72,13 +83,16 @@ export function CycleTimeline({ cycle, selectedStage, onSelectStage }: CycleTime
               : 'bg-zinc-100 text-zinc-400 border-t-2 border-t-transparent';
           }
 
+          // Add left margin at group boundaries for visual separation
+          const groupGap = groupBoundaries.has(idx) ? 'ml-1' : '';
+
           return (
             <button
               key={stage.name}
               onClick={() => canClick && onSelectStage?.(stage.name)}
-              className={`flex-1 py-2 px-2 text-center transition-all duration-150 ${stageClass} ${canClick ? 'cursor-pointer' : 'cursor-default'}`}
+              className={`flex-1 py-2 px-1.5 text-center transition-all duration-150 ${stageClass} ${canClick ? 'cursor-pointer' : 'cursor-default'} ${groupGap}`}
             >
-              <div className="font-mono text-[10px] font-semibold uppercase tracking-wider">{stage.label}</div>
+              <div className="font-mono text-[9px] font-semibold uppercase tracking-wider">{stage.label}</div>
             </button>
           );
         })}

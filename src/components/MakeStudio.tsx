@@ -19,12 +19,13 @@
  * All generated ads are persisted to IndexedDB and displayed in a gallery grid.
  */
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useCampaign } from '../context/CampaignContext';
 import { useTheme } from '../context/ThemeContext';
+import { useSoundEngine } from '../hooks/useSoundEngine';
 import { ollamaService } from '../utils/ollama';
-import { generateImage, checkServerStatus, restartFreepikBrowser, forceKillFreepik } from '../utils/freepikService';
+import { generateImage, checkServerStatus, preloadFreepik, restartFreepikBrowser, forceKillFreepik } from '../utils/freepikService';
 import { storage, type StoredImage, type VisionRound } from '../utils/storage';
 import { knowledge } from '../utils/knowledge';
 import { NomadIcon } from './NomadIcon';
@@ -37,6 +38,67 @@ import { pdfToImages } from '../utils/pdfUtils';
 import { AdLibraryBrowser } from './AdLibraryBrowser';
 import { getRelevantReferences, getCache, type AdDescription } from '../utils/adLibraryCache';
 import { loadAdImageBase64 } from '../utils/adLibraryLoader';
+import { ProductAngleCreator } from './ProductAngleCreator';
+import { DesireBoard } from './DesireBoard';
+import type { DeepDesire } from '../types';
+
+// ── DebouncedTextarea — prevents re-rendering 6000-line parent on every keystroke ──
+
+const DebouncedTextarea = React.memo(function DebouncedTextarea({
+  value,
+  onChange,
+  onKeyDown,
+  onPaste,
+  placeholder,
+  rows,
+  className,
+  textareaRef,
+  onSound,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onKeyDown?: React.KeyboardEventHandler<HTMLTextAreaElement>;
+  onPaste?: React.ClipboardEventHandler<HTMLTextAreaElement>;
+  placeholder?: string;
+  rows?: number;
+  className?: string;
+  textareaRef?: React.RefObject<HTMLTextAreaElement | null>;
+  onSound?: () => void;
+}) {
+  const [localValue, setLocalValue] = React.useState(value);
+  const debounceRef = React.useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // Sync from parent when parent value changes externally (e.g. cleared after generation)
+  React.useEffect(() => {
+    setLocalValue(value);
+  }, [value]);
+
+  const handleChange = React.useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const v = e.target.value;
+    setLocalValue(v); // Instant local update — no parent re-render
+    onSound?.();
+
+    // Debounce parent state sync — 150ms
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => onChange(v), 150);
+  }, [onChange, onSound]);
+
+  // Flush on unmount
+  React.useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
+
+  return (
+    <textarea
+      ref={textareaRef}
+      value={localValue}
+      onChange={handleChange}
+      onKeyDown={onKeyDown}
+      onPaste={onPaste}
+      placeholder={placeholder}
+      rows={rows}
+      className={className}
+    />
+  );
+});
 
 // ── Types ──
 
@@ -303,6 +365,7 @@ function highlightHtml(raw: string, isDark: boolean): string {
 export function MakeStudio() {
   const { campaign, currentCycle, updateCampaign, createCampaign, isLoaded: campaignIsLoaded } = useCampaign();
   const { theme } = useTheme();
+  const { play: playSound } = useSoundEngine();
 
   // Core state
   const [activeMode, setActiveMode] = useState<AdMode>('static');
@@ -317,6 +380,11 @@ export function MakeStudio() {
   const [showSettings, setShowSettings] = useState(false);
   const [_serverWarning, setServerWarning] = useState('');
   const [freepikReady, setFreepikReady] = useState<boolean | null>(null); // null = unchecked
+
+  // Desire-targeted generation
+  const targetDesireRef = useRef<DeepDesire | null>(null);
+  const [generatingDesireId, setGeneratingDesireId] = useState<string | null>(null);
+  const [desireFilter, _setDesireFilter] = useState<string | null>(null);
 
   // Image gallery state (persisted in IndexedDB)
   const [storedImages, setStoredImages] = useState<StoredImage[]>([]);
@@ -466,6 +534,15 @@ export function MakeStudio() {
 
   // Image model settings (always visible — final output is always image model)
   const [imageModel, setImageModel] = useState('nano-banana-2');
+
+  // Style settings for Freepik
+  const [imageStyle, setImageStyle] = useState(() => localStorage.getItem('make_image_style') || '');
+  const [customStyleImage, setCustomStyleImage] = useState<string>(() => localStorage.getItem('make_custom_style_image') || '');
+  const [customStyleName, setCustomStyleName] = useState(() => localStorage.getItem('make_custom_style_name') || 'My Style');
+  // Saved custom styles (persisted array of {name, base64})
+  const [savedCustomStyles, setSavedCustomStyles] = useState<{name: string; base64: string}[]>(() => {
+    try { return JSON.parse(localStorage.getItem('make_saved_custom_styles') || '[]'); } catch { return []; }
+  });
 
   // Pipeline toggles (LLM is master — others depend on it)
   const [llmEnabled, setLlmEnabled] = useState(true);
@@ -902,8 +979,11 @@ export function MakeStudio() {
     const files = Array.from(e.dataTransfer.files).filter(
       f => f.type.startsWith('image/') || f.type === 'application/pdf'
     );
-    if (files.length > 0) processUploadedFiles(files);
-  }, [processUploadedFiles]);
+    if (files.length > 0) {
+      playSound('drop');
+      processUploadedFiles(files);
+    }
+  }, [processUploadedFiles, playSound]);
 
   const handleImageDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -987,7 +1067,7 @@ export function MakeStudio() {
   // ── Mode definitions ──
   const modes: { key: AdMode; label: string; icon: string }[] = [
     { key: 'static', label: 'Image', icon: '◻' },
-    { key: 'funnel', label: 'Funnel', icon: '▽' },
+    { key: 'funnel', label: 'Desires', icon: '◎' },
     { key: 'custom', label: 'See more', icon: '✦' },
   ];
 
@@ -1266,9 +1346,9 @@ COPY: Sound like a real DTC brand. Short, punchy, specific. Not generic marketin
     if (rf.persona) {
       parts.push(`AVATAR: ${typeof rf.persona === 'string' ? rf.persona : JSON.stringify(rf.persona)}`);
     }
-    // Taste output
-    if (currentCycle.stages?.taste?.status === 'complete' && currentCycle.stages.taste.agentOutput) {
-      parts.push(`CREATIVE DIRECTION:\n${currentCycle.stages.taste.agentOutput.slice(0, 500)}`);
+    // Copywriting output (creative direction)
+    if (currentCycle.stages?.copywriting?.status === 'complete' && currentCycle.stages.copywriting.agentOutput) {
+      parts.push(`COPY DIRECTION:\n${currentCycle.stages.copywriting.agentOutput.slice(0, 500)}`);
     }
     // Competitor ad intelligence
     if (rf.competitorAds?.industryPatterns?.unusedAngles?.length) {
@@ -1423,6 +1503,44 @@ Style product images with: object-fit: contain (NEVER cover — preserve transpa
     await storage.saveImage(image);
     setStoredImages(prev => [image, ...prev]);
   }, []);
+
+  // ── Desire-targeted generation ──
+  const buildDesireContext = useCallback((desire: DeepDesire): string => {
+    const layers = desire.layers
+      ?.map(l => `  Level ${l.level}: ${l.description}`)
+      .join('\n') || '';
+    return `--- TARGET DESIRE (focus ALL creative around this) ---
+SURFACE PROBLEM: ${desire.surfaceProblem}
+DESIRE LAYERS:
+${layers}
+DEEPEST DESIRE: "${desire.deepestDesire}"
+INTENSITY: ${desire.desireIntensity.toUpperCase()}
+TURNING POINT: ${desire.turningPoint}
+AMPLIFIED TYPE: ${desire.amplifiedDesireType}
+TARGET SEGMENT: ${desire.targetSegment}
+
+YOUR AD MUST:
+- Address this specific desire in the headline/hook
+- Show the transformation from pain to desire fulfilled
+- Use language that resonates with the "${desire.targetSegment}" segment
+- Match the ${desire.desireIntensity} intensity level in urgency/tone
+`;
+  }, []);
+
+  // handleGenerateForDesire is defined after handleGenerate via ref pattern
+  const handleGenerateRef = useRef<() => void>(() => {});
+  const handleGenerateForDesire = useCallback((desire: DeepDesire, count: number) => {
+    if (isGenerating) return;
+    targetDesireRef.current = desire;
+    setGeneratingDesireId(desire.id);
+    setBatchCount(count);
+    // Switch to static mode to show gallery results, then trigger generation
+    setActiveMode('static');
+    // Small delay to let mode switch render before generation starts
+    setTimeout(() => {
+      handleGenerateRef.current();
+    }, 100);
+  }, [isGenerating]);
 
   // ── Get cached ad library references (pre-analyzed, instant) ──
   const getAdLibraryContext = useCallback(async (): Promise<string> => {
@@ -1747,13 +1865,18 @@ ${templateHtml}
 Maintain this layout structure but create fresh content.`
         : '';
 
+      // Desire-targeted context (overrides generic research if targeting a specific desire)
+      const desireContext = targetDesireRef.current
+        ? buildDesireContext(targetDesireRef.current)
+        : '';
+
       // Build the full prompt
       const adPrompt = `Design a ${aspectRatio} (${dim.w}x${dim.h}px) HTML ad creative.
 
 USER BRIEF: ${prompt || 'Create a high-performance paid social ad.'}
 
 ${fullPreset ? `--- BRAND BIBLE ---\n${fullPreset}\n` : presetContext ? `BRAND:\n${presetContext}\n` : ''}
-${researchContext ? `--- CUSTOMER RESEARCH ---\n${researchContext}\n` : ''}
+${desireContext ? `${desireContext}\n` : researchContext ? `--- CUSTOMER RESEARCH ---\n${researchContext}\n` : ''}
 ${refInstruction}${brandRules}
 ${productPlaceholders}${variationInstruction}${templateInstruction}
 
@@ -1844,6 +1967,8 @@ Create a complete, production-ready HTML ad. This screenshot IS the final delive
             strategyLabel: label,
             generationDurationMs: Date.now() - adStartTime,
             inspiredByRef: inspiredBy,
+            desireId: targetDesireRef.current?.id,
+            desireLabel: targetDesireRef.current?.deepestDesire?.slice(0, 60),
           };
           await persistImage(stored);
 
@@ -2352,6 +2477,8 @@ RULES:
       model: imageModel,
       aspectRatio,
       count: candidateCount,
+      style: imageStyle,
+      styleReference: customStyleImage || undefined,
       referenceImages: cleanRefs,
       signal,
       onProgress: (msg) => setGenerationProgress(msg),
@@ -2563,6 +2690,8 @@ Best product placement and no competitor branding visible.`;
             model: imageModel,
             aspectRatio,
             count: 1,
+            style: imageStyle,
+            styleReference: customStyleImage || undefined,
             referenceImages: cleanRefs,
             signal,
             onProgress: (msg) => setGenerationProgress(msg),
@@ -2707,6 +2836,8 @@ Best product placement and no competitor branding visible.`;
             model: imageModel,
             aspectRatio: variant.aspectRatio,
             count: 1,
+            style: imageStyle,
+            styleReference: customStyleImage || undefined,
             referenceImages: allRefs,
             signal,
             onProgress: (msg) => setRenderProgress(`[${renderIdx}/${totalImages}] ${msg}`),
@@ -2885,6 +3016,8 @@ INSTRUCTIONS:
           model: 'nano-banana-2',
           aspectRatio: selectedImage.aspectRatio || '9:16',
           count: 1,
+          style: imageStyle,
+          styleReference: customStyleImage || undefined,
           referenceImages: [currentImageBase64],
           signal: abortController.signal,
           onProgress: (msg) => setRefineProgress(msg),
@@ -3007,6 +3140,8 @@ INSTRUCTIONS:
         model: imageModel,
         aspectRatio,
         count: batchCount,  // Pass batch count to Freepik natively
+        style: imageStyle,
+        styleReference: customStyleImage || undefined,
         referenceImages: allRefBase64s,
         signal,
         onProgress: (msg) => setGenerationProgress(msg),
@@ -3050,10 +3185,20 @@ INSTRUCTIONS:
     // ── PATH 5: LLM only — enhance/refine the user prompt (JSON output) ──
     else if (llmEnabled && !presetEnabled && !researchEnabled && !htmlEnabled) {
       setLlmOutput('');
-      setGenerationProgress(`Thinking + warming up Freepik...`);
+      setGenerationProgress(`Thinking + preloading Freepik...`);
 
-      // Start Freepik warmup IN PARALLEL with LLM thinking
-      const freepikWarmup = checkServerStatus().then(ok => {
+      // Preload Freepik IN PARALLEL with LLM thinking (uploads refs while LLM streams)
+      const allRefBase64s = getCleanBase64s(uploadedImages);
+      const freepikWarmup = preloadFreepik({
+        model: imageModel,
+        aspectRatio,
+        count: 1,
+        style: imageStyle,
+        styleReference: customStyleImage || undefined,
+        referenceImages: allRefBase64s,
+        signal,
+        onProgress: (msg) => setGenerationProgress(`LLM thinking... | ${msg}`),
+      }).then(ok => {
         setFreepikReady(ok);
         return ok;
       });
@@ -3103,6 +3248,8 @@ Output a single JSON object. Every creative choice must have strategic intent �
           model: imageModel,
           aspectRatio,
           count: 1,
+          style: imageStyle,
+          styleReference: customStyleImage || undefined,
           referenceImages: allRefBase64s,
           signal,
           onProgress: (msg) => setGenerationProgress(msg),
@@ -3156,8 +3303,18 @@ Output a single JSON object. Every creative choice must have strategic intent �
         return false;
       }
 
-      // Start Freepik warmup IN PARALLEL with LLM thinking
-      const freepikWarmup = checkServerStatus().then(ok => {
+      // Preload Freepik IN PARALLEL with LLM thinking
+      const allRefBase64s_preload = getCleanBase64s(uploadedImages);
+      const freepikWarmup = preloadFreepik({
+        model: imageModel,
+        aspectRatio,
+        count: 1,
+        style: imageStyle,
+        styleReference: customStyleImage || undefined,
+        referenceImages: allRefBase64s_preload,
+        signal,
+        onProgress: (msg) => setGenerationProgress(`LLM thinking... | ${msg}`),
+      }).then(ok => {
         setFreepikReady(ok);
         return ok;
       });
@@ -3210,6 +3367,8 @@ Use the brand data to pick the strongest angle. Match the brand's visual identit
           model: imageModel,
           aspectRatio,
           count: 1,
+          style: imageStyle,
+          styleReference: customStyleImage || undefined,
           referenceImages: allRefBase64s,
           signal,
           onProgress: (msg) => setGenerationProgress(msg),
@@ -3364,6 +3523,8 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
           model: imageModel,
           aspectRatio,
           count: 1,
+          style: imageStyle,
+          styleReference: customStyleImage || undefined,
           referenceImages: allRefs,
           signal,
           onProgress: (msg) => setGenerationProgress(msg),
@@ -3415,11 +3576,21 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
 
     // ── PATH 2: Research → LLM prompt (JSON) → Image model ──
     else if (llmEnabled && researchEnabled && !htmlEnabled) {
-      setGenerationProgress('Thinking + warming up Freepik...');
+      setGenerationProgress('Thinking + preloading Freepik...');
       setLlmOutput('');
 
-      // Start Freepik warmup IN PARALLEL with LLM thinking
-      const freepikWarmup = checkServerStatus().then(ok => {
+      // Preload Freepik IN PARALLEL with LLM thinking
+      const allRefBase64s_preload = getCleanBase64s(uploadedImages);
+      const freepikWarmup = preloadFreepik({
+        model: imageModel,
+        aspectRatio,
+        count: 1,
+        style: imageStyle,
+        styleReference: customStyleImage || undefined,
+        referenceImages: allRefBase64s_preload,
+        signal,
+        onProgress: (msg) => setGenerationProgress(`LLM thinking... | ${msg}`),
+      }).then(ok => {
         setFreepikReady(ok);
         return ok;
       });
@@ -3474,6 +3645,8 @@ The research tells you WHAT to say. Your ad expertise tells you HOW to say it vi
           model: imageModel,
           aspectRatio,
           count: 1,
+          style: imageStyle,
+          styleReference: customStyleImage || undefined,
           referenceImages: allRefBase64s,
           signal,
           onProgress: (msg) => setGenerationProgress(msg),
@@ -3631,6 +3804,8 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
           model: imageModel,
           aspectRatio,
           count: 1,
+          style: imageStyle,
+          styleReference: customStyleImage || undefined,
           referenceImages: allRefs,
           signal,
           onProgress: (msg) => setGenerationProgress(msg),
@@ -3690,6 +3865,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
     if (isGenerating || isRendering) return;
     // Non-LLM non-refcopy mode requires a prompt
     if (!llmEnabled && !referenceCopyEnabled && !prompt.trim()) return;
+    playSound('launch');
 
     // Validation: Check for missing critical inputs
     const warnings: string[] = [];
@@ -3842,11 +4018,17 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
         setGeneratingForPrompt(null);
         setGenerationProgress('');
       }
+      targetDesireRef.current = null;
+      setGeneratingDesireId(null);
       setBatchCurrent(0);
     }
   }, [prompt, isGenerating, batchCount, variantCount, imageModel, llmEnabled, htmlEnabled, generateSingleImage, generateHtmlAds, htmlVariants.length, referenceCopyEnabled, referenceCopyTarget, generateReferenceCopy, researchReadinessCheck, researchEnabled, currentCycle]);
 
+  // Keep ref in sync so DesireBoard can trigger generation
+  handleGenerateRef.current = handleGenerate;
+
   const handleCancelGeneration = useCallback(() => {
+    playSound('stop');
     // Abort generation pipeline
     if (generationAbortRef.current) {
       generationAbortRef.current.abort();
@@ -3866,11 +4048,16 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
     setIsGenerating(false);
     setIsRendering(false);
     setGeneratingForPrompt(null);
+    targetDesireRef.current = null;
+    setGeneratingDesireId(null);
     setGenerationProgress('Stopped — killing Freepik browser...');
     setGenerationPhase('idle');
     setCurrentHtmlPreview('');
     setTimeout(() => setGenerationProgress(''), 2500);
   }, []);
+
+  // ── Stable sound callback for DebouncedTextarea ──
+  const handleTypingSound = useCallback(() => playSound('typing'), [playSound]);
 
   // ── Keyboard shortcut ──
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -3882,7 +4069,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
 
   // ── Research status ──
   const researchComplete = currentCycle?.stages?.research?.status === 'complete';
-  const tasteComplete = currentCycle?.stages?.taste?.status === 'complete';
+  const copyComplete = currentCycle?.stages?.copywriting?.status === 'complete';
   const hasResearchData = !!(currentCycle?.researchFindings);
   const hasContext = researchComplete || campaign?.presetData;
 
@@ -3946,6 +4133,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
   const filteredImages = storedImages
     .filter(img => !favoriteFilter || img.favorite)
     .filter(img => !pipelineFilter || img.pipeline === pipelineFilter)
+    .filter(img => !desireFilter || img.desireId === desireFilter)
     .sort((a, b) => {
       if (sortBy === 'favorites') return (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0) || b.timestamp - a.timestamp;
       if (sortBy === 'oldest') return a.timestamp - b.timestamp;
@@ -4109,8 +4297,39 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
             </div>
           )}
 
+          {/* ── Desire Board (Desires tab) ── */}
+          {activeMode === 'funnel' && (
+            <DesireBoard
+              theme={theme}
+              researchFindings={currentCycle?.researchFindings || null}
+              persona={currentCycle?.researchFindings?.persona || null}
+              storedImages={storedImages}
+              campaign={campaign}
+              onGenerateForDesire={handleGenerateForDesire}
+              onImageClick={setSelectedImage}
+              onSwitchToResearch={() => {
+                // Navigate to research tab via AppShell (parent)
+                const event = new CustomEvent('nomad-switch-view', { detail: 'research' });
+                window.dispatchEvent(event);
+              }}
+              isGenerating={isGenerating}
+              generatingDesireId={generatingDesireId}
+            />
+          )}
+
+          {/* ── Product Angle Creator (See more tab) ── */}
+          {activeMode === 'custom' && (
+            <ProductAngleCreator
+              theme={theme}
+              onSaveToGallery={persistImage}
+              onUseAsReference={(b64) => addReferenceImages([b64])}
+              campaignId={campaign?.id}
+              campaignBrand={campaign?.brand}
+            />
+          )}
+
           {/* ── HTML Ad Variants Gallery with Selection ── */}
-          {htmlVariants.length > 0 && (
+          {activeMode === 'static' && htmlVariants.length > 0 && (
             <div className={`mb-6 rounded-2xl border p-4 ${theme === 'dark' ? 'bg-zinc-800/50 border-zinc-700/50' : 'bg-white border-zinc-200/80 shadow-sm'}`}>
               {/* Action bar */}
               <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
@@ -4409,7 +4628,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
           )}
 
           {/* ── Image Gallery ── */}
-          {storedImages.length > 0 && (
+          {activeMode === 'static' && storedImages.length > 0 && (
             <div>
               {/* Header + filter */}
               <div className="flex items-center justify-between mb-4">
@@ -4863,7 +5082,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
           )}
 
           {/* ── Generating State (big loader when no variants yet and code drawer closed) ── */}
-          {isGenerating && htmlEnabled && llmEnabled && htmlVariants.length === 0 && !codeDrawerOpen && (
+          {activeMode === 'static' && isGenerating && htmlEnabled && llmEnabled && htmlVariants.length === 0 && !codeDrawerOpen && (
             <div className="flex flex-col items-center justify-center min-h-[400px] gap-5">
               <OrbitalLoader
                 size={160}
@@ -4887,7 +5106,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
           )}
 
           {/* ── Empty State ── */}
-          {!isGenerating && storedImages.length === 0 && (
+          {activeMode === 'static' && !isGenerating && storedImages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-center min-h-[400px]">
               <div className={`w-20 h-20 rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06),0_1px_3px_rgba(0,0,0,0.04)] border border-dashed flex items-center justify-center ${theme === 'dark' ? 'bg-zinc-800 border-zinc-700' : 'bg-white border-zinc-200'}`}>
                 <NomadIcon size={32} className={theme === 'dark' ? 'text-zinc-600' : 'text-zinc-300'} />
@@ -4911,7 +5130,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
           {modes.map((mode) => (
             <button
               key={mode.key}
-              onClick={() => setActiveMode(mode.key)}
+              onClick={() => { if (activeMode !== mode.key) playSound('navigate'); setActiveMode(mode.key); }}
               className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
                 activeMode === mode.key
                   ? theme === 'dark'
@@ -4928,8 +5147,8 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
           ))}
         </div>
 
-        {/* Prompt Input Area */}
-        <div className="max-w-[960px] mx-auto">
+        {/* Prompt Input Area (hidden on Desires tab — generation happens through desire cards) */}
+        {activeMode !== 'funnel' && <div className="max-w-[960px] mx-auto">
           {/* Reference Copy target indicator + style brief */}
           {referenceCopyEnabled && (
             <div className={`mb-2 rounded-xl border ${
@@ -5006,10 +5225,11 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
           )}
 
           <div className={`rounded-2xl border overflow-hidden transition-shadow duration-200 ${theme === 'dark' ? 'bg-zinc-800/60 border-zinc-700/60 shadow-[0_1px_3px_rgba(0,0,0,0.15),0_2px_8px_rgba(0,0,0,0.08)] focus-within:shadow-[0_2px_6px_rgba(0,0,0,0.2),0_4px_12px_rgba(0,0,0,0.12)]' : 'bg-zinc-50 border-zinc-200/80 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_2px_8px_rgba(0,0,0,0.03)] focus-within:shadow-[0_2px_6px_rgba(0,0,0,0.06),0_4px_12px_rgba(0,0,0,0.04)]'}`} onDragOver={handleImageDragOver} onDrop={handleImageDrop}>
-            <textarea
-              ref={promptRef}
+            <DebouncedTextarea
+              textareaRef={promptRef}
               value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
+              onChange={setPrompt}
+              onSound={handleTypingSound}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
               placeholder={!llmEnabled
@@ -5138,7 +5358,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                     Research
                   </span>
                 )}
-                {researchEnabled && tasteComplete && (
+                {researchEnabled && copyComplete && (
                   <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium whitespace-nowrap ${theme === 'dark' ? 'bg-violet-900/30 text-violet-400' : 'bg-violet-50 text-violet-700'}`}>
                     <span className="w-1.5 h-1.5 rounded-full bg-violet-500 flex-shrink-0" />
                     Taste
@@ -5298,6 +5518,107 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                                 }`}
                               >{label}</button>
                             ))}
+                          </div>
+
+                          {/* Style */}
+                          <div>
+                            <p className={`text-[9px] uppercase tracking-widest font-bold mb-1.5 ${theme === 'dark' ? 'text-zinc-600' : 'text-zinc-400'}`}>Style</p>
+                            <div className="flex flex-wrap gap-1">
+                              {[
+                                ['', 'None'],
+                                ['photo', 'Photo'],
+                                ['digital-art', 'Digital Art'],
+                                ['3d', '3D'],
+                                ['painting', 'Painting'],
+                                ['anime', 'Anime'],
+                                ['cinematic', 'Cinematic'],
+                                ['sketch', 'Sketch'],
+                              ].map(([val, label]) => (
+                                <button key={val} onClick={() => { setImageStyle(val); setCustomStyleImage(''); localStorage.setItem('make_image_style', val); localStorage.removeItem('make_custom_style_image'); }}
+                                  className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all ${
+                                    imageStyle === val && !customStyleImage
+                                      ? 'bg-zinc-900 text-white' + (theme === 'dark' ? ' !bg-zinc-200 !text-zinc-900' : '')
+                                      : theme === 'dark' ? 'text-zinc-600 hover:text-zinc-300' : 'text-zinc-400 hover:text-zinc-600'
+                                  }`}
+                                >{label}</button>
+                              ))}
+                            </div>
+
+                            {/* Custom styles */}
+                            {savedCustomStyles.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1.5">
+                                {savedCustomStyles.map((cs, csIdx) => (
+                                  <button key={csIdx}
+                                    onClick={() => {
+                                      setImageStyle('');
+                                      setCustomStyleImage(cs.base64);
+                                      setCustomStyleName(cs.name);
+                                      localStorage.setItem('make_image_style', '');
+                                      localStorage.setItem('make_custom_style_image', cs.base64);
+                                      localStorage.setItem('make_custom_style_name', cs.name);
+                                    }}
+                                    className={`group relative px-2 py-0.5 rounded text-[10px] font-medium transition-all border ${
+                                      customStyleImage === cs.base64
+                                        ? 'bg-purple-500/20 border-purple-400/40 text-purple-400'
+                                        : theme === 'dark' ? 'border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600' : 'border-zinc-200 text-zinc-400 hover:text-zinc-600'
+                                    }`}
+                                  >
+                                    {cs.name}
+                                    <span
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const updated = savedCustomStyles.filter((_, i) => i !== csIdx);
+                                        setSavedCustomStyles(updated);
+                                        localStorage.setItem('make_saved_custom_styles', JSON.stringify(updated));
+                                        if (customStyleImage === cs.base64) {
+                                          setCustomStyleImage('');
+                                          localStorage.removeItem('make_custom_style_image');
+                                        }
+                                      }}
+                                      className="ml-1 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 cursor-pointer"
+                                    >x</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Add custom style */}
+                            <div className="mt-2">
+                              <label className={`flex items-center gap-1.5 cursor-pointer text-[10px] ${theme === 'dark' ? 'text-zinc-500 hover:text-zinc-300' : 'text-zinc-400 hover:text-zinc-600'}`}>
+                                <span>+ Custom style from image</span>
+                                <input type="file" accept="image/*" className="hidden"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+                                    const reader = new FileReader();
+                                    reader.onload = () => {
+                                      const b64 = reader.result as string;
+                                      const name = window.prompt('Style name:', file.name.replace(/\.[^.]+$/, '')) || file.name.replace(/\.[^.]+$/, '');
+                                      // Save to custom styles list
+                                      const newStyle = { name, base64: b64 };
+                                      const updated = [...savedCustomStyles, newStyle];
+                                      setSavedCustomStyles(updated);
+                                      localStorage.setItem('make_saved_custom_styles', JSON.stringify(updated));
+                                      // Auto-select it
+                                      setImageStyle('');
+                                      setCustomStyleImage(b64);
+                                      setCustomStyleName(name);
+                                      localStorage.setItem('make_image_style', '');
+                                      localStorage.setItem('make_custom_style_image', b64);
+                                      localStorage.setItem('make_custom_style_name', name);
+                                    };
+                                    reader.readAsDataURL(file);
+                                    e.target.value = ''; // Reset input
+                                  }}
+                                />
+                              </label>
+                              {customStyleImage && (
+                                <div className="mt-1.5 flex items-center gap-2">
+                                  <img src={customStyleImage} alt="Style ref" className="w-8 h-8 rounded object-cover border border-purple-400/30" />
+                                  <span className={`text-[10px] ${theme === 'dark' ? 'text-purple-400' : 'text-purple-600'}`}>{customStyleName}</span>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
 
@@ -5589,7 +5910,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
           <p className={`text-center text-[11px] mt-2 ${theme === 'dark' ? 'text-zinc-600' : 'text-zinc-400'}`}>
             ⌘ + Enter to generate
           </p>
-        </div>
+        </div>}
       </div>
 
       {/* ── Detail Modal (replaces sidebar) ── */}
@@ -5920,7 +6241,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                     <textarea
                       ref={refineInputRef}
                       value={refinePrompt}
-                      onChange={(e) => setRefinePrompt(e.target.value)}
+                      onChange={(e) => { setRefinePrompt(e.target.value); playSound('typing'); }}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();

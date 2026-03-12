@@ -3,6 +3,7 @@
 
 import { ollamaService } from './ollama';
 import { screenshotService, type ScreenshotResult } from './wayfarer';
+import { recordResearchSource } from './researchAudit';
 import type { Campaign, VisualAnalysis, VisualFindings } from '../types';
 
 const VISION_MODEL = 'minicpm-v:8b';
@@ -216,6 +217,15 @@ export const visualScoutAgent = {
 
     const validScreenshots = screenshots.filter(s => s.image_base64 && !s.error);
     onChunk?.(`[Visual Scout] Captured ${validScreenshots.length}/${urls.length} screenshots\n`);
+
+    // Record visual sources in audit trail
+    validScreenshots.forEach((ss) => {
+      recordResearchSource({
+        url: ss.url,
+        query: 'Visual Scout — Competitor Analysis',
+        source: 'visual',
+      });
+    });
 
     if (validScreenshots.length === 0) {
       onChunk?.(`[Visual Scout] No screenshots captured — skipping visual analysis\n`);

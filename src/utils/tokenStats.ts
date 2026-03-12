@@ -34,6 +34,10 @@ export interface TokenInfo {
   isGenerating: boolean;
   /** Timestamp of startCall() — lets UI compute "loading for Xs" */
   callStartTime: number | null;
+  /** Model currently being called (e.g. "qwen3.5:9b") */
+  activeModel: string;
+  /** Total number of Ollama calls made this session */
+  callCount: number;
 }
 
 // ─── Internal mutable state ───
@@ -46,6 +50,8 @@ const state: TokenInfo = {
   isThinking: false,
   isGenerating: false,
   callStartTime: null,
+  activeModel: '',
+  callCount: 0,
 };
 
 /** Time of first response token — for live t/s computation */
@@ -128,7 +134,7 @@ export const tokenTracker = {
   },
 
   /** Call at the start of each generateStream request */
-  startCall() {
+  startCall(modelName?: string) {
     state.liveTokens = 0;
     state.responseTokens = 0;
     state.tokensPerSec = 0;
@@ -136,6 +142,8 @@ export const tokenTracker = {
     state.isThinking = false;
     state.isGenerating = false;
     state.callStartTime = Date.now();
+    state.activeModel = modelName || '';
+    state.callCount++;
     firstResponseTokenTime = null;
     notifyNow(); // Immediate — important state change
 
@@ -204,6 +212,8 @@ export const tokenTracker = {
     state.isThinking = false;
     state.isGenerating = false;
     state.callStartTime = null;
+    state.activeModel = '';
+    state.callCount = 0;
     firstResponseTokenTime = null;
     notifyNow();
   },

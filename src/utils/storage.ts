@@ -30,6 +30,8 @@ export interface StoredImage {
   sourceHtmlId?: string;        // Links rendered Freepik image back to its HTML draft
   visionFeedback?: string;      // Vision QA feedback from MiniCPM brand compliance check
   visionRounds?: VisionRound[]; // Full round-by-round history (persistent, browsable after generation)
+  desireId?: string;            // Links ad to a specific DeepDesire
+  desireLabel?: string;         // Denormalized desire label for display
 }
 
 /** One round of the vision QA loop */
@@ -132,6 +134,16 @@ export const storage = {
   async getImageCount(): Promise<number> {
     const images = (await get(GENERATED_IMAGES_KEY)) || {};
     return Object.keys(images).length;
+  },
+
+  // Delete all cycles for a specific campaign (reset research)
+  async deleteCyclesForCampaign(campaignId: string): Promise<void> {
+    const cycles = (await get(CYCLES_KEY)) || {};
+    const toDelete = Object.keys(cycles).filter(
+      (id) => (cycles[id] as Cycle).campaignId === campaignId
+    );
+    for (const id of toDelete) delete cycles[id];
+    await set(CYCLES_KEY, cycles);
   },
 
   // Clear all data

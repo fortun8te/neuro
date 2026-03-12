@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../context/ThemeContext';
+import { useSoundEngine } from '../hooks/useSoundEngine';
 import { ollamaService } from '../utils/ollama';
-import { MODEL_CONFIG } from '../utils/modelConfig';
+import { MODEL_CONFIG, getResearchModelConfig } from '../utils/modelConfig';
 import { analyzeAll as analyzeAdLibrary, getCache as getAdLibraryCache, clearCache as clearAdLibraryCache, type AdLibraryCache } from '../utils/adLibraryCache';
 
 interface SettingsModalProps {
@@ -210,7 +211,10 @@ function OllamaModelControl({ isDarkMode }: { isDarkMode: boolean }) {
 
 export function SettingsModal({ isOpen, onClose, isRunning }: SettingsModalProps) {
   const { isDarkMode, toggleTheme } = useTheme();
+  const { play } = useSoundEngine();
   const [tab, setTab] = useState<'settings' | 'debug'>('settings');
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [soundVolume, setSoundVolume] = useState(50);
   const [ollamaHost, setOllamaHost] = useState('');
   const [wayfarerHost, setWayfarerHost] = useState('');
   const [maxResearchTime, setMaxResearchTime] = useState('10');
@@ -225,6 +229,12 @@ export function SettingsModal({ isOpen, onClose, isRunning }: SettingsModalProps
   const [adCacheRunning, setAdCacheRunning] = useState(false);
   const [adCacheInfo, setAdCacheInfo] = useState<AdLibraryCache | null>(null);
   const adCacheAbortRef = useRef<AbortController | null>(null);
+  // Research model settings
+  const [researchModel, setResearchModel] = useState('');
+  const [compressionModel, setCompressionModel] = useState('');
+  const [researchTemp, setResearchTemp] = useState(0.7);
+  const [researchMaxCtx, setResearchMaxCtx] = useState(8192);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [debugTests, setDebugTests] = useState<DebugTest[]>([
     { name: 'Ollama Connection', status: 'pending', message: 'Not tested' },
     { name: 'Ollama Models', status: 'pending', message: 'Not tested' },
@@ -232,6 +242,12 @@ export function SettingsModal({ isOpen, onClose, isRunning }: SettingsModalProps
   ]);
 
   useEffect(() => {
+    // Sound settings
+    const savedSound = localStorage.getItem('sound_enabled');
+    setSoundEnabled(savedSound !== 'false');
+    const savedVol = localStorage.getItem('sound_volume');
+    setSoundVolume(savedVol ? Math.round(parseFloat(savedVol) * 100) : 50);
+
     setOllamaHost('localhost:8889/ollama → 100.74.135.83:11435');
     localStorage.removeItem('ollama_host');
     const savedWayfarer = localStorage.getItem('wayfarer_host');
@@ -242,6 +258,17 @@ export function SettingsModal({ isOpen, onClose, isRunning }: SettingsModalProps
     setMaxIterations(savedIter || '15');
     const savedMode = localStorage.getItem('pipeline_mode');
     setPipelineMode((savedMode as 'auto' | 'interactive') || 'interactive');
+    // Load research model settings
+    const rc = getResearchModelConfig();
+    setResearchModel(rc.orchestratorModel);
+    setCompressionModel(rc.compressionModel);
+    setResearchTemp(rc.temperature);
+    setResearchMaxCtx(rc.maxContext);
+    // Fetch available models from Ollama
+    fetch(`${OLLAMA_PROXY}/api/tags`, { signal: AbortSignal.timeout(5000) })
+      .then(r => r.json())
+      .then(data => setAvailableModels((data.models || []).map((m: any) => m.name)))
+      .catch(() => {});
     // Load ad library cache status
     getAdLibraryCache().then(cache => setAdCacheInfo(cache));
   }, []);
@@ -429,6 +456,49 @@ export function SettingsModal({ isOpen, onClose, isRunning }: SettingsModalProps
                   </button>
                 </div>
 
+                {/* Sound */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className={`text-[13px] font-medium ${isDarkMode ? 'text-zinc-200' : 'text-zinc-800'}`}>Sound</p>
+                    <p className={`text-[11px] ${isDarkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>{soundEnabled ? 'Enabled' : 'Muted'}</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const next = !soundEnabled;
+                      setSoundEnabled(next);
+                      localStorage.setItem('sound_enabled', String(next));
+                      if (next) play('toggle');
+                    }}
+                    className={`relative w-10 h-[22px] rounded-full transition-colors ${soundEnabled ? 'bg-blue-500' : isDarkMode ? 'bg-zinc-600' : 'bg-zinc-300'}`}
+                  >
+                    <span className={`absolute top-[3px] w-4 h-4 bg-white rounded-full shadow transition-transform ${soundEnabled ? 'left-[22px]' : 'left-[3px]'}`} />
+                  </button>
+                </div>
+                {soundEnabled && (
+                  <div className="flex items-center gap-3 mt-2">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={isDarkMode ? '#71717a' : '#a1a1aa'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                    </svg>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={soundVolume}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value);
+                        setSoundVolume(v);
+                        localStorage.setItem('sound_volume', String(v / 100));
+                      }}
+                      onMouseUp={() => play('click')}
+                      className="flex-1 h-1 accent-blue-500 cursor-pointer"
+                    />
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={isDarkMode ? '#71717a' : '#a1a1aa'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                      <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
+                    </svg>
+                  </div>
+                )}
+
                 {/* Pipeline Mode */}
                 <div className={`pt-4 border-t ${isDarkMode ? 'border-zinc-800/60' : 'border-zinc-100'}`}>
                   <p className={`text-[13px] font-medium mb-2 ${isDarkMode ? 'text-zinc-200' : 'text-zinc-800'}`}>Pipeline mode</p>
@@ -464,6 +534,91 @@ export function SettingsModal({ isOpen, onClose, isRunning }: SettingsModalProps
                       Takes effect on next cycle.
                     </p>
                   )}
+                </div>
+
+                {/* Research Models */}
+                <div className={`pt-4 border-t ${isDarkMode ? 'border-zinc-800/60' : 'border-zinc-100'}`}>
+                  <p className={`text-[13px] font-medium mb-3 ${isDarkMode ? 'text-zinc-200' : 'text-zinc-800'}`}>Research models</p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className={`block text-[11px] font-medium mb-1 ${isDarkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>Research model</label>
+                      <select
+                        value={researchModel}
+                        onChange={(e) => {
+                          setResearchModel(e.target.value);
+                          localStorage.setItem('research_model', e.target.value);
+                        }}
+                        className={`w-full px-3 py-2 rounded-xl text-xs transition-colors ${
+                          isDarkMode ? 'bg-zinc-800 border-zinc-700/50 text-zinc-300' : 'bg-zinc-50 border-zinc-200 text-zinc-700'
+                        } border outline-none`}
+                      >
+                        {availableModels.length > 0 ? availableModels.map(m => (
+                          <option key={m} value={m}>{m}</option>
+                        )) : <option value={researchModel}>{researchModel}</option>}
+                      </select>
+                      <p className={`text-[10px] mt-0.5 ${isDarkMode ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                        Council brains, orchestrator, synthesis
+                      </p>
+                    </div>
+                    <div>
+                      <label className={`block text-[11px] font-medium mb-1 ${isDarkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>Compression model</label>
+                      <select
+                        value={compressionModel}
+                        onChange={(e) => {
+                          setCompressionModel(e.target.value);
+                          localStorage.setItem('compression_model', e.target.value);
+                        }}
+                        className={`w-full px-3 py-2 rounded-xl text-xs transition-colors ${
+                          isDarkMode ? 'bg-zinc-800 border-zinc-700/50 text-zinc-300' : 'bg-zinc-50 border-zinc-200 text-zinc-700'
+                        } border outline-none`}
+                      >
+                        {availableModels.length > 0 ? availableModels.map(m => (
+                          <option key={m} value={m}>{m}</option>
+                        )) : <option value={compressionModel}>{compressionModel}</option>}
+                      </select>
+                      <p className={`text-[10px] mt-0.5 ${isDarkMode ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                        Page compression (fast, small model)
+                      </p>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="flex-1">
+                        <label className={`block text-[11px] font-medium mb-1 ${isDarkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>Temperature</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="range"
+                            min="0"
+                            max="10"
+                            value={Math.round(researchTemp * 10)}
+                            onChange={(e) => {
+                              const v = parseInt(e.target.value) / 10;
+                              setResearchTemp(v);
+                              localStorage.setItem('research_temperature', String(v));
+                            }}
+                            className="flex-1 h-1 accent-blue-500 cursor-pointer"
+                          />
+                          <span className={`text-[11px] font-mono w-6 text-right ${isDarkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>{researchTemp.toFixed(1)}</span>
+                        </div>
+                      </div>
+                      <div className="flex-1">
+                        <label className={`block text-[11px] font-medium mb-1 ${isDarkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>Max context</label>
+                        <select
+                          value={researchMaxCtx}
+                          onChange={(e) => {
+                            const v = parseInt(e.target.value);
+                            setResearchMaxCtx(v);
+                            localStorage.setItem('research_max_context', String(v));
+                          }}
+                          className={`w-full px-3 py-2 rounded-xl text-xs transition-colors ${
+                            isDarkMode ? 'bg-zinc-800 border-zinc-700/50 text-zinc-300' : 'bg-zinc-50 border-zinc-200 text-zinc-700'
+                          } border outline-none`}
+                        >
+                          {[2048, 4096, 8192, 16384, 32768].map(v => (
+                            <option key={v} value={v}>{v.toLocaleString()}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Connections */}

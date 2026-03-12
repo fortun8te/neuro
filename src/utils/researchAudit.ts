@@ -1,0 +1,112 @@
+/**
+ * Research Audit Trail — Tracks all sources, tokens, and metadata
+ * Builds a complete provenance record of where research findings came from
+ */
+
+import type { ResearchAuditTrail, ResearchSource } from '../types';
+import { tokenTracker } from './tokenStats';
+import { getActiveResearchPreset } from './modelConfig';
+
+export interface ResearchMetrics {
+  startTime: number;
+  endTime?: number;
+  totalSources: number;
+  sourcesByType: Map<string, number>;
+  sourceList: ResearchSource[];
+  modelsUsed: Set<string>;
+  iterationsCompleted: number;
+  coverageAchieved: number;
+}
+
+class ResearchAuditCollector {
+  private metrics: ResearchMetrics;
+
+  constructor() {
+    this.metrics = {
+      startTime: Date.now(),
+      totalSources: 0,
+      sourcesByType: new Map(),
+      sourceList: [],
+      modelsUsed: new Set(),
+      iterationsCompleted: 0,
+      coverageAchieved: 0,
+    };
+  }
+
+  // Add a source that was fetched during research
+  addSource(source: Omit<ResearchSource, 'fetchedAt'>) {
+    const researchSource: ResearchSource = {
+      ...source,
+      fetchedAt: Date.now(),
+    };
+    this.metrics.sourceList.push(researchSource);
+    this.metrics.totalSources++;
+
+    const typeKey = source.source;
+    this.metrics.sourcesByType.set(typeKey, (this.metrics.sourcesByType.get(typeKey) || 0) + 1);
+  }
+
+  // Record which model was used
+  addModel(modelName: string) {
+    this.metrics.modelsUsed.add(modelName);
+  }
+
+  // Update iteration count
+  setIterations(count: number) {
+    this.metrics.iterationsCompleted = count;
+  }
+
+  // Update coverage percentage
+  setCoverage(percentage: number) {
+    this.metrics.coverageAchieved = percentage;
+  }
+
+  // Build final audit trail
+  buildAuditTrail(): ResearchAuditTrail {
+    const endTime = Date.now();
+    const duration = endTime - this.metrics.startTime;
+
+    // Get token counts from global tracker
+    const stats = (tokenTracker as any).getStats?.() || { sessionTotal: 0, byModel: {} };
+    const tokensByModel = stats.byModel || {};
+    const totalTokens = stats.sessionTotal || 0;
+
+    return {
+      totalSources: this.metrics.totalSources,
+      sourcesByType: Object.fromEntries(this.metrics.sourcesByType),
+      sourceList: this.metrics.sourceList,
+      modelsUsed: Array.from(this.metrics.modelsUsed),
+      totalTokensGenerated: totalTokens,
+      tokensByModel,
+      phaseTimes: {}, // Will be populated by orchestrator with phase-specific times
+      researchDuration: duration,
+      preset: getActiveResearchPreset(),
+      iterationsCompleted: this.metrics.iterationsCompleted,
+      coverageAchieved: this.metrics.coverageAchieved,
+    };
+  }
+}
+
+// Global audit collector instance
+let auditCollector: ResearchAuditCollector | null = null;
+
+export function createResearchAudit(): ResearchAuditCollector {
+  auditCollector = new ResearchAuditCollector();
+  return auditCollector;
+}
+
+export function getResearchAudit(): ResearchAuditCollector | null {
+  return auditCollector;
+}
+
+export function recordResearchSource(source: Omit<ResearchSource, 'fetchedAt'>) {
+  auditCollector?.addSource(source);
+}
+
+export function recordResearchModel(modelName: string) {
+  auditCollector?.addModel(modelName);
+}
+
+export function buildResearchAuditTrail(): ResearchAuditTrail | undefined {
+  return auditCollector?.buildAuditTrail();
+}

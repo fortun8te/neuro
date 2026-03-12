@@ -9,12 +9,14 @@
  * Navigation is clean, minimal — matches the Creatify-style look.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useCampaign } from '../context/CampaignContext';
 import { useTheme } from '../context/ThemeContext';
+import { useSoundEngine } from '../hooks/useSoundEngine';
 import { MakeStudio } from './MakeStudio';
 import { Dashboard } from './Dashboard';
 import { SettingsModal } from './SettingsModal';
+import { BrandHubDrawer, DNAIcon } from './BrandHubDrawer';
 import { NomadIcon } from './NomadIcon';
 import { ShineText } from './ShineText';
 
@@ -23,26 +25,45 @@ export type AppView = 'make' | 'research' | 'test';
 export function AppShell() {
   const [activeView, setActiveView] = useState<AppView>('make');
   const [showSettings, setShowSettings] = useState(false);
+  const [showBrandHub, setShowBrandHub] = useState(false);
   const { systemStatus, currentCycle, campaign } = useCampaign() as any;
-  const { startCycle, pauseCycle, resumeCycle, stopCycle, clearCampaign } = useCampaign() as any;
+  const { startCycle, stopCycle, clearCampaign } = useCampaign() as any;
   const { theme } = useTheme();
+  const { play } = useSoundEngine();
 
   const isRunning = systemStatus === 'running';
-  const isPaused = systemStatus === 'paused';
 
   const handleStartPipeline = useCallback(() => {
     if (campaign) {
+      play('launch');
       startCycle();
     }
-  }, [campaign, startCycle]);
+  }, [campaign, startCycle, play]);
+
+  // Listen for cross-component view switch events (e.g. DesireBoard → Research)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const view = (e as CustomEvent).detail as AppView;
+      if (view) setActiveView(view);
+    };
+    window.addEventListener('nomad-switch-view', handler);
+    return () => window.removeEventListener('nomad-switch-view', handler);
+  }, []);
+
+  // Listen for sidebar Brand DNA card click → open BrandHubDrawer
+  useEffect(() => {
+    const handler = () => setShowBrandHub(true);
+    window.addEventListener('nomad-open-brand-hub', handler);
+    return () => window.removeEventListener('nomad-open-brand-hub', handler);
+  }, []);
 
   // Status color
-  const statusColor = isRunning ? 'bg-emerald-500' : isPaused ? 'bg-amber-500' : 'bg-zinc-300';
+  const statusColor = isRunning ? 'bg-emerald-500' : 'bg-zinc-300';
 
-  // Research stage status for badge
+  // Stage status for nav badges
   const researchStatus = currentCycle?.stages?.research?.status;
-  const tasteStatus = currentCycle?.stages?.taste?.status;
-  const makeStatus = currentCycle?.stages?.make?.status;
+  const anglesStatus = currentCycle?.stages?.angles?.status;
+  const productionStatus = currentCycle?.stages?.production?.status;
   const testStatus = currentCycle?.stages?.test?.status;
 
   const getStageBadge = (status: string | undefined) => {
@@ -70,7 +91,7 @@ export function AppShell() {
               <span className="text-xs text-zinc-400 uppercase tracking-wider">
                 {isRunning ? (
                   <ShineText className="text-xs uppercase tracking-wider" speed={2.5}>Running</ShineText>
-                ) : isPaused ? 'Paused' : 'Idle'}
+                ) : 'Idle'}
               </span>
             </div>
             {campaign && (
@@ -82,14 +103,43 @@ export function AppShell() {
           <div className="flex-1 flex justify-center">
           <div className={`flex items-center gap-1 ${theme === 'dark' ? 'bg-zinc-800/80' : 'bg-zinc-100/80'} rounded-xl p-1 shadow-inner`}>
             {([
-              { key: 'research' as AppView, label: 'Research', badge: researchStatus || tasteStatus },
-              { key: 'make' as AppView, label: 'Make', badge: makeStatus },
-              { key: 'test' as AppView, label: 'Test', badge: testStatus },
-            ]).map(({ key, label, badge }) => (
+              { key: 'research' as AppView, label: 'Research', badge: researchStatus || anglesStatus, icon: (active: boolean) => (
+                <div
+                  className={`w-5 h-5 rounded-md flex items-center justify-center transition-all duration-200 group-hover/tab:scale-110 group-hover/tab:rotate-[-8deg]`}
+                  style={{ background: active ? 'linear-gradient(135deg, #3b82f6, #6366f1)' : theme === 'dark' ? '#52525b' : '#d4d4d8' }}
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="m21 21-4.3-4.3" />
+                  </svg>
+                </div>
+              )},
+              { key: 'make' as AppView, label: 'Make', badge: productionStatus, icon: (active: boolean) => (
+                <div
+                  className={`w-5 h-5 rounded-md flex items-center justify-center transition-all duration-200 group-hover/tab:scale-110 group-hover/tab:-translate-y-0.5`}
+                  style={{ background: active ? 'linear-gradient(135deg, #ef4444, #f97316)' : theme === 'dark' ? '#52525b' : '#d4d4d8' }}
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m15 4-1 8 7-1-11 13 1-8-7 1z" />
+                  </svg>
+                </div>
+              )},
+              { key: 'test' as AppView, label: 'Test', badge: testStatus, icon: (active: boolean) => (
+                <div
+                  className={`w-5 h-5 rounded-md flex items-center justify-center transition-all duration-200 group-hover/tab:scale-110 group-hover/tab:rotate-[8deg]`}
+                  style={{ background: active ? 'linear-gradient(135deg, #eab308, #f59e0b)' : theme === 'dark' ? '#52525b' : '#d4d4d8' }}
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 3v18h18" />
+                    <path d="m7 16 4-8 4 4 4-10" />
+                  </svg>
+                </div>
+              )},
+            ]).map(({ key, label, badge, icon }) => (
               <button
                 key={key}
-                onClick={() => setActiveView(key)}
-                className={`relative flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                onClick={() => { if (activeView !== key) play('navigate'); setActiveView(key); }}
+                className={`group/tab relative flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
                   activeView === key
                     ? theme === 'dark'
                       ? 'bg-zinc-700 text-white shadow-[0_1px_3px_rgba(0,0,0,0.3),0_1px_1px_rgba(0,0,0,0.2)]'
@@ -99,6 +149,7 @@ export function AppShell() {
                     : 'text-zinc-500 hover:text-zinc-700 hover:bg-white/40'
                 }`}
               >
+                {icon(activeView === key)}
                 {getStageBadge(badge)}
                 {label}
               </button>
@@ -109,7 +160,7 @@ export function AppShell() {
           {/* Right: Actions */}
           <div className="flex items-center gap-2 z-10 flex-1 justify-end">
             {/* Pipeline controls */}
-            {!isRunning && !isPaused && campaign && (
+            {!isRunning && campaign && (
               <button
                 onClick={handleStartPipeline}
                 className="px-3.5 py-1.5 bg-zinc-900 text-white text-xs font-medium rounded-lg hover:bg-zinc-800 transition-all shadow-[0_1px_3px_rgba(0,0,0,0.2),0_2px_6px_rgba(0,0,0,0.1)] hover:shadow-[0_2px_6px_rgba(0,0,0,0.25),0_4px_12px_rgba(0,0,0,0.12)] hover:-translate-y-px active:translate-y-0 active:shadow-[0_1px_2px_rgba(0,0,0,0.15)]"
@@ -119,32 +170,16 @@ export function AppShell() {
             )}
             {isRunning && (
               <button
-                onClick={() => pauseCycle()}
-                className="px-3 py-1.5 border border-zinc-200 text-zinc-600 text-xs font-medium rounded-lg hover:border-zinc-300 hover:text-zinc-800 transition-all"
+                onClick={() => { play('stop'); stopCycle(); }}
+                className="px-3 py-1.5 border border-red-200 text-red-500 text-xs font-medium rounded-lg hover:border-red-400 hover:bg-red-50 transition-all"
               >
-                Pause
+                Stop
               </button>
-            )}
-            {isPaused && (
-              <>
-                <button
-                  onClick={() => resumeCycle()}
-                  className="px-3 py-1.5 bg-zinc-900 text-white text-xs font-medium rounded-lg hover:bg-zinc-800 transition-all"
-                >
-                  Resume
-                </button>
-                <button
-                  onClick={() => stopCycle()}
-                  className="px-3 py-1.5 border border-red-200 text-red-500 text-xs font-medium rounded-lg hover:border-red-300 transition-all"
-                >
-                  Stop
-                </button>
-              </>
             )}
 
             {campaign && (
               <button
-                onClick={() => clearCampaign()}
+                onClick={() => { play('reset'); clearCampaign(); }}
                 className="px-3 py-1.5 text-xs text-zinc-400 hover:text-red-500 transition-colors"
                 title="Reset campaign"
               >
@@ -152,9 +187,23 @@ export function AppShell() {
               </button>
             )}
 
+            {/* Brand Hub (DNA + Persona + Strategy) */}
+            <button
+              onClick={() => { play('open'); setShowBrandHub(true); }}
+              className={`p-2 rounded-xl transition-all ${theme === 'dark' ? 'hover:shadow-[0_0_12px_rgba(139,92,246,0.15)]' : 'hover:shadow-[0_0_12px_rgba(139,92,246,0.12)]'}`}
+              style={{
+                background: theme === 'dark'
+                  ? 'linear-gradient(135deg, rgba(139,92,246,0.1), rgba(99,102,241,0.1))'
+                  : 'linear-gradient(135deg, rgba(139,92,246,0.06), rgba(99,102,241,0.06))',
+              }}
+              title="Brand DNA"
+            >
+              <DNAIcon size={16} isDark={theme === 'dark'} />
+            </button>
+
             {/* Settings */}
             <button
-              onClick={() => setShowSettings(true)}
+              onClick={() => { play('open'); setShowSettings(true); }}
               className={`p-2 rounded-lg transition-all ${theme === 'dark' ? 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800' : 'text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100'}`}
               title="Settings"
             >
@@ -175,7 +224,23 @@ export function AppShell() {
       </div>
 
       {/* Settings Modal */}
-      <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} isRunning={isRunning} />
+      <SettingsModal isOpen={showSettings} onClose={() => { play('close'); setShowSettings(false); }} isRunning={isRunning} />
+
+      {/* Brand DNA Modal */}
+      <BrandHubDrawer
+        isOpen={showBrandHub}
+        onClose={() => { play('close'); setShowBrandHub(false); }}
+        brandDNA={currentCycle?.brandDNA}
+        personas={currentCycle?.personas}
+        creativeStrategy={currentCycle?.creativeStrategy}
+        presetBrand={campaign?.presetData?.brand}
+        presetAudience={campaign?.presetData?.audience}
+        presetProduct={campaign?.presetData?.product}
+        presetCompetitive={campaign?.presetData?.competitive}
+        presetStrategy={campaign?.presetData?.strategy}
+        presetMessaging={campaign?.presetData?.messaging}
+        presetPersonas={campaign?.presetData?.personas}
+      />
     </div>
   );
 }

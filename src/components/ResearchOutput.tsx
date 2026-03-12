@@ -1,28 +1,34 @@
 import { useState, useEffect, useRef } from 'react';
 import { ShineText } from './ShineText';
+import { playSound } from '../hooks/useSoundEngine';
 
 // ─────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────
 
 type SectionKind =
-  | 'phase'        // [PHASE 1], [PHASE 2]
-  | 'campaign'     // [CAMPAIGN_DATA]
-  | 'step'         // STEP 1: ..., STEP 2: ...
-  | 'orchestrator' // [Orchestrator] ...
-  | 'researcher'   // [Researcher] ...
-  | 'reflection'   // [Reflection] / Running reflection agent
-  | 'visual'       // [Visual Scout] — minicpm-v screenshot analysis
-  | 'thinking'     // [Orchestrator thinking] — live reasoning stream
-  | 'metrics'      // [METRICS] — per-iteration stats
-  | 'coverage'     // Coverage: ...
-  | 'deploy'       // Deploying ...
-  | 'complete'     // research complete / RESEARCH COMPLETE
-  | 'timelimit'    // Time limit
-  | 'error'        // ERROR
-  | 'findings'     // Desire/objection findings
-  | 'ads'          // [Ads] — Phase 3 competitor ad intelligence
-  | 'raw';         // Fallback
+  | 'phase'                // [PHASE 1], [PHASE 2]
+  | 'campaign'             // [CAMPAIGN_DATA]
+  | 'step'                 // STEP 1: ..., STEP 2: ...
+  | 'layer'                // LAYER 1-7: desire analysis layers
+  | 'orchestrator'         // [Orchestrator] ...
+  | 'researcher'           // [Researcher] ...
+  | 'reflection'           // [Reflection] / Running reflection agent
+  | 'reflection-perspective' // [Reflection: Devil's Advocate/Depth Auditor/Coverage Checker]
+  | 'visual'               // [Visual Scout] — minicpm-v screenshot analysis
+  | 'thinking'             // [Orchestrator thinking] — live reasoning stream
+  | 'metrics'              // [METRICS] — per-iteration stats
+  | 'coverage'             // Coverage: ...
+  | 'deploy'               // Deploying ...
+  | 'complete'             // research complete / RESEARCH COMPLETE
+  | 'timelimit'            // Time limit
+  | 'error'                // ERROR
+  | 'findings'             // Desire/objection findings
+  | 'ads'                  // [Ads] — Phase 3 competitor ad intelligence
+  | 'brain'                // [BRAIN:id] — Council marketing brain output
+  | 'council-head'         // [HEAD:id] — Council head synthesis
+  | 'council'              // [COUNCIL] — Council status/verdict
+  | 'raw';                 // Fallback
 
 interface Section {
   kind: SectionKind;
@@ -58,11 +64,22 @@ function parseOutput(text: string): Section[] {
     if (!t || t === '────────────────────────────────────────────────' || t === '════════════════════════════════════════════════════════════════════') continue;
 
     // ── Phase headers ──
+    if (t.startsWith('[PHASE 1]') && (t.includes('Council') || t.includes('Marketing Brains'))) {
+      push();
+      current = { kind: 'phase', title: 'Council of Marketing Brains', badge: 'Phase 1', lines: [] };
+      continue;
+    }
+
     if (t.startsWith('[PHASE 1]') || t.includes('ORCHESTRATED RESEARCH:') || t.includes('Desire-Driven') || t.startsWith('RESEARCH PHASE:')) {
       if (!current || current.kind !== 'phase' || current.title !== 'Desire-Driven Analysis') {
         push();
         current = { kind: 'phase', title: 'Desire-Driven Analysis', badge: 'Phase 1', lines: [] };
       }
+      continue;
+    }
+
+    if (t.startsWith('[PHASE 1+2 COMPLETE]')) {
+      if (current) current.lines.push('Council verdict delivered');
       continue;
     }
 
@@ -72,9 +89,33 @@ function parseOutput(text: string): Section[] {
       continue;
     }
 
+    if (t.startsWith('[PHASE 3]') && t.includes('Desire-Driven')) {
+      push();
+      current = { kind: 'phase', title: 'Desire-Driven Deep Dive', badge: 'Phase 3', lines: [] };
+      continue;
+    }
+
     if (t.startsWith('[PHASE 3]') || t.includes('Competitor Ad Intelligence')) {
       push();
       current = { kind: 'phase', title: 'Ad Intelligence', badge: 'Phase 3', lines: [] };
+      continue;
+    }
+
+    if (t.startsWith('[PHASE 4]') && t.includes('Web Research')) {
+      push();
+      current = { kind: 'phase', title: 'Web Research — Gap Filling', badge: 'Phase 4', lines: [] };
+      continue;
+    }
+
+    if (t.startsWith('[PHASE 5]') && t.includes('Council Re-run')) {
+      push();
+      current = { kind: 'phase', title: 'Council Re-analysis', badge: 'Phase 5', lines: [] };
+      continue;
+    }
+
+    if (t.startsWith('[PHASE 6]') && t.includes('Competitor')) {
+      push();
+      current = { kind: 'phase', title: 'Competitor Ad Intelligence', badge: 'Phase 6', lines: [] };
       continue;
     }
 
@@ -101,11 +142,98 @@ function parseOutput(text: string): Section[] {
       continue;
     }
 
-    if (t.startsWith('[PHASE 1 COMPLETE]') || t.startsWith('[PHASE 2 COMPLETE]') || t.startsWith('[PHASE 3 COMPLETE]')) {
+    if (/^\[PHASE \d/.test(t) && t.includes('COMPLETE]')) {
       if (current) {
-        if (t.includes('1')) current.lines.push('Analysis complete');
-        else if (t.includes('2')) current.lines.push('Research complete');
-        else current.lines.push(t.replace('[PHASE 3 COMPLETE]', '').trim() || 'Complete');
+        const label = t.replace(/\[PHASE \d+ COMPLETE\]\s*/, '').trim() || 'Complete';
+        current.lines.push(label);
+      }
+      continue;
+    }
+
+    if (/^\[PHASE \d/.test(t) && t.includes('ERROR]')) {
+      if (current) current.lines.push(t.replace(/\[PHASE \d+ ERROR\]\s*/, '').trim());
+      continue;
+    }
+
+    // ── Council of Marketing Brains ──
+    if (t.startsWith('[COUNCIL]') && t.includes('Council of Marketing Brains')) {
+      push();
+      const iterMatch = t.match(/Iteration\s+(\d+)\/(\d+)/);
+      current = { kind: 'council', title: 'Council of Marketing Brains', badge: iterMatch ? `Run ${iterMatch[1]}` : 'starting', lines: [] };
+      continue;
+    }
+
+    if (t.startsWith('[COUNCIL]') && t.includes('Round 1')) {
+      push();
+      current = { kind: 'council', title: 'Round 1 — 7 Brains Analyzing', badge: 'parallel', lines: [] };
+      continue;
+    }
+
+    if (t.startsWith('[COUNCIL]') && t.includes('Round 2')) {
+      push();
+      current = { kind: 'council-head', title: 'Round 2 — Council Heads', badge: 'synthesizing', lines: [] };
+      continue;
+    }
+
+    if (t.startsWith('[COUNCIL]') && t.includes('Round 3')) {
+      push();
+      current = { kind: 'council', title: 'Round 3 — Master Verdict', badge: 'deciding', lines: [] };
+      continue;
+    }
+
+    if (t.startsWith('[COUNCIL]') && t.includes('Verdict delivered')) {
+      const confMatch = t.match(/confidence:\s*(\d+)/);
+      if (current) {
+        current.badge = confMatch ? `${confMatch[1]}/10` : 'done';
+        current.lines.push(t.replace('[COUNCIL] ', ''));
+      }
+      continue;
+    }
+
+    if (t.startsWith('[COUNCIL]')) {
+      if (!current || (current.kind !== 'council' && current.kind !== 'council-head')) {
+        push();
+        current = { kind: 'council', title: 'Council', lines: [] };
+      }
+      current.lines.push(t.replace('[COUNCIL] ', ''));
+      continue;
+    }
+
+    // ── Brain outputs ──
+    const brainMatch = t.match(/^\[BRAIN:(\w+)\]\s*(.+)/);
+    if (brainMatch) {
+      const brainId = brainMatch[1];
+      const inner = brainMatch[2];
+      const brainNames: Record<string, string> = {
+        desire: 'Desire Brain', persuasion: 'Persuasion Brain', offer: 'Offer Brain',
+        creative: 'Creative Brain', avatar: 'Avatar Brain', contrarian: 'Contrarian Brain',
+        visual: 'Visual Brain',
+      };
+      if (inner.includes('analyzing')) {
+        push();
+        current = { kind: 'brain', title: brainNames[brainId] || brainId, badge: 'analyzing', lines: [] };
+      } else if (inner.includes('Failed')) {
+        if (current?.kind === 'brain') current.badge = 'failed';
+        if (current) current.lines.push(inner);
+      } else {
+        if (current) current.lines.push(inner);
+      }
+      continue;
+    }
+
+    // ── Council Head outputs ──
+    const headMatch = t.match(/^\[HEAD:(\S+)\]\s*(.+)/);
+    if (headMatch) {
+      const headId = headMatch[1];
+      const inner = headMatch[2];
+      const headNames: Record<string, string> = {
+        'strategy-head': 'Strategy Head', 'creative-head': 'Creative Head', 'challenge-head': 'Challenge Head',
+      };
+      if (inner.includes('synthesizing')) {
+        push();
+        current = { kind: 'council-head', title: headNames[headId] || headId, badge: 'synthesizing', lines: [] };
+      } else {
+        if (current) current.lines.push(inner);
       }
       continue;
     }
@@ -122,6 +250,37 @@ function parseOutput(text: string): Section[] {
     if (stepMatch) {
       push();
       current = { kind: 'step', title: stepMatch[2], badge: `Step ${stepMatch[1]}`, lines: [] };
+      continue;
+    }
+
+    // ── Layers (LAYER 1-7: desire analysis) ──
+    const layerMatch = t.match(/^LAYER\s+(\d+)[:\s—]+(.+)/i);
+    if (layerMatch) {
+      push();
+      current = { kind: 'layer', title: layerMatch[2].trim(), badge: `Layer ${layerMatch[1]}`, lines: [] };
+      continue;
+    }
+
+    // ── Layer sub-progress ──
+    const layerSubMatch = t.match(/^\s*\[Layer\s+(\d+)\]\s*(.+)/);
+    if (layerSubMatch) {
+      if (current?.kind === 'layer') {
+        current.lines.push(layerSubMatch[2]);
+      }
+      continue;
+    }
+
+    // ── Reflection perspectives (3 agents) ──
+    const reflPerspMatch = t.match(/\[Reflection:\s*(Devil's Advocate|Depth Auditor|Coverage Checker)\]\s*(.*)/);
+    if (reflPerspMatch) {
+      push();
+      current = {
+        kind: 'reflection-perspective',
+        title: reflPerspMatch[1],
+        badge: reflPerspMatch[1] === "Devil's Advocate" ? 'bias check' : reflPerspMatch[1] === 'Depth Auditor' ? 'specifics' : 'gaps',
+        lines: [],
+      };
+      if (reflPerspMatch[2]) current.lines.push(reflPerspMatch[2]);
       continue;
     }
 
@@ -334,7 +493,7 @@ function parseOutput(text: string): Section[] {
     }
 
     // ── Skip boilerplate ──
-    if (t === 'glm-4.7 orchestrator deciding what additional research is needed...') {
+    if (t.includes('orchestrator deciding what additional research') || t.includes('orchestrator evaluating')) {
       if (current) current.lines.push('Evaluating research gaps...');
       continue;
     }
@@ -360,10 +519,11 @@ type ColorKey = 'indigo' | 'emerald' | 'blue' | 'teal' | 'amber' | 'purple' | 'r
 
 function kindColor(kind: SectionKind): ColorKey {
   const map: Record<string, ColorKey> = {
-    phase: 'indigo', step: 'emerald', orchestrator: 'blue', researcher: 'teal',
-    reflection: 'amber', coverage: 'purple', visual: 'rose', thinking: 'zinc',
+    phase: 'indigo', step: 'emerald', layer: 'emerald', orchestrator: 'blue', researcher: 'teal',
+    reflection: 'amber', 'reflection-perspective': 'amber', coverage: 'purple', visual: 'rose', thinking: 'zinc',
     metrics: 'sky', deploy: 'cyan', complete: 'green', timelimit: 'orange',
     error: 'red', ads: 'orange', campaign: 'zinc', findings: 'zinc', raw: 'zinc',
+    brain: 'teal', 'council-head': 'amber', council: 'purple',
   };
   return map[kind] || 'zinc';
 }
@@ -688,7 +848,7 @@ interface ResearchOutputProps {
   isDarkMode: boolean;
 }
 
-const SECTION_HEADER_RE = /\[PHASE [123]\]|Competitor Ad Intelligence|ORCHESTRATED RESEARCH:|Desire-Driven|Orchestrating Web Search|\[CAMPAIGN_DATA\]|STEP \d+:|Iteration \d+\/|Searching:\s*"|Screenshotting|Orchestrator requested visual|Reflection agent requested visual|Running reflection agent|150% bar mode|Coverage:\s*\d+%.*dimensions|research complete|RESEARCH COMPLETE|Coverage threshold|Orchestrator satisfied|Time limit reached|^ERROR|\[METRICS\]|\[Orchestrator thinking\]|\[Thinking\]|\[Ads\]/im;
+const SECTION_HEADER_RE = /\[PHASE [1-6]\]|Competitor Ad Intelligence|ORCHESTRATED RESEARCH:|Council of Marketing Brains|Desire-Driven|Orchestrating Web Search|\[CAMPAIGN_DATA\]|STEP \d+:|LAYER \d+[:\s—]|Iteration \d+\/|Searching:\s*"|Screenshotting|Orchestrator requested visual|Reflection agent requested visual|Running reflection agent|150% bar mode|\[Reflection:\s*(Devil's Advocate|Depth Auditor|Coverage Checker)\]|Coverage:\s*\d+%.*dimensions|research complete|RESEARCH COMPLETE|Coverage threshold|Orchestrator satisfied|Time limit reached|^ERROR|\[METRICS\]|\[Orchestrator thinking\]|\[Thinking\]|\[Ads\]|\[BRAIN:\w+\]|\[HEAD:\S+\]|\[COUNCIL\]/im;
 
 export function ResearchOutput({ output, isDarkMode }: ResearchOutputProps) {
   const [sections, setSections] = useState<Section[]>([]);
@@ -739,6 +899,17 @@ export function ResearchOutput({ output, isDarkMode }: ResearchOutputProps) {
           last.lines.push(t.replace(/.*\[Reflection\]\s*/, ''));
         } else if (last.kind === 'thinking' && (t.startsWith('[Orchestrator thinking]') || t.startsWith('[Thinking]'))) {
           last.lines.push(t.replace(/.*\[(Orchestrator thinking|Thinking)\]\s*/, ''));
+        } else if (last.kind === 'brain' && t.match(/^\[BRAIN:\w+\]/)) {
+          const inner = t.replace(/\[BRAIN:\w+\]\s*/, '');
+          last.lines.push(inner);
+        } else if (last.kind === 'council-head' && t.match(/^\[HEAD:\S+\]/)) {
+          last.lines.push(t.replace(/\[HEAD:\S+\]\s*/, ''));
+        } else if ((last.kind === 'council' || last.kind === 'council-head') && t.startsWith('[COUNCIL]')) {
+          last.lines.push(t.replace('[COUNCIL] ', ''));
+        } else if (last.kind === 'layer' && t.match(/^\s*\[Layer\s+\d+\]/)) {
+          last.lines.push(t.replace(/^\s*\[Layer\s+\d+\]\s*/, ''));
+        } else if (last.kind === 'reflection-perspective' && t.match(/\[Reflection:\s*(Devil's Advocate|Depth Auditor|Coverage Checker)\]/)) {
+          last.lines.push(t.replace(/.*\[Reflection:\s*(Devil's Advocate|Depth Auditor|Coverage Checker)\]\s*/, ''));
         } else {
           last.lines.push(t);
         }
@@ -759,7 +930,7 @@ export function ResearchOutput({ output, isDarkMode }: ResearchOutputProps) {
         const next = new Set(prev);
         next.add(sections.length - 1);
         sections.forEach((s, i) => {
-          if (s.kind === 'phase' || s.kind === 'step' || s.kind === 'coverage' || s.kind === 'complete' || s.kind === 'error' || s.kind === 'visual' || s.kind === 'metrics' || s.kind === 'ads') {
+          if (s.kind === 'phase' || s.kind === 'step' || s.kind === 'layer' || s.kind === 'coverage' || s.kind === 'complete' || s.kind === 'error' || s.kind === 'visual' || s.kind === 'metrics' || s.kind === 'ads' || s.kind === 'council' || s.kind === 'council-head' || s.kind === 'reflection-perspective') {
             next.add(i);
           }
         });
@@ -771,8 +942,13 @@ export function ResearchOutput({ output, isDarkMode }: ResearchOutputProps) {
   const toggle = (i: number) => {
     setExpanded(prev => {
       const next = new Set(prev);
-      if (next.has(i)) next.delete(i);
-      else next.add(i);
+      if (next.has(i)) {
+        next.delete(i);
+        playSound('collapse');
+      } else {
+        next.add(i);
+        playSound('expand');
+      }
       return next;
     });
   };

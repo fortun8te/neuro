@@ -1,0 +1,1505 @@
+{
+  "total": 248,
+  "categories": {
+    "before-after": 6,
+    "comparison": 12,
+    "deals-offers": 15,
+    "features-benefits": 45,
+    "lifestyle": 33,
+    "problem-solution": 20,
+    "product-hero": 72,
+    "social-proof": 22,
+    "template": 3,
+    "testimonial": 20
+  },
+  "images": [
+    {
+      "filename": "00a62bfc-48d5-45fb-aa0f-e41b34ae552f.png",
+      "category": "social-proof",
+      "path": "social-proof/00a62bfc-48d5-45fb-aa0f-e41b34ae552f.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "014768b8-3f44-49b4-97ce-2703aff65112.png",
+      "category": "features-benefits",
+      "path": "features-benefits/014768b8-3f44-49b4-97ce-2703aff65112.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "0170eed3-b4c9-459d-9d92-6daec805ec4a.png",
+      "category": "testimonial",
+      "path": "testimonial/0170eed3-b4c9-459d-9d92-6daec805ec4a.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "0442ff6f-22fc-4ca2-8449-b04d35066d7d.png",
+      "category": "product-hero",
+      "path": "product-hero/0442ff6f-22fc-4ca2-8449-b04d35066d7d.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "04646741-3ea9-4124-8c72-d98cce087b15.png",
+      "category": "problem-solution",
+      "path": "problem-solution/04646741-3ea9-4124-8c72-d98cce087b15.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "07075f9a-8104-4807-a570-a024b80439c1.png",
+      "category": "comparison",
+      "path": "comparison/07075f9a-8104-4807-a570-a024b80439c1.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "0842a2cc-47f4-4635-a20a-051201895f2f.png",
+      "category": "lifestyle",
+      "path": "lifestyle/0842a2cc-47f4-4635-a20a-051201895f2f.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "087dbcf4-fe10-40a2-958b-00a5ca373820.png",
+      "category": "problem-solution",
+      "path": "problem-solution/087dbcf4-fe10-40a2-958b-00a5ca373820.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "0a10e569-0ee9-4717-9b7f-c492971052a5.png",
+      "category": "features-benefits",
+      "path": "features-benefits/0a10e569-0ee9-4717-9b7f-c492971052a5.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "0e386af2-20c6-448f-9524-b625667b1030.png",
+      "category": "problem-solution",
+      "path": "problem-solution/0e386af2-20c6-448f-9524-b625667b1030.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "0ebcb9ac-9690-4673-a4de-8e5eefc15f91.png",
+      "category": "product-hero",
+      "path": "product-hero/0ebcb9ac-9690-4673-a4de-8e5eefc15f91.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "0f1247f6-6812-47d9-a91b-2c29ec69417e.png",
+      "category": "product-hero",
+      "path": "product-hero/0f1247f6-6812-47d9-a91b-2c29ec69417e.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "103b6a9b-5937-415c-b2bd-1bc29b6f5c01.png",
+      "category": "comparison",
+      "path": "comparison/103b6a9b-5937-415c-b2bd-1bc29b6f5c01.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "1073ee38-7f69-4617-8a68-3528cad8d5e1.png",
+      "category": "features-benefits",
+      "path": "features-benefits/1073ee38-7f69-4617-8a68-3528cad8d5e1.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "1102c3b0-669d-4d91-92d2-7731bd0951c3.png",
+      "category": "social-proof",
+      "path": "social-proof/1102c3b0-669d-4d91-92d2-7731bd0951c3.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "116faa4e-9b0c-469e-9908-05d4e09b8477.png",
+      "category": "product-hero",
+      "path": "product-hero/116faa4e-9b0c-469e-9908-05d4e09b8477.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "130eb4a1-3ed2-4fdd-9c97-b4bdc7066d5d.png",
+      "category": "lifestyle",
+      "path": "lifestyle/130eb4a1-3ed2-4fdd-9c97-b4bdc7066d5d.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "13534d8c-50c3-446b-9f42-07f65809db49.png",
+      "category": "product-hero",
+      "path": "product-hero/13534d8c-50c3-446b-9f42-07f65809db49.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "137a2c2d-4eaf-46fc-b2cb-d465aea0cd6d.png",
+      "category": "lifestyle",
+      "path": "lifestyle/137a2c2d-4eaf-46fc-b2cb-d465aea0cd6d.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "1413ad59-6d9d-4e7c-baf1-174e4b05f209.png",
+      "category": "social-proof",
+      "path": "social-proof/1413ad59-6d9d-4e7c-baf1-174e4b05f209.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "14c887ca-5de2-44f8-95d7-021b6743e797.png",
+      "category": "features-benefits",
+      "path": "features-benefits/14c887ca-5de2-44f8-95d7-021b6743e797.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "14d6b9c1-ad37-4b4f-8df5-b367cff03826.png",
+      "category": "deals-offers",
+      "path": "deals-offers/14d6b9c1-ad37-4b4f-8df5-b367cff03826.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "15063aad-9ffe-4460-9aa6-6d4683e5afab.png",
+      "category": "comparison",
+      "path": "comparison/15063aad-9ffe-4460-9aa6-6d4683e5afab.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "150b39cb-bf7b-4e21-b8fa-4acb778f62f0.png",
+      "category": "product-hero",
+      "path": "product-hero/150b39cb-bf7b-4e21-b8fa-4acb778f62f0.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "15785bd9-543b-45bd-9271-882015810107.png",
+      "category": "testimonial",
+      "path": "testimonial/15785bd9-543b-45bd-9271-882015810107.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "15c007e3-7e55-415c-a7e6-56953430e838.png",
+      "category": "template",
+      "path": "template/15c007e3-7e55-415c-a7e6-56953430e838.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "15db5532-f981-4726-8251-5ab807b69a5d.png",
+      "category": "product-hero",
+      "path": "product-hero/15db5532-f981-4726-8251-5ab807b69a5d.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "16f1d3bf-d4b6-40c8-9546-8336328d0eec.png",
+      "category": "deals-offers",
+      "path": "deals-offers/16f1d3bf-d4b6-40c8-9546-8336328d0eec.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "17dca45d-851b-4d91-bf5a-2aa08e6f7ae3.png",
+      "category": "product-hero",
+      "path": "product-hero/17dca45d-851b-4d91-bf5a-2aa08e6f7ae3.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "17fdc1d9-af86-4d09-bdff-7a4b999ad0a6.png",
+      "category": "lifestyle",
+      "path": "lifestyle/17fdc1d9-af86-4d09-bdff-7a4b999ad0a6.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "185944b5-bf09-44b3-bb8d-bb9ae90d3ebf.png",
+      "category": "product-hero",
+      "path": "product-hero/185944b5-bf09-44b3-bb8d-bb9ae90d3ebf.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "1a282697-f0b2-4916-ac39-4d1d94a19f31.png",
+      "category": "product-hero",
+      "path": "product-hero/1a282697-f0b2-4916-ac39-4d1d94a19f31.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "1aa42d42-e710-43c0-885f-a3b2fee7f007.png",
+      "category": "features-benefits",
+      "path": "features-benefits/1aa42d42-e710-43c0-885f-a3b2fee7f007.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "1b92b0a9-7a1a-46b6-a886-521feb5b8795.png",
+      "category": "social-proof",
+      "path": "social-proof/1b92b0a9-7a1a-46b6-a886-521feb5b8795.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "1bbb12ce-37c7-4bad-a59e-254d85d1d97e.png",
+      "category": "features-benefits",
+      "path": "features-benefits/1bbb12ce-37c7-4bad-a59e-254d85d1d97e.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "1c516023-091f-4dbc-822b-f2f86b4b6654.png",
+      "category": "product-hero",
+      "path": "product-hero/1c516023-091f-4dbc-822b-f2f86b4b6654.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "1c557ff6-5163-47da-a715-48f7d02714b7.png",
+      "category": "product-hero",
+      "path": "product-hero/1c557ff6-5163-47da-a715-48f7d02714b7.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "1edf06a1-aa75-4fa1-98e3-43f38c91e280.png",
+      "category": "features-benefits",
+      "path": "features-benefits/1edf06a1-aa75-4fa1-98e3-43f38c91e280.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "1ee61ab5-1c31-4efb-b07e-c25b723663be.png",
+      "category": "product-hero",
+      "path": "product-hero/1ee61ab5-1c31-4efb-b07e-c25b723663be.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "1f837869-3dcf-486d-acb8-fd2d40831efa.png",
+      "category": "testimonial",
+      "path": "testimonial/1f837869-3dcf-486d-acb8-fd2d40831efa.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "1fe1edc5-9d60-460c-a14d-9b09767dc784.png",
+      "category": "problem-solution",
+      "path": "problem-solution/1fe1edc5-9d60-460c-a14d-9b09767dc784.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "20cff031-9f9a-4f98-9499-c226c9b56c0c.png",
+      "category": "features-benefits",
+      "path": "features-benefits/20cff031-9f9a-4f98-9499-c226c9b56c0c.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "21a5d021-fd0b-4061-b624-dd2171b20b1d.png",
+      "category": "lifestyle",
+      "path": "lifestyle/21a5d021-fd0b-4061-b624-dd2171b20b1d.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "22bc0b66-e6c8-4cc4-9fb8-755101e40430.png",
+      "category": "features-benefits",
+      "path": "features-benefits/22bc0b66-e6c8-4cc4-9fb8-755101e40430.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "271f023f-41ad-4750-a086-4e5bb909e1c8.png",
+      "category": "testimonial",
+      "path": "testimonial/271f023f-41ad-4750-a086-4e5bb909e1c8.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "27eeae45-1bb8-4cf7-bad9-68b00c1196df.png",
+      "category": "problem-solution",
+      "path": "problem-solution/27eeae45-1bb8-4cf7-bad9-68b00c1196df.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "302c8b5d-acb4-492e-8d8b-665e0fe5b2ec.png",
+      "category": "testimonial",
+      "path": "testimonial/302c8b5d-acb4-492e-8d8b-665e0fe5b2ec.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "30c98e9c-3a30-4482-842d-2dfe3ce76d0c.png",
+      "category": "problem-solution",
+      "path": "problem-solution/30c98e9c-3a30-4482-842d-2dfe3ce76d0c.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "31e3a266-9089-4519-ad61-eaf89ecc5c2f.png",
+      "category": "deals-offers",
+      "path": "deals-offers/31e3a266-9089-4519-ad61-eaf89ecc5c2f.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "323d5479-e8f8-4b2d-a32b-21eb68762246.png",
+      "category": "deals-offers",
+      "path": "deals-offers/323d5479-e8f8-4b2d-a32b-21eb68762246.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "32732dea-058f-450b-904c-07a42aac6cf7.png",
+      "category": "lifestyle",
+      "path": "lifestyle/32732dea-058f-450b-904c-07a42aac6cf7.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "3530b0e4-beab-4229-8171-71d28a2d1056.png",
+      "category": "features-benefits",
+      "path": "features-benefits/3530b0e4-beab-4229-8171-71d28a2d1056.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "35abb4fc-1eb9-462b-bdbd-97dcb4e0abd6.png",
+      "category": "comparison",
+      "path": "comparison/35abb4fc-1eb9-462b-bdbd-97dcb4e0abd6.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "36747b97-6149-4b22-a6ca-064f3d560d8c.png",
+      "category": "lifestyle",
+      "path": "lifestyle/36747b97-6149-4b22-a6ca-064f3d560d8c.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "37515468-5bba-4190-90a9-8e491e2d59aa.png",
+      "category": "product-hero",
+      "path": "product-hero/37515468-5bba-4190-90a9-8e491e2d59aa.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "37595b4e-bb8a-4c9a-8e4c-d86b2a7947e8.png",
+      "category": "product-hero",
+      "path": "product-hero/37595b4e-bb8a-4c9a-8e4c-d86b2a7947e8.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "37dbbdfa-2141-4e56-8ba8-ffd6e850d3f1.png",
+      "category": "product-hero",
+      "path": "product-hero/37dbbdfa-2141-4e56-8ba8-ffd6e850d3f1.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "3892080e-af4b-4e4d-a9f2-86f1a94ff102.png",
+      "category": "problem-solution",
+      "path": "problem-solution/3892080e-af4b-4e4d-a9f2-86f1a94ff102.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "394baebe-8472-43ad-b2f7-108661d7e9a9.png",
+      "category": "product-hero",
+      "path": "product-hero/394baebe-8472-43ad-b2f7-108661d7e9a9.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "3d0900be-50cc-45dc-b199-1d1d1e356e6a.png",
+      "category": "social-proof",
+      "path": "social-proof/3d0900be-50cc-45dc-b199-1d1d1e356e6a.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "3dbc2cdf-efd0-4365-aaa2-489616f5a43b.png",
+      "category": "lifestyle",
+      "path": "lifestyle/3dbc2cdf-efd0-4365-aaa2-489616f5a43b.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "3f5d2067-faf7-48e3-9f74-082e30805e71.png",
+      "category": "product-hero",
+      "path": "product-hero/3f5d2067-faf7-48e3-9f74-082e30805e71.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "3fd62c98-fe87-4311-b9bd-c8d67861d25c.png",
+      "category": "features-benefits",
+      "path": "features-benefits/3fd62c98-fe87-4311-b9bd-c8d67861d25c.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "4037c1de-d7a3-4e0e-9fe8-4ace97fab8fc.png",
+      "category": "problem-solution",
+      "path": "problem-solution/4037c1de-d7a3-4e0e-9fe8-4ace97fab8fc.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "40d1b6ef-8a14-4777-b3cf-a03cb5ad4548.png",
+      "category": "comparison",
+      "path": "comparison/40d1b6ef-8a14-4777-b3cf-a03cb5ad4548.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "411e47a0-a90a-42cf-a5b1-46f2b04bc3ea.png",
+      "category": "social-proof",
+      "path": "social-proof/411e47a0-a90a-42cf-a5b1-46f2b04bc3ea.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "412c039b-1ea9-4a31-87b3-5f27933637d5.png",
+      "category": "lifestyle",
+      "path": "lifestyle/412c039b-1ea9-4a31-87b3-5f27933637d5.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "43b02a73-b7ab-4070-ac48-eca4eed8e5d8.png",
+      "category": "product-hero",
+      "path": "product-hero/43b02a73-b7ab-4070-ac48-eca4eed8e5d8.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "4438479a-5b52-4ee4-8fe4-dcc534a30f3b.png",
+      "category": "social-proof",
+      "path": "social-proof/4438479a-5b52-4ee4-8fe4-dcc534a30f3b.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "445565a6-2f06-445f-ae7b-824ff1b79cc7.png",
+      "category": "features-benefits",
+      "path": "features-benefits/445565a6-2f06-445f-ae7b-824ff1b79cc7.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "45a29f84-a32b-4bd7-892a-f2baad32001b.png",
+      "category": "lifestyle",
+      "path": "lifestyle/45a29f84-a32b-4bd7-892a-f2baad32001b.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "46a9e919-54b3-4fb6-97d1-4b8f6a5e4b80.png",
+      "category": "features-benefits",
+      "path": "features-benefits/46a9e919-54b3-4fb6-97d1-4b8f6a5e4b80.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "472d812d-f3fe-4adb-8c07-e5951af36135.png",
+      "category": "deals-offers",
+      "path": "deals-offers/472d812d-f3fe-4adb-8c07-e5951af36135.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "472f9426-3873-4f4f-96c6-8546444ee7c8.png",
+      "category": "features-benefits",
+      "path": "features-benefits/472f9426-3873-4f4f-96c6-8546444ee7c8.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "4b0d9179-2628-4bbe-9f13-b2b94483152b.png",
+      "category": "lifestyle",
+      "path": "lifestyle/4b0d9179-2628-4bbe-9f13-b2b94483152b.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "5074c166-88a9-4566-bac5-f8906b213bf2.png",
+      "category": "before-after",
+      "path": "before-after/5074c166-88a9-4566-bac5-f8906b213bf2.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "5221ba00-b7cf-47f5-a62c-a2a7ff0a2ff3.png",
+      "category": "problem-solution",
+      "path": "problem-solution/5221ba00-b7cf-47f5-a62c-a2a7ff0a2ff3.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "53b41a64-4549-42a4-b525-580acdf41c86.png",
+      "category": "lifestyle",
+      "path": "lifestyle/53b41a64-4549-42a4-b525-580acdf41c86.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "546ab959-3422-440b-af8d-3a9176dcdba6.png",
+      "category": "testimonial",
+      "path": "testimonial/546ab959-3422-440b-af8d-3a9176dcdba6.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "55310c4c-2091-4819-946c-7f0915b0cc17.png",
+      "category": "comparison",
+      "path": "comparison/55310c4c-2091-4819-946c-7f0915b0cc17.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "5620865d-7d99-4e39-a6ec-e77627d158cf.png",
+      "category": "lifestyle",
+      "path": "lifestyle/5620865d-7d99-4e39-a6ec-e77627d158cf.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "569b5085-1daf-48c6-87b3-34f2f297e6f6.png",
+      "category": "features-benefits",
+      "path": "features-benefits/569b5085-1daf-48c6-87b3-34f2f297e6f6.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "57d745b0-1eec-43d4-ab62-53dcf8d4dcf9.png",
+      "category": "lifestyle",
+      "path": "lifestyle/57d745b0-1eec-43d4-ab62-53dcf8d4dcf9.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "57f6abf2-3afb-4777-8e16-63d273483ca7.png",
+      "category": "product-hero",
+      "path": "product-hero/57f6abf2-3afb-4777-8e16-63d273483ca7.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "593bec5c-1bbb-4c21-b82f-087a816f619d.png",
+      "category": "deals-offers",
+      "path": "deals-offers/593bec5c-1bbb-4c21-b82f-087a816f619d.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "5986ea3e-aa66-407f-9b1e-a6f833d42b7e.png",
+      "category": "product-hero",
+      "path": "product-hero/5986ea3e-aa66-407f-9b1e-a6f833d42b7e.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "5a1e22bb-27a8-431d-8fb1-17b5bbf59cd6.png",
+      "category": "product-hero",
+      "path": "product-hero/5a1e22bb-27a8-431d-8fb1-17b5bbf59cd6.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "5b046570-0ac6-4f6e-97bc-9d9b0cf2bb5e.png",
+      "category": "product-hero",
+      "path": "product-hero/5b046570-0ac6-4f6e-97bc-9d9b0cf2bb5e.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "5b3cc2c9-3fa9-498b-9026-0153176a8a68.png",
+      "category": "features-benefits",
+      "path": "features-benefits/5b3cc2c9-3fa9-498b-9026-0153176a8a68.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "5b5872ed-844f-41e1-bd04-17f03c044af5.png",
+      "category": "lifestyle",
+      "path": "lifestyle/5b5872ed-844f-41e1-bd04-17f03c044af5.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "5c3b5589-642c-42b0-8776-679d1c71da19.png",
+      "category": "problem-solution",
+      "path": "problem-solution/5c3b5589-642c-42b0-8776-679d1c71da19.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "5ca19060-8377-4184-8360-1eadf2650dab.png",
+      "category": "product-hero",
+      "path": "product-hero/5ca19060-8377-4184-8360-1eadf2650dab.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "5cab5f88-f5a4-42d4-867d-75ce387dc63b.png",
+      "category": "product-hero",
+      "path": "product-hero/5cab5f88-f5a4-42d4-867d-75ce387dc63b.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "5d839838-1adb-4eea-ad63-248985f1e0ff.png",
+      "category": "product-hero",
+      "path": "product-hero/5d839838-1adb-4eea-ad63-248985f1e0ff.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "5d96f326-96ba-45f2-8f2c-65af5075aa2e.png",
+      "category": "lifestyle",
+      "path": "lifestyle/5d96f326-96ba-45f2-8f2c-65af5075aa2e.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "62706bd8-845c-4f57-a2fa-2357360c29d9.png",
+      "category": "social-proof",
+      "path": "social-proof/62706bd8-845c-4f57-a2fa-2357360c29d9.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "62ee964e-a225-4180-9503-18ae5f257cd3.png",
+      "category": "product-hero",
+      "path": "product-hero/62ee964e-a225-4180-9503-18ae5f257cd3.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "643aacbc-9bfb-4d4e-8340-965058203487.png",
+      "category": "features-benefits",
+      "path": "features-benefits/643aacbc-9bfb-4d4e-8340-965058203487.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "64d07bf9-f80c-4ab6-8110-422906af9b78.png",
+      "category": "problem-solution",
+      "path": "problem-solution/64d07bf9-f80c-4ab6-8110-422906af9b78.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "68158ba1-9c0d-4652-929b-9089999eb9d3.png",
+      "category": "product-hero",
+      "path": "product-hero/68158ba1-9c0d-4652-929b-9089999eb9d3.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "684e944f-4545-48b1-bac6-924bbc20d74c.png",
+      "category": "problem-solution",
+      "path": "problem-solution/684e944f-4545-48b1-bac6-924bbc20d74c.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "686f5c2b-25e6-4010-ae02-7b655f3ef8cc.png",
+      "category": "features-benefits",
+      "path": "features-benefits/686f5c2b-25e6-4010-ae02-7b655f3ef8cc.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "69b94029-4895-450c-8104-90dabb627722.png",
+      "category": "product-hero",
+      "path": "product-hero/69b94029-4895-450c-8104-90dabb627722.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "6a32a2b1-9cfb-442e-a151-b24cfaff270c.png",
+      "category": "features-benefits",
+      "path": "features-benefits/6a32a2b1-9cfb-442e-a151-b24cfaff270c.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "6a8bf64d-2db8-4a3c-bebf-bf1eae1f61fb.png",
+      "category": "lifestyle",
+      "path": "lifestyle/6a8bf64d-2db8-4a3c-bebf-bf1eae1f61fb.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "6ad88c22-9274-4316-a6e9-bf6f32bff8da.png",
+      "category": "product-hero",
+      "path": "product-hero/6ad88c22-9274-4316-a6e9-bf6f32bff8da.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "6bd4319e-6237-44a4-aaab-47c860b3ddfd.png",
+      "category": "testimonial",
+      "path": "testimonial/6bd4319e-6237-44a4-aaab-47c860b3ddfd.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "6c13c66c-e475-4579-baf1-1d013a19c74e.png",
+      "category": "product-hero",
+      "path": "product-hero/6c13c66c-e475-4579-baf1-1d013a19c74e.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "6c323fc8-5d68-4062-8910-4462c86033f7.png",
+      "category": "features-benefits",
+      "path": "features-benefits/6c323fc8-5d68-4062-8910-4462c86033f7.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "6d0c9e4b-9763-400a-b79b-4d934456ee5b.png",
+      "category": "comparison",
+      "path": "comparison/6d0c9e4b-9763-400a-b79b-4d934456ee5b.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "6dd42c44-9b0c-4bbe-811a-98eb214aa9e6.png",
+      "category": "social-proof",
+      "path": "social-proof/6dd42c44-9b0c-4bbe-811a-98eb214aa9e6.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "6df39d6c-50f9-4c58-8675-27a793dc25e8.png",
+      "category": "features-benefits",
+      "path": "features-benefits/6df39d6c-50f9-4c58-8675-27a793dc25e8.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "6f0a2c95-2fc6-43e6-a08d-d32ca997abe8.png",
+      "category": "problem-solution",
+      "path": "problem-solution/6f0a2c95-2fc6-43e6-a08d-d32ca997abe8.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "70364711-638a-4bed-b2b4-39b86c34edfe.png",
+      "category": "social-proof",
+      "path": "social-proof/70364711-638a-4bed-b2b4-39b86c34edfe.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "7067cadf-0674-4367-b9c2-77d6ad29fad3.png",
+      "category": "deals-offers",
+      "path": "deals-offers/7067cadf-0674-4367-b9c2-77d6ad29fad3.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "71673391-7561-4951-999b-b53eba26fc03.png",
+      "category": "product-hero",
+      "path": "product-hero/71673391-7561-4951-999b-b53eba26fc03.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "7255d12b-0c87-4014-ac8a-8333f8725d85.png",
+      "category": "product-hero",
+      "path": "product-hero/7255d12b-0c87-4014-ac8a-8333f8725d85.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "73d9a155-570f-4966-8f03-64fb87d5d5b2.png",
+      "category": "lifestyle",
+      "path": "lifestyle/73d9a155-570f-4966-8f03-64fb87d5d5b2.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "74b232ea-0a03-4435-8585-4f5504a9d8bb.png",
+      "category": "product-hero",
+      "path": "product-hero/74b232ea-0a03-4435-8585-4f5504a9d8bb.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "754d7955-d2ab-45ed-9174-6653fd0bb2a2.png",
+      "category": "testimonial",
+      "path": "testimonial/754d7955-d2ab-45ed-9174-6653fd0bb2a2.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "75829031-4d4e-445e-be4b-bb70f27c4014.png",
+      "category": "product-hero",
+      "path": "product-hero/75829031-4d4e-445e-be4b-bb70f27c4014.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "764b3d26-4891-4900-bdf0-445422de58e8.png",
+      "category": "product-hero",
+      "path": "product-hero/764b3d26-4891-4900-bdf0-445422de58e8.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "788284ad-fe4b-4b08-882a-fc2f1ee1ead8.png",
+      "category": "lifestyle",
+      "path": "lifestyle/788284ad-fe4b-4b08-882a-fc2f1ee1ead8.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "7c6d85f5-0479-414a-a5d3-318fecbd75e2.png",
+      "category": "product-hero",
+      "path": "product-hero/7c6d85f5-0479-414a-a5d3-318fecbd75e2.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "7ea5713c-b94c-41a2-9b42-973b959bab8d.png",
+      "category": "product-hero",
+      "path": "product-hero/7ea5713c-b94c-41a2-9b42-973b959bab8d.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "7f796485-1fb1-49f9-98d2-82750d73cde0.png",
+      "category": "social-proof",
+      "path": "social-proof/7f796485-1fb1-49f9-98d2-82750d73cde0.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "7f82921a-6205-4e75-b79a-42274ab6425c.png",
+      "category": "product-hero",
+      "path": "product-hero/7f82921a-6205-4e75-b79a-42274ab6425c.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "8213e7f0-9d11-42e4-96a1-e391c27a5fb9.png",
+      "category": "testimonial",
+      "path": "testimonial/8213e7f0-9d11-42e4-96a1-e391c27a5fb9.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "82859664-7d15-4eeb-a5f7-7c525b134e29.png",
+      "category": "product-hero",
+      "path": "product-hero/82859664-7d15-4eeb-a5f7-7c525b134e29.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "858e7a71-e27f-4375-8611-920eb0233bd7.png",
+      "category": "features-benefits",
+      "path": "features-benefits/858e7a71-e27f-4375-8611-920eb0233bd7.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "863f807b-8cbe-414b-b694-8e669d921c9f.png",
+      "category": "comparison",
+      "path": "comparison/863f807b-8cbe-414b-b694-8e669d921c9f.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "878d1a04-cb33-4f56-9d0f-51ae33a347ea.png",
+      "category": "features-benefits",
+      "path": "features-benefits/878d1a04-cb33-4f56-9d0f-51ae33a347ea.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "880a3c08-e3d2-4367-a037-29e5098588b5.png",
+      "category": "features-benefits",
+      "path": "features-benefits/880a3c08-e3d2-4367-a037-29e5098588b5.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "8a7832f8-69d4-4c40-9a6e-403a35a04682.png",
+      "category": "product-hero",
+      "path": "product-hero/8a7832f8-69d4-4c40-9a6e-403a35a04682.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "8a7953ad-9202-46c1-93b1-e2841f282f99.png",
+      "category": "features-benefits",
+      "path": "features-benefits/8a7953ad-9202-46c1-93b1-e2841f282f99.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "8b49b2ff-82a2-4b68-98c2-2589c2dcf335.png",
+      "category": "product-hero",
+      "path": "product-hero/8b49b2ff-82a2-4b68-98c2-2589c2dcf335.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "8bbe9369-a0b8-45d9-a53b-e3a20d849a74.png",
+      "category": "before-after",
+      "path": "before-after/8bbe9369-a0b8-45d9-a53b-e3a20d849a74.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "8be59ed4-6252-423e-80a4-a26dfe985558.png",
+      "category": "social-proof",
+      "path": "social-proof/8be59ed4-6252-423e-80a4-a26dfe985558.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "8c2ea5e7-9c29-405a-aac2-c4678188c633.png",
+      "category": "features-benefits",
+      "path": "features-benefits/8c2ea5e7-9c29-405a-aac2-c4678188c633.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "9231c725-4ba8-4fea-a419-6c3eb66d3521.png",
+      "category": "comparison",
+      "path": "comparison/9231c725-4ba8-4fea-a419-6c3eb66d3521.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "926d299b-29ea-4ebf-b5b0-3437b654b304.png",
+      "category": "testimonial",
+      "path": "testimonial/926d299b-29ea-4ebf-b5b0-3437b654b304.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "93d80f38-ceb5-496e-a247-84039db5bfe0.png",
+      "category": "product-hero",
+      "path": "product-hero/93d80f38-ceb5-496e-a247-84039db5bfe0.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "94a3ff0e-004e-45e0-b1f6-f87ebcf8bfeb.png",
+      "category": "features-benefits",
+      "path": "features-benefits/94a3ff0e-004e-45e0-b1f6-f87ebcf8bfeb.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "94fb4791-0c10-44bf-95bf-b420e1b6572b.png",
+      "category": "testimonial",
+      "path": "testimonial/94fb4791-0c10-44bf-95bf-b420e1b6572b.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "956e7cc2-d832-4fe3-bc24-68671e11d003.png",
+      "category": "social-proof",
+      "path": "social-proof/956e7cc2-d832-4fe3-bc24-68671e11d003.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "976934c3-5919-4878-9207-c98c7b862532.png",
+      "category": "testimonial",
+      "path": "testimonial/976934c3-5919-4878-9207-c98c7b862532.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "98b24a0a-2a37-42f4-981a-cece466d3a81.png",
+      "category": "deals-offers",
+      "path": "deals-offers/98b24a0a-2a37-42f4-981a-cece466d3a81.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "99a187fc-af55-4389-991b-3d615d6d2fb7.png",
+      "category": "problem-solution",
+      "path": "problem-solution/99a187fc-af55-4389-991b-3d615d6d2fb7.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "99acd95c-0f76-404c-a10b-908a08899e1c.png",
+      "category": "social-proof",
+      "path": "social-proof/99acd95c-0f76-404c-a10b-908a08899e1c.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "9b55414e-30e2-41f9-a63a-62fc1eaf40c1.png",
+      "category": "product-hero",
+      "path": "product-hero/9b55414e-30e2-41f9-a63a-62fc1eaf40c1.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "9cf7935f-9972-451e-bc8a-d7b064624119.png",
+      "category": "social-proof",
+      "path": "social-proof/9cf7935f-9972-451e-bc8a-d7b064624119.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "9e94efd7-d71f-4794-bfa6-fddf7fde21bf.png",
+      "category": "comparison",
+      "path": "comparison/9e94efd7-d71f-4794-bfa6-fddf7fde21bf.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "9f19e96a-8b18-40dd-845d-d39c12c5feac.png",
+      "category": "deals-offers",
+      "path": "deals-offers/9f19e96a-8b18-40dd-845d-d39c12c5feac.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "9fa728bc-4356-4664-be7e-3cddc952584c.png",
+      "category": "before-after",
+      "path": "before-after/9fa728bc-4356-4664-be7e-3cddc952584c.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "a0cbdd74-ffd1-4df7-96b8-1aa75cd00c12.png",
+      "category": "features-benefits",
+      "path": "features-benefits/a0cbdd74-ffd1-4df7-96b8-1aa75cd00c12.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "a624dd1e-a374-4d7c-bb85-c4ac36f2bbfd.png",
+      "category": "lifestyle",
+      "path": "lifestyle/a624dd1e-a374-4d7c-bb85-c4ac36f2bbfd.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "a70a1ce5-95c7-41b6-a896-58b0b8e9cbd3.png",
+      "category": "product-hero",
+      "path": "product-hero/a70a1ce5-95c7-41b6-a896-58b0b8e9cbd3.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "a7526af0-f5a8-44c8-be5f-82144f58e654.png",
+      "category": "testimonial",
+      "path": "testimonial/a7526af0-f5a8-44c8-be5f-82144f58e654.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "a8c8430b-e235-4bc3-90a8-389cac2fa951.png",
+      "category": "product-hero",
+      "path": "product-hero/a8c8430b-e235-4bc3-90a8-389cac2fa951.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "a9d6f4a8-5f7f-42d7-b933-1943ef926ce9.png",
+      "category": "features-benefits",
+      "path": "features-benefits/a9d6f4a8-5f7f-42d7-b933-1943ef926ce9.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "ab4ba33b-2f93-400b-bbc2-6f55f61dc058.png",
+      "category": "social-proof",
+      "path": "social-proof/ab4ba33b-2f93-400b-bbc2-6f55f61dc058.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "abbd29bd-d801-485b-9ae8-46584d4c4790.png",
+      "category": "problem-solution",
+      "path": "problem-solution/abbd29bd-d801-485b-9ae8-46584d4c4790.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "ac9b4fe2-e0d2-4477-bb1b-c7c7fbc6a7f5.png",
+      "category": "problem-solution",
+      "path": "problem-solution/ac9b4fe2-e0d2-4477-bb1b-c7c7fbc6a7f5.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "ad64413a-ab1a-40c4-a5f2-071bbdf00ceb.png",
+      "category": "product-hero",
+      "path": "product-hero/ad64413a-ab1a-40c4-a5f2-071bbdf00ceb.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "ae4fdf8b-a087-4d6e-b84c-b33ee3a061d2.png",
+      "category": "features-benefits",
+      "path": "features-benefits/ae4fdf8b-a087-4d6e-b84c-b33ee3a061d2.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "ae969e4d-f860-4500-9419-3ac5a0897216.png",
+      "category": "social-proof",
+      "path": "social-proof/ae969e4d-f860-4500-9419-3ac5a0897216.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "aea297d0-fb08-4144-ac2a-e893ae415cd2.png",
+      "category": "lifestyle",
+      "path": "lifestyle/aea297d0-fb08-4144-ac2a-e893ae415cd2.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "b0db7ccd-8d99-47aa-87f0-a57d6fb73eff.png",
+      "category": "features-benefits",
+      "path": "features-benefits/b0db7ccd-8d99-47aa-87f0-a57d6fb73eff.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "b19bedc2-7c43-4855-82bb-d818da322b92.png",
+      "category": "social-proof",
+      "path": "social-proof/b19bedc2-7c43-4855-82bb-d818da322b92.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "b603c978-e29a-4800-9e97-049c5ce98a73.png",
+      "category": "deals-offers",
+      "path": "deals-offers/b603c978-e29a-4800-9e97-049c5ce98a73.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "b75e2790-a7a7-4a88-a489-6a803bb20ba3.png",
+      "category": "problem-solution",
+      "path": "problem-solution/b75e2790-a7a7-4a88-a489-6a803bb20ba3.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "b8bdbe85-0771-4dcd-9943-775e347685ea.png",
+      "category": "product-hero",
+      "path": "product-hero/b8bdbe85-0771-4dcd-9943-775e347685ea.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "b9646b73-74f7-4edc-a6cb-6bc8189f7460.png",
+      "category": "lifestyle",
+      "path": "lifestyle/b9646b73-74f7-4edc-a6cb-6bc8189f7460.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "b9ba4a67-cf52-4c6d-9098-995a2501f8a5.png",
+      "category": "features-benefits",
+      "path": "features-benefits/b9ba4a67-cf52-4c6d-9098-995a2501f8a5.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "ba519ae3-1826-4c14-bd58-b210d1ce812c.png",
+      "category": "lifestyle",
+      "path": "lifestyle/ba519ae3-1826-4c14-bd58-b210d1ce812c.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "bb808141-a58b-4bd2-86bc-08295f77e1d2.png",
+      "category": "lifestyle",
+      "path": "lifestyle/bb808141-a58b-4bd2-86bc-08295f77e1d2.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "bb9bcb2e-54c7-4d66-ae2d-c30eaada0395.png",
+      "category": "social-proof",
+      "path": "social-proof/bb9bcb2e-54c7-4d66-ae2d-c30eaada0395.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "bc240e9f-7628-4f1b-8c16-6600530f719f.png",
+      "category": "deals-offers",
+      "path": "deals-offers/bc240e9f-7628-4f1b-8c16-6600530f719f.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "bc2f30da-d322-4425-81d6-80d872d5afea.png",
+      "category": "before-after",
+      "path": "before-after/bc2f30da-d322-4425-81d6-80d872d5afea.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "bc531948-fc27-4a63-9ee4-be14c0d8a133.png",
+      "category": "deals-offers",
+      "path": "deals-offers/bc531948-fc27-4a63-9ee4-be14c0d8a133.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "bc662281-485a-4c5b-9847-c64f56b70e0f.png",
+      "category": "product-hero",
+      "path": "product-hero/bc662281-485a-4c5b-9847-c64f56b70e0f.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "bcef0164-d14c-4492-b4f7-5ee05f4c83c3.png",
+      "category": "features-benefits",
+      "path": "features-benefits/bcef0164-d14c-4492-b4f7-5ee05f4c83c3.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "bdadab75-b030-411f-afc1-b23541c2f9ee.png",
+      "category": "testimonial",
+      "path": "testimonial/bdadab75-b030-411f-afc1-b23541c2f9ee.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "bde91450-53f6-4f43-a240-517ac1ac29d8.png",
+      "category": "product-hero",
+      "path": "product-hero/bde91450-53f6-4f43-a240-517ac1ac29d8.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "be4a828f-6d92-4d0a-9bc7-781a30a4a25a.png",
+      "category": "social-proof",
+      "path": "social-proof/be4a828f-6d92-4d0a-9bc7-781a30a4a25a.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "bfd18384-2324-47b1-9dd6-c492a35a5e71.png",
+      "category": "lifestyle",
+      "path": "lifestyle/bfd18384-2324-47b1-9dd6-c492a35a5e71.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "c0ea5836-e2fe-410f-baec-b5543e478b52.png",
+      "category": "product-hero",
+      "path": "product-hero/c0ea5836-e2fe-410f-baec-b5543e478b52.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "c1026c10-f362-4383-9d84-fb66afdc2b7e.png",
+      "category": "social-proof",
+      "path": "social-proof/c1026c10-f362-4383-9d84-fb66afdc2b7e.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "c221a9b7-ecfb-4e7a-a1ac-0fa00b295739.png",
+      "category": "features-benefits",
+      "path": "features-benefits/c221a9b7-ecfb-4e7a-a1ac-0fa00b295739.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "c2222b11-92b4-4f6a-9211-0b78c0b1c5a3.png",
+      "category": "product-hero",
+      "path": "product-hero/c2222b11-92b4-4f6a-9211-0b78c0b1c5a3.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "c22cabd5-bfc5-49dd-8e98-e63814307be9.png",
+      "category": "lifestyle",
+      "path": "lifestyle/c22cabd5-bfc5-49dd-8e98-e63814307be9.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "c251d604-1e14-4d66-a8ed-1291391566c6.png",
+      "category": "product-hero",
+      "path": "product-hero/c251d604-1e14-4d66-a8ed-1291391566c6.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "c45871d4-8f95-453a-abc4-b325c5b70c93.png",
+      "category": "features-benefits",
+      "path": "features-benefits/c45871d4-8f95-453a-abc4-b325c5b70c93.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "c4d3d815-d506-4419-a3b3-ef4164f73982.png",
+      "category": "problem-solution",
+      "path": "problem-solution/c4d3d815-d506-4419-a3b3-ef4164f73982.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "c7f82b60-3dcb-4379-9888-1e2ca6ea2320.png",
+      "category": "testimonial",
+      "path": "testimonial/c7f82b60-3dcb-4379-9888-1e2ca6ea2320.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "c96a7d72-c269-4bf3-8c62-853d9e0561e3.png",
+      "category": "lifestyle",
+      "path": "lifestyle/c96a7d72-c269-4bf3-8c62-853d9e0561e3.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "cacace2f-3ece-419a-a240-9d68aefad25a.png",
+      "category": "comparison",
+      "path": "comparison/cacace2f-3ece-419a-a240-9d68aefad25a.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "cb3f4144-8fb3-456b-af77-147a639fcc94.png",
+      "category": "features-benefits",
+      "path": "features-benefits/cb3f4144-8fb3-456b-af77-147a639fcc94.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "cbeae4bb-28e9-4441-ae80-a6f5ed1b531f.png",
+      "category": "lifestyle",
+      "path": "lifestyle/cbeae4bb-28e9-4441-ae80-a6f5ed1b531f.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "cc72f1fe-f317-47c0-935f-8552cf7a1637.png",
+      "category": "product-hero",
+      "path": "product-hero/cc72f1fe-f317-47c0-935f-8552cf7a1637.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "cc83b2ca-8deb-4934-9b4a-cfa5f83a2d5f.png",
+      "category": "testimonial",
+      "path": "testimonial/cc83b2ca-8deb-4934-9b4a-cfa5f83a2d5f.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "ccadcbd3-4ca3-4086-b60a-f41ab855f44c.png",
+      "category": "product-hero",
+      "path": "product-hero/ccadcbd3-4ca3-4086-b60a-f41ab855f44c.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "d0187738-fb4c-4ff5-9856-f7d7a5721d8a.png",
+      "category": "problem-solution",
+      "path": "problem-solution/d0187738-fb4c-4ff5-9856-f7d7a5721d8a.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "d092ffe6-764e-4d28-8945-8307bf948fc5.png",
+      "category": "lifestyle",
+      "path": "lifestyle/d092ffe6-764e-4d28-8945-8307bf948fc5.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "d10426b3-63a5-45a4-8059-85b124360e21.png",
+      "category": "product-hero",
+      "path": "product-hero/d10426b3-63a5-45a4-8059-85b124360e21.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "d17b094b-57b6-4fbf-a8d1-f32308a65694.png",
+      "category": "lifestyle",
+      "path": "lifestyle/d17b094b-57b6-4fbf-a8d1-f32308a65694.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "d19e76bf-0a11-4e39-8744-02e0372e67d6.png",
+      "category": "features-benefits",
+      "path": "features-benefits/d19e76bf-0a11-4e39-8744-02e0372e67d6.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "d2d81c9e-b887-450e-8743-91caf253d6fb.png",
+      "category": "product-hero",
+      "path": "product-hero/d2d81c9e-b887-450e-8743-91caf253d6fb.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "d42ae398-a03a-451d-98b5-a95207260869.png",
+      "category": "testimonial",
+      "path": "testimonial/d42ae398-a03a-451d-98b5-a95207260869.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "d4da6173-c3ad-4b3e-b3a2-328bdd6ad884.png",
+      "category": "product-hero",
+      "path": "product-hero/d4da6173-c3ad-4b3e-b3a2-328bdd6ad884.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "d8255b01-c67d-4203-8f4a-154b7b9f7d44.png",
+      "category": "comparison",
+      "path": "comparison/d8255b01-c67d-4203-8f4a-154b7b9f7d44.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "d9a0758f-646f-47b1-810c-118badfac4cc.png",
+      "category": "product-hero",
+      "path": "product-hero/d9a0758f-646f-47b1-810c-118badfac4cc.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "d9fb28b9-92af-44e9-b153-0ac8f3952e83.png",
+      "category": "social-proof",
+      "path": "social-proof/d9fb28b9-92af-44e9-b153-0ac8f3952e83.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "da3d01bf-4fcc-43cb-aff6-b635eeae8bc2.png",
+      "category": "deals-offers",
+      "path": "deals-offers/da3d01bf-4fcc-43cb-aff6-b635eeae8bc2.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "da9c0998-bec0-4780-9000-0911364c34e9.png",
+      "category": "product-hero",
+      "path": "product-hero/da9c0998-bec0-4780-9000-0911364c34e9.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "def3e372-b960-41d6-8376-525adf782b0a.png",
+      "category": "features-benefits",
+      "path": "features-benefits/def3e372-b960-41d6-8376-525adf782b0a.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "df5f0ac0-4c50-4af4-94a1-f32b6abb1d54.png",
+      "category": "product-hero",
+      "path": "product-hero/df5f0ac0-4c50-4af4-94a1-f32b6abb1d54.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "e1b1627f-76c8-4570-a815-77c98758f48b.png",
+      "category": "testimonial",
+      "path": "testimonial/e1b1627f-76c8-4570-a815-77c98758f48b.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "e20658ec-55fd-4aca-8443-9011403048b0.png",
+      "category": "product-hero",
+      "path": "product-hero/e20658ec-55fd-4aca-8443-9011403048b0.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "e3046bc6-46a1-4cca-b091-0b27e5389d54.png",
+      "category": "features-benefits",
+      "path": "features-benefits/e3046bc6-46a1-4cca-b091-0b27e5389d54.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "e428a0da-2e84-4f49-8660-d38033d8af14.png",
+      "category": "problem-solution",
+      "path": "problem-solution/e428a0da-2e84-4f49-8660-d38033d8af14.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "e5925640-5e65-480d-b456-f85c4fc3db27.png",
+      "category": "product-hero",
+      "path": "product-hero/e5925640-5e65-480d-b456-f85c4fc3db27.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "e598db8f-c1c0-4e9e-bd89-8bbc5d72488c.png",
+      "category": "before-after",
+      "path": "before-after/e598db8f-c1c0-4e9e-bd89-8bbc5d72488c.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "e623c10a-103a-4b2a-a2c4-25ddd7b8a51d.png",
+      "category": "product-hero",
+      "path": "product-hero/e623c10a-103a-4b2a-a2c4-25ddd7b8a51d.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "e6339bc6-05eb-492c-b103-a7e83b7d59e4.png",
+      "category": "product-hero",
+      "path": "product-hero/e6339bc6-05eb-492c-b103-a7e83b7d59e4.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "e6c37e2d-0367-4d50-bf73-3b940ea56656.png",
+      "category": "before-after",
+      "path": "before-after/e6c37e2d-0367-4d50-bf73-3b940ea56656.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "e790dbaf-0f1e-417d-838c-e28b36b0d90c.png",
+      "category": "lifestyle",
+      "path": "lifestyle/e790dbaf-0f1e-417d-838c-e28b36b0d90c.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "e81f4b66-3474-45e0-bec8-601fa2875404.png",
+      "category": "product-hero",
+      "path": "product-hero/e81f4b66-3474-45e0-bec8-601fa2875404.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "e874103b-ac5c-4241-a09b-e81f5fb6d2f3.png",
+      "category": "product-hero",
+      "path": "product-hero/e874103b-ac5c-4241-a09b-e81f5fb6d2f3.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "e8c47b3f-93d9-4454-aaa5-0fb3e221d405.png",
+      "category": "features-benefits",
+      "path": "features-benefits/e8c47b3f-93d9-4454-aaa5-0fb3e221d405.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "ea85250b-87d3-47b5-a425-8bfa7b2fd3cc.png",
+      "category": "product-hero",
+      "path": "product-hero/ea85250b-87d3-47b5-a425-8bfa7b2fd3cc.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "ec5365d2-6ad9-4933-8b0b-457f6b09119d.png",
+      "category": "product-hero",
+      "path": "product-hero/ec5365d2-6ad9-4933-8b0b-457f6b09119d.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "ed30e163-92e0-4919-8605-6c0430010c75.png",
+      "category": "product-hero",
+      "path": "product-hero/ed30e163-92e0-4919-8605-6c0430010c75.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "ed62978c-e655-4745-8c62-0e0a76ec6aaa.png",
+      "category": "lifestyle",
+      "path": "lifestyle/ed62978c-e655-4745-8c62-0e0a76ec6aaa.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "ed85a2b9-cc0c-4cbd-be67-018978dae484.png",
+      "category": "testimonial",
+      "path": "testimonial/ed85a2b9-cc0c-4cbd-be67-018978dae484.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "eeb9d7b8-e495-4ee3-ab4f-a7c62e7d755f.png",
+      "category": "deals-offers",
+      "path": "deals-offers/eeb9d7b8-e495-4ee3-ab4f-a7c62e7d755f.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "eec161a6-b881-43f5-ae79-bb18f0b84966.png",
+      "category": "features-benefits",
+      "path": "features-benefits/eec161a6-b881-43f5-ae79-bb18f0b84966.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "efe87026-482b-4af0-bd51-a07142d55ee1.png",
+      "category": "lifestyle",
+      "path": "lifestyle/efe87026-482b-4af0-bd51-a07142d55ee1.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "f0efac79-cd30-4582-85ea-f84f8221ef77.png",
+      "category": "product-hero",
+      "path": "product-hero/f0efac79-cd30-4582-85ea-f84f8221ef77.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "f619f922-8114-4c65-ba4f-f37998fa0a2c.png",
+      "category": "features-benefits",
+      "path": "features-benefits/f619f922-8114-4c65-ba4f-f37998fa0a2c.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "f62fb279-30ef-4145-b5f6-d6521a79733d.png",
+      "category": "features-benefits",
+      "path": "features-benefits/f62fb279-30ef-4145-b5f6-d6521a79733d.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "f6598717-8af6-4b5e-a27b-72a97e2f16f3.png",
+      "category": "testimonial",
+      "path": "testimonial/f6598717-8af6-4b5e-a27b-72a97e2f16f3.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "f760f143-9602-4b24-9684-ed5c341e51be.png",
+      "category": "product-hero",
+      "path": "product-hero/f760f143-9602-4b24-9684-ed5c341e51be.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "f8e5fd1b-eae6-455c-bf97-151c37b1e587.png",
+      "category": "deals-offers",
+      "path": "deals-offers/f8e5fd1b-eae6-455c-bf97-151c37b1e587.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "fa0d6e1c-e908-4540-a7b9-71ca8a8d6123.png",
+      "category": "features-benefits",
+      "path": "features-benefits/fa0d6e1c-e908-4540-a7b9-71ca8a8d6123.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "fac8dfee-e625-48dc-97d3-2115cce14ba3.png",
+      "category": "features-benefits",
+      "path": "features-benefits/fac8dfee-e625-48dc-97d3-2115cce14ba3.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "fc707f74-95da-44e7-a0f1-3bd223ff2ab6.png",
+      "category": "template",
+      "path": "template/fc707f74-95da-44e7-a0f1-3bd223ff2ab6.png",
+      "aspectRatio": "1:1"
+    },
+    {
+      "filename": "fccfa064-8fe0-443e-b5ab-1025f83962a5.png",
+      "category": "template",
+      "path": "template/fccfa064-8fe0-443e-b5ab-1025f83962a5.png",
+      "aspectRatio": "1:1"
+    }
+  ]
+}

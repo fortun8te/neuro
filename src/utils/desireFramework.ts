@@ -209,20 +209,26 @@ export function getFrameworkContext(stage: string): string {
     case 'research':
       return `${DESIRE_INTENSITY_GUIDE}\n${FOUR_LAYER_RESEARCH}\n${MARKET_SOPHISTICATION}`;
 
-    case 'objections':
-      return `${DESIRE_INTENSITY_GUIDE}\n${ROOT_CAUSE_MECHANISM}`;
+    case 'brand-dna':
+      return `${DESIRE_INTENSITY_GUIDE}\n${MARKET_SOPHISTICATION}`;
 
-    case 'taste':
+    case 'persona-dna':
+      return `${DESIRE_INTENSITY_GUIDE}\n${FOUR_LAYER_RESEARCH}`;
+
+    case 'angles':
+      return `${DESIRE_INTENSITY_GUIDE}\n${AD_STRUCTURE}\n${ROOT_CAUSE_MECHANISM}`;
+
+    case 'strategy':
       return `${AD_STRUCTURE}\n${MARKET_SOPHISTICATION}\n${ROOT_CAUSE_MECHANISM}`;
 
-    case 'make':
+    case 'copywriting':
       return `${AD_STRUCTURE}\n${DESIRE_INTENSITY_GUIDE}\n${ROOT_CAUSE_MECHANISM}`;
+
+    case 'production':
+      return `${AD_STRUCTURE}\n${DESIRE_INTENSITY_GUIDE}`;
 
     case 'test':
       return `${AD_STRUCTURE}\n${DESIRE_INTENSITY_GUIDE}\n${MARKET_SOPHISTICATION}`;
-
-    case 'memories':
-      return DESIRE_INTENSITY_GUIDE;
 
     default:
       return DESIRE_INTENSITY_GUIDE;

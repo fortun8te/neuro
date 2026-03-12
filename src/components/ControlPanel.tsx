@@ -6,14 +6,13 @@ import { PresetDetailsModal } from './PresetDetailsModal';
 import { MakeTestPanel } from './MakeTestPanel';
 
 export function ControlPanel() {
-  const { systemStatus, currentCycle, campaign, startCycle, pauseCycle, resumeCycle, stopCycle, clearCampaign } = useCampaign() as any;
+  const { systemStatus, currentCycle, campaign, startCycle, stopCycle, clearCampaign } = useCampaign() as any;
   const { isDarkMode } = useTheme();
   const [showSettings, setShowSettings] = useState(false);
   const [showTestMake, setShowTestMake] = useState(false);
   const [showPresetDetails, setShowPresetDetails] = useState(false);
   const [exporting, setExporting] = useState(false);
   const isRunning = systemStatus === 'running';
-  const isPaused = systemStatus === 'paused';
 
   // Research stage must be complete to enable PDF export
   const canExport = campaign && currentCycle && currentCycle.stages.research.status === 'complete';
@@ -50,12 +49,10 @@ export function ControlPanel() {
             <div className={`w-1.5 h-1.5 rounded-full ${
               isRunning
                 ? (isDarkMode ? 'bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.4)]' : 'bg-emerald-500')
-                : isPaused
-                  ? (isDarkMode ? 'bg-amber-400' : 'bg-amber-500')
-                  : (isDarkMode ? 'bg-zinc-700' : 'bg-zinc-300')
+                : (isDarkMode ? 'bg-zinc-700' : 'bg-zinc-300')
             } ${isRunning ? 'animate-pulse' : ''}`} />
             <span className={`font-mono text-[10px] ${isDarkMode ? 'text-zinc-500' : 'text-zinc-500'} uppercase tracking-widest`}>
-              {isRunning ? 'Running' : isPaused ? 'Paused' : 'Idle'}
+              {isRunning ? 'Running' : 'Idle'}
             </span>
           </div>
 
@@ -72,7 +69,7 @@ export function ControlPanel() {
 
         {/* Buttons */}
         <div className="flex gap-2">
-          {!isRunning && !isPaused && (
+          {!isRunning && (
             <button
               onClick={() => startCycle()}
               className={`px-5 py-1.5 text-[10px] font-mono font-semibold uppercase tracking-[0.15em] transition-all duration-150 ${
@@ -86,39 +83,15 @@ export function ControlPanel() {
           )}
           {isRunning && (
             <button
-              onClick={() => pauseCycle()}
+              onClick={() => stopCycle()}
               className={`border px-4 py-1.5 text-[10px] font-mono font-semibold uppercase tracking-[0.15em] transition-all duration-150 ${
                 isDarkMode
-                  ? 'border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white'
-                  : 'border-zinc-300 text-zinc-700 hover:border-zinc-500 hover:text-black'
+                  ? 'border-red-800 text-red-400 hover:bg-red-950/40 hover:border-red-600'
+                  : 'border-red-300 text-red-600 hover:border-red-500'
               }`}
             >
-              Pause
+              Stop
             </button>
-          )}
-          {isPaused && (
-            <>
-              <button
-                onClick={() => resumeCycle()}
-                className={`px-4 py-1.5 text-[10px] font-mono font-semibold uppercase tracking-[0.15em] transition-all duration-150 ${
-                  isDarkMode
-                    ? 'bg-white text-black hover:bg-zinc-200'
-                    : 'bg-black text-white hover:bg-zinc-800'
-                }`}
-              >
-                Resume
-              </button>
-              <button
-                onClick={() => stopCycle()}
-                className={`border px-4 py-1.5 text-[10px] font-mono font-semibold uppercase tracking-[0.15em] transition-all duration-150 ${
-                  isDarkMode
-                    ? 'border-red-800 text-red-400 hover:bg-red-950/40 hover:border-red-600'
-                    : 'border-red-300 text-red-600 hover:border-red-500'
-                }`}
-              >
-                Stop
-              </button>
-            </>
           )}
 
           {campaign && (

@@ -425,11 +425,13 @@ export async function exportResearchPDF(campaign: Campaign, cycle: Cycle): Promi
 
   // ── 4. STAGE OUTPUTS ──────────────────────────────────────────────
   const stageNames: Array<{ key: string; label: string }> = [
-    { key: 'objections', label: 'Objections' },
-    { key: 'taste', label: 'Taste / Creative Direction' },
-    { key: 'make', label: 'Make / Ad Concepts' },
+    { key: 'brand-dna', label: 'Brand DNA' },
+    { key: 'persona-dna', label: 'Persona DNA' },
+    { key: 'angles', label: 'Angles' },
+    { key: 'strategy', label: 'Strategy' },
+    { key: 'copywriting', label: 'Copywriting' },
+    { key: 'production', label: 'Production' },
     { key: 'test', label: 'Test / Evaluation' },
-    { key: 'memories', label: 'Memories / Learnings' },
   ];
 
   for (const { key, label } of stageNames) {

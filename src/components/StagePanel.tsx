@@ -9,12 +9,14 @@ import { ShineText } from './ShineText';
 import { WordCycler } from './WordCycler';
 
 const STAGE_INFO: Record<StageName, { label: string; description: string; icon: string }> = {
-  research: { label: 'Research', description: 'Market & audience analysis', icon: '🔍' },
-  objections: { label: 'Objections', description: 'Handling strategy', icon: '🛡' },
-  taste: { label: 'Taste', description: 'Creative direction', icon: '🎨' },
-  make: { label: 'Make', description: 'Ad generation', icon: '⚡' },
-  test: { label: 'Test', description: 'Evaluation', icon: '📊' },
-  memories: { label: 'Memories', description: 'Pattern archive', icon: '💾' },
+  'research':    { label: 'Research',    description: 'Market & audience analysis',     icon: 'R' },
+  'brand-dna':   { label: 'Brand DNA',   description: 'Brand identity & style',         icon: 'D' },
+  'persona-dna': { label: 'Persona DNA', description: 'Customer personas',              icon: 'P' },
+  'angles':      { label: 'Angles',      description: 'Ad angle brainstorm',            icon: 'A' },
+  'strategy':    { label: 'Strategy',    description: 'Angle evaluation',               icon: 'S' },
+  'copywriting': { label: 'Copywriting', description: 'Ad messaging',                   icon: 'C' },
+  'production':  { label: 'Production',  description: 'Ad generation',                  icon: 'M' },
+  'test':        { label: 'Test',        description: 'Evaluation',                     icon: 'T' },
 };
 
 
@@ -59,6 +61,8 @@ export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewSta
 
   const currentStage = viewStage || cycle.currentStage;
   const stageData = cycle.stages[currentStage];
+  if (!stageData) return null;
+
   const elapsed = stageData.startedAt
     ? Math.round(((stageData.completedAt || Date.now()) - stageData.startedAt) / 1000)
     : null;
@@ -168,7 +172,7 @@ export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewSta
           </div>
         ) : (
           <>
-            {currentStage === 'make' && !isRunning ? (
+            {currentStage === 'production' && !isRunning ? (
               <MakeTestPanel isDarkMode={isDarkMode} />
             ) : (
               <div className={`flex items-center justify-center h-full ${isDarkMode ? 'text-zinc-700' : 'text-zinc-300'}`}>
@@ -192,70 +196,100 @@ export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewSta
         )}
       </div>
 
-      {/* Status Footer */}
+      {/* ── Live Activity Bar ── */}
       {stageData.status === 'in-progress' && (
-        <div className={`px-5 py-2 flex items-center justify-between ${
-          isDarkMode ? 'border-t border-zinc-800/60' : 'border-t border-zinc-100'
-        }`}>
-          <div className="flex items-center gap-2">
-            <div className="flex gap-0.5">
-              {[0, 1, 2].map(i => (
-                <div
-                  key={i}
-                  className={`w-1 h-1 rounded-full animate-slow-bounce ${
-                    tokenInfo.isModelLoading
-                      ? 'bg-amber-400'
-                      : tokenInfo.isThinking
-                      ? 'bg-violet-400'
-                      : isDarkMode ? 'bg-zinc-600' : 'bg-zinc-300'
-                  }`}
-                  style={{ animationDelay: `${i * 0.15}s` }}
-                />
-              ))}
-            </div>
+        <div className={`px-5 py-2.5 flex items-center justify-between ${
+          isDarkMode
+            ? 'border-t border-zinc-800/60 bg-zinc-900/80'
+            : 'border-t border-zinc-100 bg-white/80'
+        } backdrop-blur-sm`}>
+          {/* Left: Status + Model */}
+          <div className="flex items-center gap-3">
+            {/* Pulsing status dot */}
+            <div className={`w-2 h-2 rounded-full ${
+              tokenInfo.isModelLoading
+                ? 'bg-amber-400 animate-pulse'
+                : tokenInfo.isThinking
+                ? 'bg-violet-400 animate-pulse'
+                : tokenInfo.isGenerating
+                ? 'bg-emerald-400 animate-pulse'
+                : isDarkMode ? 'bg-zinc-600 animate-pulse' : 'bg-zinc-300 animate-pulse'
+            }`} />
+
+            {/* Status label */}
             {tokenInfo.isModelLoading ? (
               <WordCycler
                 prefix="Loading"
                 words={['model', 'weights', 'context', 'layers', 'model']}
                 color={isDarkMode ? '#fbbf24' : '#d97706'}
                 speed={3}
-                className="text-[11px]"
+                className="text-xs font-medium"
               />
             ) : (
-              <ShineText
-                variant={isDarkMode ? 'dark' : 'light'}
-                className={`text-[11px] ${
-                  tokenInfo.isThinking
-                    ? isDarkMode ? 'text-violet-400' : 'text-violet-600'
-                    : tokenInfo.isGenerating
-                    ? isDarkMode ? 'text-emerald-400' : 'text-emerald-600'
-                    : isDarkMode ? 'text-zinc-500' : 'text-zinc-400'
-                }`}
-                speed={2.5}
-              >
+              <span className={`text-xs font-medium ${
+                tokenInfo.isThinking
+                  ? isDarkMode ? 'text-violet-400' : 'text-violet-600'
+                  : tokenInfo.isGenerating
+                  ? isDarkMode ? 'text-emerald-400' : 'text-emerald-600'
+                  : isDarkMode ? 'text-zinc-500' : 'text-zinc-400'
+              }`}>
                 {tokenInfo.isThinking ? 'Thinking' : tokenInfo.isGenerating ? 'Generating' : 'Processing'}
-              </ShineText>
+              </span>
             )}
-          </div>
 
-          {/* Token stats */}
-          <div className="flex items-center gap-3 text-[11px] tabular-nums">
+            {/* Model name pill */}
+            {tokenInfo.activeModel && (
+              <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono ${
+                isDarkMode ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-100 text-zinc-500'
+              }`}>
+                {tokenInfo.activeModel.split(':')[0]}
+              </span>
+            )}
+
+            {/* Loading timer */}
             {tokenInfo.isModelLoading && tokenInfo.callStartTime && (
-              <span className={isDarkMode ? 'text-amber-400' : 'text-amber-600'}>
+              <span className={`text-[11px] tabular-nums ${isDarkMode ? 'text-amber-500/70' : 'text-amber-600/70'}`}>
                 {Math.floor((Date.now() - tokenInfo.callStartTime) / 1000)}s
               </span>
             )}
+          </div>
+
+          {/* Right: Token metrics */}
+          <div className="flex items-center gap-3 tabular-nums">
+            {/* Live token count for current call */}
             {(tokenInfo.isThinking || tokenInfo.isGenerating) && (
-              <span className={tokenInfo.isThinking ? (isDarkMode ? 'text-violet-400' : 'text-violet-600') : (isDarkMode ? 'text-emerald-400' : 'text-emerald-600')}>
-                {tokenInfo.liveTokens.toLocaleString()} tok
+              <div className="flex items-center gap-1.5">
+                <span className={`text-xs font-medium ${
+                  tokenInfo.isThinking
+                    ? isDarkMode ? 'text-violet-400' : 'text-violet-600'
+                    : isDarkMode ? 'text-emerald-400' : 'text-emerald-600'
+                }`}>
+                  {tokenInfo.liveTokens.toLocaleString()} tok
+                </span>
                 {tokenInfo.tokensPerSec > 0 && (
-                  <span className={isDarkMode ? 'text-zinc-500' : 'text-zinc-400'}> · {tokenInfo.tokensPerSec} t/s</span>
+                  <span className={`text-[11px] ${isDarkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                    {tokenInfo.tokensPerSec} t/s
+                  </span>
                 )}
+              </div>
+            )}
+
+            {/* Separator */}
+            {(tokenInfo.isThinking || tokenInfo.isGenerating) && tokenInfo.sessionTotal > 0 && (
+              <span className={`text-[10px] ${isDarkMode ? 'text-zinc-700' : 'text-zinc-300'}`}>|</span>
+            )}
+
+            {/* Session total */}
+            {tokenInfo.sessionTotal > 0 && (
+              <span className={`text-[11px] ${isDarkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                {tokenInfo.sessionTotal.toLocaleString()} total
               </span>
             )}
-            {tokenInfo.sessionTotal > 0 && (
-              <span className={isDarkMode ? 'text-zinc-600' : 'text-zinc-400'}>
-                {tokenInfo.sessionTotal.toLocaleString()} total
+
+            {/* Call count */}
+            {tokenInfo.callCount > 0 && (
+              <span className={`text-[10px] ${isDarkMode ? 'text-zinc-600' : 'text-zinc-300'}`}>
+                #{tokenInfo.callCount}
               </span>
             )}
           </div>

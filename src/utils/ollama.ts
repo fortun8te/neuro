@@ -56,7 +56,7 @@ export const ollamaService = {
     const fullPrompt = `${systemPrompt}\n\n${prompt}`;
     let fullResponse = '';
 
-    tokenTracker.startCall();
+    tokenTracker.startCall(cleanModel);
 
     let timeoutId: NodeJS.Timeout | undefined;
     try {

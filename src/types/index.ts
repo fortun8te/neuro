@@ -1,9 +1,25 @@
-export type StageName = 'research' | 'objections' | 'taste' | 'make' | 'test' | 'memories';
-export type CycleMode = 'full' | 'concepting'; // full = all stages, concepting = research + objections + taste only
+// ══════════════════════════════════════════════════════
+// ██  NOMADS — Pipeline Stage Types
+// ══════════════════════════════════════════════════════
+
+export type StageName =
+  | 'research'      // Deep agentic web scraping
+  | 'brand-dna'     // Brand identity crystallized from research (hybrid: LLM + user edit)
+  | 'persona-dna'   // Detailed customer personas from research (hybrid)
+  | 'angles'        // Tiered brainstorm: 50+ ideas → ranked top 10-15, user picks
+  | 'strategy'      // Evaluate selected angles — feasibility, execution plan
+  | 'copywriting'   // Create messaging per angle — headlines, CTAs, callouts
+  | 'production'    // Generate actual ads (Freepik/HTML pipelines)
+  | 'test';         // Evaluate produced ads, rank, pick winners
+
+export type CycleMode = 'full' | 'concepting';
+// full = all 8 stages
+// concepting = research + brand-dna + persona-dna + angles only
+
 export type StageStatus = 'pending' | 'in-progress' | 'complete';
 export type CampaignStatus = 'active' | 'paused' | 'archived';
 export type CycleStatus = 'in-progress' | 'complete';
-export type SystemStatus = 'idle' | 'running' | 'paused' | 'error';
+export type SystemStatus = 'idle' | 'running' | 'error';
 
 // ─ Ad Library ─
 export interface AdLibraryImage {
@@ -27,14 +43,14 @@ export interface ProductPageAnalysis {
   scents?: string[];
   brand_messaging?: string;
   socialProof?: { metric: string; value: string }[];
-  visionRawOutput?: string; // Full minicpm-v output for inspection
+  visionRawOutput?: string;
   error?: string;
 }
 
-// ─ Competitor product intelligence (autonomous multi-product analysis) ─
+// ─ Competitor product intelligence ─
 export interface CrawledProduct {
   url: string;
-  name: string;       // Inferred from URL or link text
+  name: string;
 }
 
 export interface CompetitorProductIntelligence {
@@ -53,34 +69,38 @@ export interface CompetitorProductIntelligence {
   };
   crawledUrls: string[];
   visionAnalyzed: number;
-  elapsed: number;      // ms
+  elapsed: number;
   error?: string;
 }
 
-// Desire-driven selling framework
+// ══════════════════════════════════════════════════════
+// ██  Research Stage Types
+// ══════════════════════════════════════════════════════
+
 export interface DesireLayer {
-  level: number; // 1 = surface problem, 2+ = deeper layers
+  level: number;
   description: string;
   example: string;
 }
 
 export interface DeepDesire {
+  id: string;                   // Stable ID for linking ads/angles to this desire
   surfaceProblem: string;
   layers: DesireLayer[];
   deepestDesire: string;
   desireIntensity: 'low' | 'moderate' | 'high' | 'extreme';
-  turningPoint: string; // The moment desire becomes unbearable — highest conversion point
-  amplifiedDesireType: 'loved_ones' | 'identity_status' | 'survival' | 'other'; // What category of amplified desire
-  targetSegment: string; // Narrow sub-avatar, not broad audience
+  turningPoint: string;
+  amplifiedDesireType: 'loved_ones' | 'identity_status' | 'survival' | 'other';
+  targetSegment: string;
 }
 
 export type MarketSophisticationLevel = 1 | 2 | 3 | 4;
 
 export interface RootCauseMechanism {
-  rootCause: string; // What's ACTUALLY wrong beneath the symptoms
-  mechanism: string; // HOW the solution fixes it (theory, not product)
-  chainOfYes: string[]; // Sequential YES statements that build belief
-  ahaInsight: string; // The reframe that changes everything
+  rootCause: string;
+  mechanism: string;
+  chainOfYes: string[];
+  ahaInsight: string;
 }
 
 export interface Objection {
@@ -89,45 +109,45 @@ export interface Objection {
   impact: 'high' | 'medium' | 'low';
   handlingApproach: string;
   requiredProof: string[];
-  rootCauseAnswer?: string; // How the root cause mechanism addresses this objection
+  rootCauseAnswer?: string;
 }
 
 export interface AvatarPersona {
-  name: string; // Fictional name for this sub-avatar
-  age: string; // Age range
-  situation: string; // Life situation (married, kids, career stage)
-  identity: string; // How they see themselves
-  dailyLife: string; // What does a typical day look like?
-  painNarrative: string; // Their pain story in FIRST PERSON (their words)
-  turningPointMoment: string; // The exact moment they decide to buy
-  innerMonologue: string; // What they think but don't say out loud
-  purchaseJourney: string; // How they'd actually find and buy this product
-  socialInfluence: string; // What friends/family/spouse think about the purchase
-  failedSolutions: string[]; // Specific things they tried + why each failed
-  languagePatterns: string[]; // How they talk about the problem (verbatim)
-  deepDesire: string; // Their deepest desire
-  biggestFear: string; // What they're most afraid of if they DON'T act
+  name: string;
+  age: string;
+  situation: string;
+  identity: string;
+  dailyLife: string;
+  painNarrative: string;
+  turningPointMoment: string;
+  innerMonologue: string;
+  purchaseJourney: string;
+  socialInfluence: string;
+  failedSolutions: string[];
+  languagePatterns: string[];
+  deepDesire: string;
+  biggestFear: string;
 }
 
 export interface VisualAnalysis {
   url: string;
   analysisTimestamp: number;
-  dominantColors: string[];       // e.g., ["deep navy", "gold accents", "white space"]
-  layoutStyle: string;            // e.g., "clean minimalist with hero image"
-  visualTone: string;             // e.g., "premium clinical" or "warm lifestyle"
-  keyVisualElements: string[];    // e.g., ["before-after images", "trust badges"]
-  textOverlayStyle: string;       // e.g., "bold sans-serif headlines over imagery"
-  ctaStyle: string;               // e.g., "prominent orange button, urgency text"
-  overallImpression: string;      // 2-3 sentence summary of visual strategy
-  competitiveInsight: string;     // What this reveals about competitor strategy
+  dominantColors: string[];
+  layoutStyle: string;
+  visualTone: string;
+  keyVisualElements: string[];
+  textOverlayStyle: string;
+  ctaStyle: string;
+  overallImpression: string;
+  competitiveInsight: string;
 }
 
 export interface VisualFindings {
   competitorVisuals: VisualAnalysis[];
-  commonPatterns: string[];               // Visual patterns across competitors
-  visualGaps: string[];                   // What NO competitor is doing visually
-  recommendedDifferentiation: string[];   // How to look different
-  analysisModel: string;                  // "minicpm-v:8b"
+  commonPatterns: string[];
+  visualGaps: string[];
+  recommendedDifferentiation: string[];
+  analysisModel: string;
   totalScreenshots: number;
   totalAnalyzed: number;
 }
@@ -136,12 +156,12 @@ export interface AdExample {
   adCopy: string;
   headline?: string;
   cta?: string;
-  hookAngle: string;       // "pain-agitate-solution" | "social-proof" | "before-after" | "curiosity" | "authority" | "urgency" | "lifestyle"
-  emotionalDriver: string; // "fear of failure" | "aspiration" | "social belonging" | "identity" | "urgency"
-  offerStructure?: string; // "30-day free trial" | "50% off" | "money-back guarantee"
-  estimatedLongevity?: string; // "90+ days (proven converter)" | "newly launched" | "unknown"
+  hookAngle: string;
+  emotionalDriver: string;
+  offerStructure?: string;
+  estimatedLongevity?: string;
   sourceUrl: string;
-  visualAnalysis?: string; // minicpm-v raw output for this specific creative
+  visualAnalysis?: string;
 }
 
 export interface CompetitorProfile {
@@ -157,67 +177,280 @@ export interface CompetitorAdIntelligence {
   industryPatterns: {
     dominantHooks: string[];
     commonEmotionalDrivers: string[];
-    unusedAngles: string[];   // creative opportunities — what NO competitor does
+    unusedAngles: string[];
     dominantFormats: string[];
     commonOffers: string[];
   };
   visionAnalyzed: number;
 }
 
-// ─ Taste Stage: Creative Direction ─
-export interface TasteFindings {
-  brandVoice: string;                    // How the brand speaks (e.g., "authority + friendly")
-  recommendedColors: string[];           // e.g., ["deep navy", "gold", "white"]
-  brandTone: string;                     // e.g., "premium clinical" or "warm lifestyle"
-  positioning: string;                   // Market position statement
-  recommendedCopyAngles: string[];       // e.g., ["transformation", "social proof", "exclusivity"]
-  visualStyle: string;                   // e.g., "minimalist + bold typography"
-  adFormats: string[];                   // e.g., ["static image", "carousel", "video testimonial"]
-  unusedEmotionalSpace: string[];        // What emotions competitors don't target
+// ─ Purchase Journey Mapping (Layer 4) ─
+export interface PurchaseJourneyMap {
+  searchTerms: string[];              // What they actually Google
+  reviewSites: string[];              // Where they read reviews
+  comparisonCriteria: string[];       // What they compare products on
+  decisionInfluencers: string[];      // Who/what influences the final decision
+  abandonmentReasons: string[];       // Why they bail mid-funnel
+  typicalTimeline: string;            // "2 weeks from awareness to purchase"
+  firstTouchpoint: string;            // Where they first hear about solutions
+  finalTrigger: string;               // The last push before buying
 }
 
-// ─ Make Stage: Ad Concepts ─
-export interface AdConcept {
-  conceptNumber: number;                 // 1, 2, or 3
-  hookAngle: string;                     // from unusedAngles (e.g., "before-after")
-  emotionalDriver: string;               // from validated emotions
-  headline: string;
-  body: string;                          // 2-3 sentences
-  cta: string;                           // button text
-  offer?: string;                        // if applicable
-  adFormat: string;                      // e.g., "static image" or "carousel"
-  visualDirection: string;               // e.g., "lifestyle hero + product detail"
-  colors: string[];                      // from taste
-  mjml: string;                          // MJML markup for layout
-  html?: string;                         // Compiled HTML (generated later)
-  rationale: string;                     // Why this angle + emotion combo works
+// ─ Emotional Landscape (Layer 5) ─
+export interface EmotionalLandscape {
+  primaryEmotion: string;             // Dominant feeling driving the purchase
+  secondaryEmotions: string[];        // Supporting emotions (guilt, hope, etc.)
+  identitySignal: string;             // What buying this says about them
+  socialPressure: string;             // External pressure to solve/not solve
+  shameTriggers: string[];            // What makes them feel bad about the problem
+  hopeTriggers: string[];             // What makes them believe change is possible
+  emotionalArc: string;               // Before → during → after purchase feeling
 }
 
-export interface MakeOutput {
-  concepts: AdConcept[];
-  adDimensions: string[];                // aspect ratios used (e.g., ["1:1", "9:16"])
-  processingTime: number;
+// ─ Competitive Positioning (Layer 6) ─
+export interface CompetitorPosition {
+  name: string;
+  positioning: string;                // Their core claim
+  trappedBy: string;                  // What they can't change without breaking their brand
+  adHooks: string[];                  // What hooks they use in advertising
+  pricing: string;                    // Price point / strategy
+  structuralWeakness: string;         // Fundamental limitation they can't fix
+  whatTheyOwn: string;                // The mental real estate they occupy
+  customerComplaint: string;          // Top complaint from real reviews
+}
+
+// Research audit trail — tracks where findings came from
+export interface ResearchSource {
+  url: string;
+  query: string;              // what search query found this
+  source: 'text' | 'visual' | 'meta-ads' | 'reddit' | 'academic' | 'web';
+  fetchedAt: number;          // timestamp
+  contentLength?: number;     // bytes of content
+  extractedSnippet?: string;  // key excerpt
+}
+
+export interface ResearchAuditTrail {
+  totalSources: number;                    // unique URLs visited
+  sourcesByType: Record<string, number>;   // { 'text': 150, 'visual': 5, 'reddit': 20 }
+  sourceList: ResearchSource[];            // full list with metadata
+  modelsUsed: string[];                    // which models processed this data
+  totalTokensGenerated: number;            // sum of all tokens across all phases
+  tokensByModel: Record<string, number>;   // { 'lfm-2.5': 50000, 'qwen3.5:9b': 120000 }
+  phaseTimes: Record<string, number>;      // { 'web-research': 180, 'desire-analysis': 45, ... }
+  researchDuration: number;                // total milliseconds
+  preset: string;                          // which research preset was used
+  iterationsCompleted: number;
+  coverageAchieved: number;                // 0-1 scale
 }
 
 export interface ResearchFindings {
   deepDesires: DeepDesire[];
   objections: Objection[];
-  avatarLanguage: string[]; // Verbatim phrases from real people, not brand language
+  avatarLanguage: string[];
   whereAudienceCongregates: string[];
-  whatTheyTriedBefore: string[]; // Failed solutions + WHY they failed
+  whatTheyTriedBefore: string[];
   competitorWeaknesses: string[];
-  marketSophistication?: MarketSophisticationLevel; // 1-4 determines messaging strategy
-  rootCauseMechanism?: RootCauseMechanism; // The belief-building chain
-  verbatimQuotes?: string[]; // Raw customer quotes from Reddit, Trustpilot, forums
-  persona?: AvatarPersona; // Detailed sub-avatar persona synthesis
-  visualFindings?: VisualFindings; // Visual intelligence from competitor screenshots
-  competitorAds?: CompetitorAdIntelligence; // Competitor ad creative intelligence
+  marketSophistication?: MarketSophisticationLevel;
+  rootCauseMechanism?: RootCauseMechanism;
+  verbatimQuotes?: string[];
+  persona?: AvatarPersona;
+  visualFindings?: VisualFindings;
+  competitorAds?: CompetitorAdIntelligence;
+  // New deep research layers
+  purchaseJourney?: PurchaseJourneyMap;
+  emotionalLandscape?: EmotionalLandscape;
+  competitivePositioning?: CompetitorPosition[];
+  // Council of Marketing Brains output
+  councilVerdict?: any;  // CouncilVerdict from council.ts (avoid circular import)
+  // Research audit trail — complete provenance
+  auditTrail?: ResearchAuditTrail;
 }
+
+// ══════════════════════════════════════════════════════
+// ██  Brand DNA — Crystallized from Research
+// ══════════════════════════════════════════════════════
+
+export interface StyleDNA {
+  sourceImages: string[];        // filenames/paths analyzed
+  layoutPatterns: string[];      // "centered product", "split layout"
+  colorPalette: string[];        // extracted hex codes
+  typographyStyle: string;       // "bold sans-serif headlines"
+  moodAndTone: string;           // "clean minimal", "bold maximalist"
+  compositionRules: string[];    // "product takes 40%+ of frame"
+  textPlacement: string[];       // "headline top-left", "CTA bottom-center"
+  rawAnalysis: string;           // full vision model output
+}
+
+export interface BrandDNA {
+  name: string;
+  tagline: string;
+  mission: string;
+  values: string[];
+  voiceTone: string;
+  personality: string;
+  positioning: string;
+  visualIdentity: {
+    primaryColors: string[];
+    accentColors: string[];
+    fonts: string[];
+    logoDescription: string;
+    moodKeywords: string[];
+  };
+  styleDNA?: StyleDNA;
+  differentiators: string[];
+  rawLLMDraft: string;
+}
+
+// ══════════════════════════════════════════════════════
+// ██  Persona DNA — Detailed Customer Personas
+// ══════════════════════════════════════════════════════
+
+export interface PersonaDNA {
+  id: string;
+  name: string;                  // "Sarah, 34, working mom"
+  demographics: string;
+  psychographics: string;
+  painPoints: string[];
+  desires: string[];
+  language: string[];            // actual phrases they use
+  objections: string[];
+  mediaHabits: string;
+  buyingTriggers: string[];
+  dayInLife: string;
+  rawLLMDraft: string;
+}
+
+// ══════════════════════════════════════════════════════
+// ██  Angles — Tiered Brainstorm
+// ══════════════════════════════════════════════════════
+
+export type AngleType = 'desire' | 'objection' | 'social-proof' | 'mechanism' | 'contrast' | 'story' | 'urgency' | 'identity';
+
+export interface AngleIdea {
+  id: string;
+  hook: string;                  // 1-line angle summary
+  type: AngleType;
+  targetPersona: string;         // persona id
+  emotionalLever: string;
+  rationale: string;
+  strength: number;              // 1-10 auto-ranked
+  selected: boolean;             // user picked this
+  desireId?: string;             // Links angle to specific DeepDesire
+}
+
+// ══════════════════════════════════════════════════════
+// ██  Strategy — Angle Evaluation
+// ══════════════════════════════════════════════════════
+
+export interface StrategyEval {
+  angleId: string;
+  feasibility: 'high' | 'medium' | 'low';
+  executionPlan: string;
+  strengths: string[];
+  weaknesses: string[];
+  requirements: string[];        // "needs testimonial", "needs product close-up"
+  recommendedFormats: string[];  // "9:16 story", "1:1 feed"
+  verdict: string;
+}
+
+// ══════════════════════════════════════════════════════
+// ██  Copywriting — Messaging per Angle
+// ══════════════════════════════════════════════════════
+
+export interface CopyBlock {
+  id: string;
+  angleId: string;
+  variant: number;               // 1, 2, 3 per angle
+  headline: string;
+  subtext: string;
+  cta: string;
+  callouts: string[];
+  bodyText?: string;
+  tone: string;
+  personaId: string;
+  desireId?: string;             // Inherited from parent angle
+}
+
+// ══════════════════════════════════════════════════════
+// ██  Creative Strategy — Bridge Framework
+// ══════════════════════════════════════════════════════
+
+export interface CreativeStrategy {
+  currentState: {
+    painPoints: string[];
+    frustrations: string[];
+    triedBefore: string[];
+    emotionalState: string;
+  };
+  bridge: {
+    mechanism: string;
+    uniqueAngle: string;
+    proofPoints: string[];
+  };
+  desiredState: {
+    desires: string[];
+    transformation: string;
+    turningPoints: string[];
+  };
+  idealLife: {
+    vision: string;
+    identity: string;
+  };
+  messaging: {
+    headlines: string[];
+    proofHierarchy: string[];
+    conversationStarters: string[];
+    toneAndVoice: string;
+  };
+  awarenessLevel: string;
+  positioningStatement: string;
+}
+
+// ══════════════════════════════════════════════════════
+// ██  Legacy Taste/Make types (kept for compatibility)
+// ══════════════════════════════════════════════════════
+
+export interface TasteFindings {
+  brandVoice: string;
+  recommendedColors: string[];
+  brandTone: string;
+  positioning: string;
+  recommendedCopyAngles: string[];
+  visualStyle: string;
+  adFormats: string[];
+  unusedEmotionalSpace: string[];
+}
+
+export interface AdConcept {
+  conceptNumber: number;
+  hookAngle: string;
+  emotionalDriver: string;
+  headline: string;
+  body: string;
+  cta: string;
+  offer?: string;
+  adFormat: string;
+  visualDirection: string;
+  colors: string[];
+  mjml: string;
+  html?: string;
+  rationale: string;
+}
+
+export interface MakeOutput {
+  concepts: AdConcept[];
+  adDimensions: string[];
+  processingTime: number;
+}
+
+// ══════════════════════════════════════════════════════
+// ██  Stage + Cycle Core Types
+// ══════════════════════════════════════════════════════
 
 export interface StageData {
   status: StageStatus;
   agentOutput: string;
-  processedOutput?: string; // Final processed output for downstream stages (separate from agentOutput which shows thought process)
+  processedOutput?: string;
   rawOutput?: string;
   model?: string;
   tokensUsed?: number;
@@ -234,20 +467,19 @@ export interface ResearchQuestion {
   suggestedAnswers?: string[];
 }
 
-// Interactive question system — AI asks the user for direction at key checkpoints
 export type QuestionCheckpoint = 'pre-research' | 'mid-pipeline' | 'pre-make';
 
 export interface UserQuestion {
   id: string;
   question: string;
-  options: string[]; // 3 AI-generated options (user can also type custom)
+  options: string[];
   checkpoint: QuestionCheckpoint;
-  context?: string; // Brief summary of why the AI is asking this
+  context?: string;
 }
 
 export interface UserQuestionAnswer {
   questionId: string;
-  answer: string; // The selected option text or custom text
+  answer: string;
   checkpoint: QuestionCheckpoint;
 }
 
@@ -257,28 +489,29 @@ export interface Cycle {
   cycleNumber: number;
   startedAt: number;
   completedAt: number | null;
-  stages: {
-    research: StageData;
-    objections: StageData;
-    taste: StageData;
-    make: StageData;
-    test: StageData;
-    memories: StageData;
-  };
+  stages: Record<StageName, StageData>;
   currentStage: StageName;
   status: CycleStatus;
   mode: CycleMode;
+  // Research output
   researchFindings?: ResearchFindings;
-  pendingResearchQuestion?: ResearchQuestion; // When research pauses for clarification
+  pendingResearchQuestion?: ResearchQuestion;
+  // DNA stages (hybrid: LLM drafts, user edits)
+  brandDNA?: BrandDNA;
+  personas?: PersonaDNA[];
+  // Angles + downstream
+  angles?: AngleIdea[];
+  strategies?: StrategyEval[];
+  copyBlocks?: CopyBlock[];
+  creativeStrategy?: CreativeStrategy;
 }
 
 export type ResearchMode = 'interactive' | 'autonomous';
 
-// uploaded image — either a product shot or a layout ref
 export interface ReferenceImage {
   base64: string;
-  label: string;       // e.g. "Front bottle", "Hero layout"
-  description: string; // e.g. "white spray bottle, brown branding, front angle"
+  label: string;
+  description: string;
   type: 'product' | 'layout';
 }
 
@@ -290,19 +523,19 @@ export interface Campaign {
   productDescription: string;
   productFeatures: string[];
   productPrice?: string;
-  researchMode: ResearchMode; // interactive = ask user for clarifications, autonomous = figure it out
-  maxResearchIterations: number; // max rounds before giving up (default: 5)
-  maxResearchTimeMinutes: number; // max total research time in minutes (default: 10)
+  researchMode: ResearchMode;
+  maxResearchIterations: number;
+  maxResearchTimeMinutes: number;
   currentCycle: number;
   createdAt: number;
   updatedAt: number;
   status: CampaignStatus;
-  adDimensions?: string[];               // e.g., ["1:1", "9:16", "16:9"] — defaults to ["1:1", "9:16"]
-  brandColors?: string;                  // Brand color palette + psychology (e.g., "Sage green (trust), charcoal (authority)")
-  brandFonts?: string;                   // Brand fonts + usage (e.g., "Inter for body, Playfair for headlines")
-  brandDNA?: Record<string, string>;     // All extra form fields from detailed campaign setup
-  presetData?: Record<string, any>;      // Full preset object (brand, audience, product, competitive, messaging, platforms, etc.)
-  referenceImages?: ReferenceImage[];    // Labeled reference images with descriptions for generation
+  adDimensions?: string[];
+  brandColors?: string;
+  brandFonts?: string;
+  brandDNA?: Record<string, string>;
+  presetData?: Record<string, any>;
+  referenceImages?: ReferenceImage[];
 }
 
 export interface OllamaResponse {
@@ -325,11 +558,6 @@ export interface CampaignContextType {
   questionAnswers: UserQuestionAnswer[];
   answerQuestion: (answer: string) => void;
 
-  // Research review system (interactive mode)
-  reviewingStage: StageName | null;
-  reviewFindings: ResearchFindings | null;
-  resumeAfterReview: (updatedFindings?: ResearchFindings) => void;
-
   // Actions
   createCampaign: (
     brand: string,
@@ -348,8 +576,7 @@ export interface CampaignContextType {
   ) => Promise<void>;
   updateCampaign: (updates: Partial<Campaign>) => Promise<void>;
   startCycle: () => Promise<void>;
-  pauseCycle: () => void;
-  resumeCycle: () => void;
+  stopCycle: () => void;
   completeStage: (stageName: StageName, output: string) => Promise<void>;
   setCampaign: (campaign: Campaign) => void;
 }

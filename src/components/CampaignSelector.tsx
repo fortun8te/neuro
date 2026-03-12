@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Collapse, Form, Input, Select, Button, Upload, Card, message, ConfigProvider } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useCampaign } from '../context/CampaignContext';
 import { useTheme } from '../context/ThemeContext';
 import { QuickChatBuilder } from './QuickChatBuilder';
 import { SIMPLETICS_PRESET } from '../utils/presetCampaigns';
+import { storage } from '../utils/storage';
 
 type Tab = 'preset' | 'detailed' | 'chat';
 
@@ -650,7 +651,7 @@ const imageTypeOptions = [
 
 export function CampaignSelector() {
   const context = useCampaign();
-  const { createCampaign, campaign, clearCampaign } = context as any;
+  const { createCampaign, campaign, clearCampaign, resetResearch, loadCampaignById } = context as any;
   const { isDarkMode } = useTheme();
   const [activeTab, setActiveTab] = useState<Tab>('preset');
   const [form] = Form.useForm();
@@ -666,7 +667,24 @@ Ready? Tell me about your brand or product: What do you sell, and who are you tr
     },
   ]);
 
-  const handlePresetSelect = (preset: typeof SIMPLETICS_PRESET) => {
+  const handlePresetSelect = async (preset: typeof SIMPLETICS_PRESET) => {
+    // Check if an existing campaign already uses this preset (persist research across selections)
+    try {
+      const allCampaigns = await storage.getAllCampaigns();
+      const existing = allCampaigns.find(
+        (c: any) => c.presetData?.id === preset.id
+      );
+      if (existing) {
+        // Load existing campaign — preserves all research cycles
+        await loadCampaignById(existing.id);
+        message.success('Loaded existing preset campaign (research preserved)');
+        return;
+      }
+    } catch (err) {
+      console.error('Failed to check existing campaigns:', err);
+    }
+
+    // No existing campaign — create new
     const growth = (preset as any).growth || { goal: '', budget: '', timeline: [], kpis: {} };
     const goalStr = `${growth.goal} | Budget: ${growth.budget} | Timeline: ${Array.isArray(growth.timeline) ? growth.timeline[0] : ''}`;
 
@@ -828,38 +846,38 @@ Ready? Tell me about your brand or product: What do you sell, and who are you tr
 
   return (
     <ConfigProvider theme={themeConfig}>
-      <div className={`border ${isDarkMode ? 'bg-[#0a0a0a] border-zinc-800/70' : 'bg-white border-zinc-200'}`}>
-        {/* Custom Tab Navigation */}
-        <div className={`flex gap-0 border-b ${isDarkMode ? 'border-zinc-800/70' : 'border-zinc-200'} justify-between items-end`}>
-          <div className="flex">
-            {(['preset', 'detailed', 'chat'] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2.5 font-mono text-[10px] uppercase tracking-[0.15em] transition-all duration-150 border-b-2 ${
-                  activeTab === tab
-                    ? (isDarkMode ? 'text-white border-white' : 'text-black border-black')
-                    : isDarkMode
-                    ? 'text-zinc-600 border-transparent hover:text-zinc-400'
-                    : 'text-zinc-400 border-transparent hover:text-zinc-600'
-                }`}
-              >
-                {tab === 'preset' && 'Preset'}
-                {tab === 'detailed' && 'Detailed'}
-                {tab === 'chat' && 'Quick Chat'}
-              </button>
-            ))}
-          </div>
+      <div className={`rounded-xl overflow-hidden border ${isDarkMode ? 'bg-zinc-900/50 border-zinc-800/70' : 'bg-white border-zinc-200 shadow-sm'}`}>
+        {/* Tab Navigation */}
+        <div className={`flex border-b ${isDarkMode ? 'border-zinc-800/70' : 'border-zinc-200'}`}>
+          {(['preset', 'detailed', 'chat'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`flex-1 px-3 py-3 text-[11px] font-medium uppercase tracking-wider transition-all border-b-2 ${
+                activeTab === tab
+                  ? isDarkMode
+                    ? 'text-white border-violet-500 bg-zinc-800/50'
+                    : 'text-black border-violet-500 bg-violet-50/50'
+                  : isDarkMode
+                  ? 'text-zinc-600 border-transparent hover:text-zinc-400 hover:bg-zinc-800/30'
+                  : 'text-zinc-400 border-transparent hover:text-zinc-600 hover:bg-zinc-50'
+              }`}
+            >
+              {tab === 'preset' && 'Preset'}
+              {tab === 'detailed' && 'Detailed'}
+              {tab === 'chat' && 'Chat'}
+            </button>
+          ))}
           {campaign && (
             <button
               onClick={() => clearCampaign()}
-              className={`px-4 py-2.5 font-mono text-[10px] uppercase tracking-[0.15em] transition-all duration-150 border-b-2 border-transparent ${
+              className={`px-3 py-3 text-[11px] font-medium uppercase tracking-wider transition-all border-b-2 border-transparent ${
                 isDarkMode
-                  ? 'text-zinc-600 hover:text-zinc-400'
-                  : 'text-zinc-400 hover:text-zinc-600'
+                  ? 'text-zinc-600 hover:text-red-400 hover:bg-red-950/20'
+                  : 'text-zinc-400 hover:text-red-600 hover:bg-red-50'
               }`}
             >
-              New Campaign
+              New
             </button>
           )}
         </div>
@@ -867,27 +885,13 @@ Ready? Tell me about your brand or product: What do you sell, and who are you tr
         {/* Tab Content */}
         <div>
           {activeTab === 'preset' && (
-            <div className="space-y-3">
-              {/* Simpletics Preset */}
-              <div
-                className={`p-4 cursor-pointer transition-all duration-150 rounded ${isDarkMode ? 'hover:bg-zinc-900/60 border border-zinc-800' : 'hover:bg-zinc-50 border border-zinc-200'}`}
-                onClick={() => handlePresetSelect(SIMPLETICS_PRESET)}
-              >
-                <h3 className={`font-mono text-sm font-bold ${isDarkMode ? 'text-white' : 'text-black'}`}>{SIMPLETICS_PRESET.label}</h3>
-                <p className={`text-xs mt-2 leading-relaxed ${isDarkMode ? 'text-zinc-500' : 'text-zinc-600'}`}>
-                  {SIMPLETICS_PRESET.brand.description}
-                </p>
-                <div className="pt-3">
-                  <button className={`px-4 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.15em] transition-all duration-150 ${
-                    isDarkMode
-                      ? 'bg-white text-black hover:bg-zinc-200'
-                      : 'bg-black text-white hover:bg-zinc-800'
-                  }`}>
-                    Use This Preset
-                  </button>
-                </div>
-              </div>
-            </div>
+            <PresetTab
+              preset={SIMPLETICS_PRESET}
+              campaign={campaign}
+              isDarkMode={isDarkMode}
+              onSelect={handlePresetSelect}
+              onResetResearch={resetResearch}
+            />
           )}
 
           {activeTab === 'detailed' && (
@@ -1016,5 +1020,88 @@ Ready? Tell me about your brand or product: What do you sell, and who are you tr
         </div>
       </div>
     </ConfigProvider>
+  );
+}
+
+// ══════════════════════════════════════════════════════
+// Preset Tab — shows preset card with persistent research indicator
+// ══════════════════════════════════════════════════════
+
+function PresetTab({
+  preset,
+  campaign,
+  isDarkMode,
+  onSelect,
+  onResetResearch,
+}: {
+  preset: typeof SIMPLETICS_PRESET;
+  campaign: any;
+  isDarkMode: boolean;
+  onSelect: (p: typeof SIMPLETICS_PRESET) => void;
+  onResetResearch: () => Promise<void>;
+}) {
+  const [cycleCount, setCycleCount] = useState(0);
+  const isLoaded = campaign?.presetData?.id === preset.id;
+
+  // Count cycles for the active preset campaign
+  useEffect(() => {
+    if (!isLoaded || !campaign?.id) { setCycleCount(0); return; }
+    storage.getCyclesByCampaign(campaign.id).then(c => setCycleCount(c.length)).catch(() => setCycleCount(0));
+  }, [isLoaded, campaign?.id]);
+
+  return (
+    <div className="space-y-3">
+      <div
+        className={`p-4 cursor-pointer transition-all duration-150 rounded ${
+          isLoaded
+            ? isDarkMode ? 'bg-emerald-950/20 border border-emerald-800/40' : 'bg-emerald-50/50 border border-emerald-200'
+            : isDarkMode ? 'hover:bg-zinc-900/60 border border-zinc-800' : 'hover:bg-zinc-50 border border-zinc-200'
+        }`}
+        onClick={() => onSelect(preset)}
+      >
+        <div className="flex items-center justify-between">
+          <h3 className={`font-mono text-sm font-bold ${isDarkMode ? 'text-white' : 'text-black'}`}>{preset.label}</h3>
+          {isLoaded && (
+            <span className={`text-[9px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full ${
+              isDarkMode ? 'bg-emerald-900/60 text-emerald-400' : 'bg-emerald-100 text-emerald-700'
+            }`}>
+              Active{cycleCount > 0 ? ` · ${cycleCount} cycle${cycleCount > 1 ? 's' : ''}` : ''}
+            </span>
+          )}
+        </div>
+        <p className={`text-xs mt-2 leading-relaxed ${isDarkMode ? 'text-zinc-500' : 'text-zinc-600'}`}>
+          {preset.brand.description}
+        </p>
+        <div className="pt-3 flex items-center gap-2">
+          <button className={`px-4 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.15em] transition-all duration-150 ${
+            isDarkMode
+              ? 'bg-white text-black hover:bg-zinc-200'
+              : 'bg-black text-white hover:bg-zinc-800'
+          }`}>
+            {isLoaded ? 'Loaded' : 'Use This Preset'}
+          </button>
+
+          {isLoaded && cycleCount > 0 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (confirm('Reset all research for this preset? This cannot be undone.')) {
+                  onResetResearch();
+                  setCycleCount(0);
+                  message.success('Research reset');
+                }
+              }}
+              className={`px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.15em] transition-all duration-150 ${
+                isDarkMode
+                  ? 'bg-red-950/40 text-red-400 hover:bg-red-900/60 border border-red-800/40'
+                  : 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200'
+              }`}
+            >
+              Reset Research
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
