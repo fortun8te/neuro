@@ -19,7 +19,7 @@ you describe a product. NOMADS runs a full cycle:
 
 the whole thing streams in real-time. you watch it think.
 
-the UI is designed like Manus — narrow left panel with the pipeline stage list and controls, full-height right panel showing the live output. always-on token counter shows model loading / thinking / generating states and tokens-per-second.
+the UI is Manus-inspired — single-column action feed with collapsible task groups, dark pill-style action chips, morphing blob "Thinking" indicator, and live streaming output. narrow left panel has pipeline controls + brand hub; full-height right panel shows the research feed. always-on token counter tracks model loading / thinking / generating states and tokens-per-second.
 
 ---
 
@@ -130,11 +130,12 @@ src/
     MakeStudio.tsx          the big one — ad generation engine, gallery, detail modal, settings
     Dashboard.tsx           Manus-style split pane: left panel (pipeline controls) + right panel (live output)
     AdLibraryBrowser.tsx    browse 250 pre-analyzed real ads for inspo
-    ResearchOutput.tsx      flat log-feed streaming UI — phase headers, per-event rows with badges
+    ResearchOutput.tsx      Manus-style action feed — collapsible phases, pill chips, morphing blob
     StagePanel.tsx          right panel with always-on token bar (loading/thinking/generating + t/s)
+    BrandHubDrawer.tsx      4-tab brand intelligence drawer (DNA, Persona, Strategy, Edit chat)
     CycleTimeline.tsx       vertical stage list with live status dots and elapsed timers
-    SettingsModal.tsx       model config, debug tools, kill LLM button
-    OrbitalLoader.tsx       the loading animation
+    SettingsModal.tsx       model config, ambient sound, debug tools, kill LLM button
+    SidebarGradient.tsx     animated SVG gradient background with blur effects
 
   hooks/
     useCycleLoop.ts         orchestrates all stages, streams via onChunk
@@ -165,3 +166,9 @@ freepik_server.py         Playwright automation for Freepik Pikaso
 - all data in IndexedDB, survives refreshes
 - PDF upload support (pages get extracted as reference images)
 - configurable grid columns (6-20) for the gallery view
+- brand hub drawer: 4-tab system (DNA, Persona, Strategy, Edit) — edit brand data in plain English
+- ambient sound engine: procedural Web Audio pad (toggleable in settings)
+- animated gradient sidebar with SVG blur effects and light streaks
+- Manus-style research feed: collapsible phases, action pills with icons, morphing blob indicator
+- visual scouting: Playwright screenshots + vision model analysis of competitor sites
+- 5 research depth presets (Super Quick → Maximum) controlling iterations, sources, and feature unlocks

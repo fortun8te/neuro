@@ -1,7 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useTheme } from '../context/ThemeContext';
+import { useCampaign } from '../context/CampaignContext';
 import { useSoundEngine } from '../hooks/useSoundEngine';
+import { ollamaService } from '../utils/ollama';
+import { getResearchModelConfig } from '../utils/modelConfig';
 import { glassCard } from '../styles/tokens';
 import type { BrandDNA, PersonaDNA, CreativeStrategy } from '../types';
 
@@ -27,7 +30,7 @@ interface BrandHubDrawerProps {
   presetPersonas?: any[];
 }
 
-type HubTab = 'dna' | 'persona' | 'strategy';
+type HubTab = 'dna' | 'persona' | 'strategy' | 'chat';
 
 export function BrandHubDrawer({
   isOpen,
@@ -63,6 +66,7 @@ export function BrandHubDrawer({
     { key: 'dna', label: 'DNA' },
     { key: 'persona', label: 'Persona' },
     { key: 'strategy', label: 'Strategy' },
+    { key: 'chat', label: 'Edit' },
   ];
 
   return (
@@ -191,6 +195,9 @@ export function BrandHubDrawer({
               presetMessaging={presetMessaging}
               isDark={isDarkMode}
             />
+          )}
+          {activeTab === 'chat' && (
+            <ChatContent isDark={isDarkMode} />
           )}
         </div>
       </motion.div>
@@ -1120,6 +1127,238 @@ function BulletList({ items, color, isDark }: { items: string[]; color: string; 
         </li>
       ))}
     </ul>
+  );
+}
+
+
+// ══════════════════════════════════════════════════════
+// ██  Chat Tab — Natural language brand editor
+// ══════════════════════════════════════════════════════
+
+function deepMerge(target: Record<string, any>, patch: Record<string, any>): Record<string, any> {
+  const result = { ...target };
+  for (const key of Object.keys(patch)) {
+    const tv = target[key];
+    const pv = patch[key];
+    if (pv !== null && typeof pv === 'object' && !Array.isArray(pv) && typeof tv === 'object' && !Array.isArray(tv)) {
+      result[key] = deepMerge(tv, pv);
+    } else {
+      result[key] = pv;
+    }
+  }
+  return result;
+}
+
+function extractJSON(text: string): Record<string, any> | null {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const raw = fenced ? fenced[1].trim() : text.trim();
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start === -1 || end === -1) return null;
+  try { return JSON.parse(raw.slice(start, end + 1)); } catch { return null; }
+}
+
+function buildContext(presetData: Record<string, any>): string {
+  const snap: Record<string, any> = {};
+  for (const s of ['brand', 'audience', 'product', 'competitive', 'messaging', 'creative']) {
+    if (presetData[s]) snap[s] = presetData[s];
+  }
+  const full = JSON.stringify(snap, null, 2);
+  return full.length <= 6000 ? full : full.slice(0, 5900) + '\n... (truncated)';
+}
+
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  text: string;
+  status?: 'ok' | 'err';
+  changedKeys?: string[];
+}
+
+function ChatContent({ isDark }: { isDark: boolean }) {
+  const { campaign, updateCampaign } = useCampaign() as any;
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Auto-focus on mount
+  useEffect(() => { setTimeout(() => inputRef.current?.focus(), 100); }, []);
+
+  // Auto-scroll
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+  }, [messages.length, loading]);
+
+  const submit = useCallback(async () => {
+    const instruction = input.trim();
+    if (!instruction || loading || !campaign?.presetData) return;
+
+    setInput('');
+    setMessages(prev => [...prev, { role: 'user', text: instruction }]);
+    setLoading(true);
+
+    const presetData = campaign.presetData;
+    const context = buildContext(presetData);
+    const model = getResearchModelConfig().orchestratorModel;
+
+    const systemPrompt = `You are a brand data editor. You will receive the current brand brief as JSON and an edit instruction. Return ONLY a valid JSON object containing the fields to update, using the same nested structure. Only include changed fields. No explanation, no markdown, just the JSON object.`;
+    const prompt = `Current brand data:\n${context}\n\nInstruction: "${instruction}"\n\nReturn ONLY the JSON delta (changed fields only).`;
+
+    let fullResponse = '';
+
+    try {
+      await ollamaService.generateStream(prompt, systemPrompt, {
+        model,
+        temperature: 0.3,
+        onChunk: (chunk: string) => { fullResponse += chunk; },
+      });
+
+      const delta = extractJSON(fullResponse);
+
+      if (!delta || Object.keys(delta).length === 0) {
+        setMessages(prev => [...prev, { role: 'assistant', text: 'No changes detected. Try rephrasing your request.', status: 'err' }]);
+        setLoading(false);
+        return;
+      }
+
+      const newPresetData = deepMerge(presetData, delta);
+      await updateCampaign({ presetData: newPresetData });
+
+      const keys = Object.keys(delta);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        text: `Updated ${keys.join(', ')}`,
+        status: 'ok',
+        changedKeys: keys,
+      }]);
+    } catch (err) {
+      setMessages(prev => [...prev, { role: 'assistant', text: String(err).slice(0, 120), status: 'err' }]);
+    }
+
+    setLoading(false);
+  }, [input, loading, campaign, updateCampaign]);
+
+  const onKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
+  }, [submit]);
+
+  if (!campaign?.presetData) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <span className={`text-sm ${isDark ? 'text-zinc-600' : 'text-zinc-400'}`}>No brand data to edit</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full" style={{ minHeight: 400 }}>
+      {/* Messages */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-8 py-6 space-y-4">
+        {messages.length === 0 && !loading && (
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isDark ? 'bg-zinc-800' : 'bg-zinc-100'}`}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={isDark ? '#71717a' : '#a1a1aa'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+            </div>
+            <p className={`text-[13px] font-medium ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>Edit your brand data</p>
+            <div className={`text-[11px] leading-relaxed text-center max-w-sm ${isDark ? 'text-zinc-600' : 'text-zinc-400'}`}>
+              <p>Ask in plain English to add, change, or remove anything.</p>
+              <div className={`mt-3 space-y-1.5`}>
+                {[
+                  '"Add sustainability to core values"',
+                  '"Change tone from clinical to warm"',
+                  '"Add competitor: GlowLab, weakness: no subscription"',
+                  '"Remove vitamin E from product features"',
+                ].map((ex, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setInput(ex.slice(1, -1))}
+                    className={`block w-full text-left px-3 py-1.5 rounded-lg text-[11px] transition-colors ${
+                      isDark ? 'text-zinc-500 hover:bg-zinc-800/50 hover:text-zinc-300' : 'text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600'
+                    }`}
+                  >
+                    {ex}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {messages.map((msg, i) => (
+          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
+              msg.role === 'user'
+                ? isDark ? 'bg-zinc-800 text-zinc-200' : 'bg-zinc-900 text-white'
+                : msg.status === 'ok'
+                  ? isDark ? 'bg-emerald-950/40 text-emerald-300 border border-emerald-800/30' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                  : msg.status === 'err'
+                    ? isDark ? 'bg-red-950/30 text-red-400 border border-red-900/30' : 'bg-red-50 text-red-600 border border-red-200'
+                    : isDark ? 'bg-zinc-800/60 text-zinc-300' : 'bg-zinc-100 text-zinc-700'
+            }`}>
+              <p className="text-[12px] leading-relaxed">{msg.text}</p>
+              {msg.changedKeys && (
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {msg.changedKeys.map(k => (
+                    <span key={k} className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
+                      isDark ? 'bg-emerald-900/40 text-emerald-400' : 'bg-emerald-100 text-emerald-600'
+                    }`}>{k}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+
+        {loading && (
+          <div className="flex justify-start">
+            <div className={`rounded-2xl px-4 py-3 ${isDark ? 'bg-zinc-800/40' : 'bg-zinc-100'}`}>
+              <div className="flex items-center gap-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${isDark ? 'bg-zinc-500' : 'bg-zinc-400'}`} />
+                <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${isDark ? 'bg-zinc-500' : 'bg-zinc-400'}`} style={{ animationDelay: '0.2s' }} />
+                <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${isDark ? 'bg-zinc-500' : 'bg-zinc-400'}`} style={{ animationDelay: '0.4s' }} />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Input */}
+      <div className={`flex-shrink-0 px-8 py-4 border-t ${isDark ? 'border-zinc-800/60' : 'border-zinc-100'}`}>
+        <div className={`relative rounded-xl border overflow-hidden ${isDark ? 'border-zinc-700/50 bg-zinc-800/40' : 'border-zinc-200 bg-zinc-50'}`}>
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={onKeyDown}
+            disabled={loading}
+            placeholder="Ask anything about your brand data..."
+            rows={2}
+            className={`w-full px-4 pt-3 pb-10 text-[13px] leading-relaxed resize-none outline-none bg-transparent ${
+              isDark ? 'text-zinc-200 placeholder-zinc-600' : 'text-zinc-800 placeholder-zinc-400'
+            } disabled:opacity-50`}
+          />
+          <div className="absolute bottom-2 right-2 flex items-center gap-2">
+            <span className={`text-[9px] ${isDark ? 'text-zinc-700' : 'text-zinc-300'}`}>
+              Enter to send
+            </span>
+            <button
+              onClick={submit}
+              disabled={!input.trim() || loading}
+              className={`px-3 py-1 rounded-lg text-[11px] font-medium transition-all disabled:opacity-30 ${
+                isDark
+                  ? 'bg-zinc-700 text-zinc-200 hover:bg-zinc-600'
+                  : 'bg-zinc-800 text-white hover:bg-zinc-700'
+              }`}
+            >
+              {loading ? 'Updating...' : 'Send'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -4,7 +4,6 @@ import { useTheme } from '../context/ThemeContext';
 import { CampaignSelector } from './CampaignSelector';
 import { ControlPanel } from './ControlPanel';
 import { CycleTimeline } from './CycleTimeline';
-import { BrandDNAChat } from './BrandDNAChat';
 import { StagePanel } from './StagePanel';
 import { QuestionModal } from './QuestionModal';
 import {
@@ -20,7 +19,7 @@ interface DashboardProps {
 
 export function Dashboard({ embedded = false }: DashboardProps) {
   const { systemStatus, error, currentCycle, cycles, campaign, pendingQuestion, answerQuestion } = useCampaign();
-  const { clearCampaign, startCycle, stopCycle } = useCampaign() as any;
+  const { clearCampaign } = useCampaign() as any;
   const { isDarkMode } = useTheme();
   const isRunning = systemStatus === 'running';
   const [selectedStage, setSelectedStage] = useState<StageName | null>(null);
@@ -64,8 +63,6 @@ export function Dashboard({ embedded = false }: DashboardProps) {
             viewingCycleIdx={viewingCycleIdx}
             onSelectCycleIdx={setViewingCycleIdx}
             onClear={clearCampaign}
-            onStart={startCycle}
-            onStop={stopCycle}
             isRunning={isRunning}
             selectedStage={selectedStage}
             onSelectStage={setSelectedStage}
@@ -92,7 +89,7 @@ export function Dashboard({ embedded = false }: DashboardProps) {
               <div className="flex-1 flex items-center justify-center">
                 <div className="text-center space-y-1">
                   <p className={`text-sm ${isDarkMode ? 'text-zinc-600' : 'text-zinc-400'}`}>Ready to run</p>
-                  <p className={`text-xs ${isDarkMode ? 'text-zinc-700' : 'text-zinc-300'}`}>Select a preset and press Start Research</p>
+                  <p className={`text-xs ${isDarkMode ? 'text-zinc-700' : 'text-zinc-300'}`}>Select a preset above, then press Run Research in the sidebar</p>
                 </div>
               </div>
             )}
@@ -113,7 +110,7 @@ export function Dashboard({ embedded = false }: DashboardProps) {
 
 function LeftPanel({
   campaign, isDark, cycles, currentCycle, displayedCycle, viewingCycleIdx, onSelectCycleIdx,
-  onClear, onStart, onStop, isRunning, selectedStage, onSelectStage,
+  onClear, isRunning, selectedStage, onSelectStage,
 }: {
   campaign: Campaign;
   isDark: boolean;
@@ -123,8 +120,6 @@ function LeftPanel({
   viewingCycleIdx: number | null;
   onSelectCycleIdx: (idx: number | null) => void;
   onClear: () => void;
-  onStart: () => void;
-  onStop: () => void;
   isRunning: boolean;
   selectedStage: StageName | null;
   onSelectStage: (s: StageName) => void;
@@ -396,10 +391,6 @@ function LeftPanel({
           </button>
         )}
 
-        {/* Brand DNA Chat — natural language editor for presetData */}
-        {campaign.presetData && (
-          <BrandDNAChat campaign={campaign} isDark={isDark} />
-        )}
 
         {/* Pipeline stages */}
         {displayedCycle && (
@@ -452,48 +443,14 @@ function LeftPanel({
         )}
       </div>
 
-      {/* ── Bottom actions ── */}
-      <div className={`flex-shrink-0 px-3 py-3 border-t ${divider} space-y-2`}>
-        {/* Start — shown when no cycle exists yet */}
-        {!isRunning && !currentCycle && (
-          <button
-            onClick={onStart}
-            className={`w-full py-2 rounded-lg text-[12px] font-semibold tracking-wide transition-all ${
-              isDark
-                ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
-                : 'bg-zinc-900 text-white hover:bg-zinc-700'
-            }`}
-          >
-            Start Research
-          </button>
-        )}
-        {/* Stop — shown while running */}
-        {isRunning && (
-          <button
-            onClick={onStop}
-            className={`w-full py-2 rounded-lg text-[12px] font-semibold tracking-wide transition-all ${
-              isDark
-                ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700 border border-zinc-700'
-                : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200 border border-zinc-200'
-            }`}
-          >
-            Stop
-          </button>
-        )}
-        {/* Run Again — shown when a cycle exists and not running */}
-        {!isRunning && currentCycle && (
-          <button
-            onClick={onStart}
-            className={`w-full py-2 rounded-lg text-[12px] font-medium tracking-wide transition-all ${
-              isDark
-                ? 'bg-zinc-800/60 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 border border-zinc-700/50'
-                : 'bg-zinc-100 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-700 border border-zinc-200'
-            }`}
-          >
-            New Cycle
-          </button>
-        )}
-      </div>
+      {/* ── Bottom hint ── */}
+      {!isRunning && !currentCycle && (
+        <div className={`flex-shrink-0 px-4 py-3 border-t ${divider}`}>
+          <p className={`text-[10px] text-center ${isDark ? 'text-zinc-600' : 'text-zinc-400'}`}>
+            Press Run Research in the sidebar to start
+          </p>
+        </div>
+      )}
     </div>
   );
 }

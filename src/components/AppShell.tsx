@@ -16,7 +16,6 @@ import { Dashboard } from './Dashboard';
 import { SettingsModal } from './SettingsModal';
 import { BrandHubDrawer } from './BrandHubDrawer';
 import { NomadIcon } from './NomadIcon';
-import { ShineText } from './ShineText';
 import { SidebarGradient } from './SidebarGradient';
 import { healthMonitor, type ServiceStatus } from '../utils/healthMonitor';
 import { glassCard } from '../styles/tokens';
@@ -281,7 +280,7 @@ export function AppShell() {
                   boxShadow: 'inset 0 1px 0 rgba(239,68,68,0.08)',
                 }}
               >
-                Stop Pipeline
+                Stop Research
               </motion.button>
             )}
           </AnimatePresence>
@@ -289,16 +288,19 @@ export function AppShell() {
 
         {/* ── Status bar ── */}
         <div className="relative z-10 px-5 pb-4">
-          <div className="flex items-center gap-2">
-            <div className="w-1.5 h-1.5 rounded-full shrink-0 animate-pulse" style={isRunning ? { backgroundColor: 'rgba(43, 121, 255, 0.8)' } : { backgroundColor: 'rgba(255,255,255,0.15)' }} />
-            {isRunning ? (
-              <ShineText className="text-[10px] text-white/50 tracking-wide" speed={5}>Running</ShineText>
-            ) : (
+          {isRunning ? (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full" style={{ backgroundColor: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(8px)' }}>
+              <div className="w-2 h-2 rounded-full shrink-0 animate-pulse" style={{ backgroundColor: '#3b82f6', boxShadow: '0 0 6px rgba(59,130,246,0.5)' }} />
+              <span className="text-[11px] text-white font-medium tracking-wide">Running</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }} />
               <span className="text-[10px] text-white/30 tracking-wide">
                 {campaign ? campaign.brand : 'No campaign'}
               </span>
-            )}
-          </div>
+            </div>
+          )}
           {campaign && !isRunning && (
             <button
               onClick={() => { play('reset'); clearCampaign(); }}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { useSoundEngine } from '../hooks/useSoundEngine';
+import { useAmbientSound } from '../hooks/useAmbientSound';
 import { ollamaService } from '../utils/ollama';
 import { MODEL_CONFIG, getResearchModelConfig } from '../utils/modelConfig';
 import { analyzeAll as analyzeAdLibrary, getCache as getAdLibraryCache, clearCache as clearAdLibraryCache, type AdLibraryCache } from '../utils/adLibraryCache';
@@ -212,6 +213,7 @@ function OllamaModelControl({ isDarkMode }: { isDarkMode: boolean }) {
 export function SettingsModal({ isOpen, onClose, isRunning }: SettingsModalProps) {
   const { isDarkMode, toggleTheme } = useTheme();
   const { play } = useSoundEngine();
+  const { ambientEnabled, toggleAmbient } = useAmbientSound();
   const [tab, setTab] = useState<'settings' | 'debug'>('settings');
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [soundVolume, setSoundVolume] = useState(50);
@@ -498,6 +500,20 @@ export function SettingsModal({ isOpen, onClose, isRunning }: SettingsModalProps
                     </svg>
                   </div>
                 )}
+
+                {/* Ambient Sound */}
+                <div className="flex items-center justify-between mt-3">
+                  <div>
+                    <p className={`text-[13px] font-medium ${isDarkMode ? 'text-zinc-200' : 'text-zinc-800'}`}>Ambient Sound</p>
+                    <p className={`text-[11px] ${isDarkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>Subtle background drone</p>
+                  </div>
+                  <button
+                    onClick={() => { toggleAmbient(); play('toggle'); }}
+                    className={`relative w-10 h-[22px] rounded-full transition-colors ${ambientEnabled ? 'bg-blue-500' : isDarkMode ? 'bg-zinc-600' : 'bg-zinc-300'}`}
+                  >
+                    <span className={`absolute top-[3px] w-4 h-4 bg-white rounded-full shadow transition-transform ${ambientEnabled ? 'left-[22px]' : 'left-[3px]'}`} />
+                  </button>
+                </div>
 
                 {/* Pipeline Mode */}
                 <div className={`pt-4 border-t ${isDarkMode ? 'border-zinc-800/60' : 'border-zinc-100'}`}>
