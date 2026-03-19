@@ -25,6 +25,7 @@ import type { AgentDocument } from '../utils/documentStore';
 import { ollamaService } from '../utils/ollama';
 import { getChatModel } from '../utils/modelConfig';
 import { DocumentViewer } from './DocumentViewer';
+import { ResponseStream } from './ResponseStream';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -520,7 +521,12 @@ function StepRow({ step }: { step: AgentStep }) {
                 wordBreak: 'break-word',
               }}
             >
-              {step.output}
+              <ResponseStream
+                textStream={step.output || ''}
+                mode="typewriter"
+                speed={50}
+                className="text-xs"
+              />
             </div>
           </motion.div>
         )}
