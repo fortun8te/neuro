@@ -154,10 +154,15 @@ export async function generateImage(
               };
               break;
             case 'error':
+              // Handle special error codes
+              let errorMsg = event.message;
+              if (event.code === 'UNLIMITED_REQUIRED') {
+                errorMsg = `Freepik Unlimited Required: ${event.message}. Please enable unlimited mode in your Freepik account settings before generating images.`;
+              }
               result = {
                 imageBase64: '',
                 success: false,
-                error: event.message,
+                error: errorMsg,
               };
               break;
           }

@@ -1,7 +1,10 @@
 /**
- * PulseLoader — 3 dots with staggered pulse animation
- * Clean, minimal loading indicator. `size` = overall bounding area.
+ * OrbitalLoader — Morphing blob thinking indicator
+ * Uses framer-motion animate prop for smooth circle-to-rounded-square animation.
+ * `size` = overall bounding area.
  */
+
+import { motion } from 'framer-motion';
 
 interface GridLoaderProps {
   size?: number;
@@ -9,58 +12,44 @@ interface GridLoaderProps {
   className?: string;
 }
 
-const STYLE_ID = 'orbital-loader-styles-v3';
-
-function injectStyles() {
-  if (typeof document === 'undefined') return;
-  // Remove old versions
-  document.getElementById('orbital-loader-styles-v2')?.remove();
-  if (document.getElementById(STYLE_ID)) return;
-  const style = document.createElement('style');
-  style.id = STYLE_ID;
-  style.textContent = `
-    @keyframes dotPulse3 {
-      0%, 80%, 100% {
-        opacity: 0.25;
-        transform: scale(0.85);
-      }
-      40% {
-        opacity: 1;
-        transform: scale(1.1);
-      }
-    }
-  `;
-  document.head.appendChild(style);
-}
-
 export function OrbitalLoader({
   size = 24,
   dark = false,
   className = '',
 }: GridLoaderProps) {
-  injectStyles();
-
-  const color = dark ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.6)';
-  const dotSize = Math.max(6, Math.round(size * 0.12));
-  const gap = Math.round(dotSize * 1);
+  const blobSize = Math.max(10, Math.round(size * 0.5));
 
   return (
     <div
       className={`inline-flex items-center justify-center ${className}`}
-      style={{ gap: `${gap}px`, minHeight: `${dotSize + 4}px` }}
+      style={{ width: size, height: size }}
     >
-      {[0, 1, 2].map((i) => (
-        <div
-          key={i}
-          style={{
-            width: `${dotSize}px`,
-            height: `${dotSize}px`,
-            borderRadius: '50%',
-            backgroundColor: color,
-            animation: `dotPulse3 1.4s ease-in-out ${i * 0.16}s infinite`,
-          }}
-        />
-      ))}
+      <motion.div
+        style={{
+          width: blobSize,
+          height: blobSize,
+          background: dark
+            ? 'linear-gradient(135deg, #4d9aff, #2B79FF, #1a5fd4)'
+            : 'linear-gradient(135deg, #4d9aff, #2B79FF, #1a5fd4)',
+          backgroundSize: '200% 200%',
+        }}
+        animate={{
+          borderRadius: ['50%', '22%', '50%'],
+          rotate: [0, 90, 180],
+          scale: [0.95, 1.08, 0.95],
+          boxShadow: [
+            `0 0 ${blobSize * 0.3}px rgba(43,121,255,0.2), 0 0 ${blobSize * 0.6}px rgba(43,121,255,0.06)`,
+            `0 0 ${blobSize * 0.5}px rgba(77,154,255,0.35), 0 0 ${blobSize}px rgba(43,121,255,0.12)`,
+            `0 0 ${blobSize * 0.3}px rgba(43,121,255,0.2), 0 0 ${blobSize * 0.6}px rgba(43,121,255,0.06)`,
+          ],
+          backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'],
+        }}
+        transition={{
+          duration: 1.8,
+          repeat: Infinity,
+          ease: 'easeInOut',
+        }}
+      />
     </div>
   );
 }

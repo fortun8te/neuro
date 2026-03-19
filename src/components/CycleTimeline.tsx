@@ -52,8 +52,9 @@ export function CycleTimeline({ cycle, selectedStage, onSelectStage, vertical = 
             const stageData = cycle.stages[stage.name];
             const isActive = cycle.currentStage === stage.name;
             const isComplete = stageData?.status === 'complete';
+            const isStopped = stageData?.status === 'stopped';
             const isViewing = selectedStage === stage.name;
-            const canClick = isComplete || isActive;
+            const canClick = isComplete || isActive || isStopped;
             const showSep = groupBoundaries.has(idx);
 
             const elapsed = (isComplete || isActive) && stageData?.startedAt
@@ -75,6 +76,8 @@ export function CycleTimeline({ cycle, selectedStage, onSelectStage, vertical = 
                       ? 'text-blue-400'
                       : isComplete
                       ? 'text-white/[0.55] hover:bg-white/[0.04] hover:text-white/[0.85]'
+                      : isStopped
+                      ? 'text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-300'
                       : 'text-white/[0.15]'
                   }`}
                 >
@@ -85,6 +88,10 @@ export function CycleTimeline({ cycle, selectedStage, onSelectStage, vertical = 
                     ) : isComplete ? (
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-500">
                         <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                    ) : isStopped ? (
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-500">
+                        <rect x="6" y="6" width="12" height="12" rx="1" />
                       </svg>
                     ) : (
                       <span className="w-1.5 h-1.5 rounded-full border border-white/[0.15]" />
@@ -114,8 +121,9 @@ export function CycleTimeline({ cycle, selectedStage, onSelectStage, vertical = 
         const stageData = cycle.stages[stage.name];
         const isActive = cycle.currentStage === stage.name;
         const isComplete = stageData?.status === 'complete';
+        const isStopped = stageData?.status === 'stopped';
         const isViewing = selectedStage === stage.name;
-        const canClick = isComplete || isActive;
+        const canClick = isComplete || isActive || isStopped;
         const showSep = groupBoundaries.has(idx);
 
         return (
@@ -132,6 +140,8 @@ export function CycleTimeline({ cycle, selectedStage, onSelectStage, vertical = 
                   ? 'bg-zinc-200 text-zinc-700'
                   : isComplete
                   ? 'bg-zinc-100 text-zinc-500 hover:bg-zinc-200'
+                  : isStopped
+                  ? 'bg-zinc-50 text-zinc-600 hover:bg-zinc-100'
                   : 'bg-transparent text-zinc-300'
               }`}
             >

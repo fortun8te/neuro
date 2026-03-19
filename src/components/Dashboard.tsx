@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useCampaign } from '../context/CampaignContext';
 import { useTheme } from '../context/ThemeContext';
 import { CampaignSelector } from './CampaignSelector';
@@ -43,7 +43,7 @@ export function Dashboard({ embedded = false }: DashboardProps) {
   }, [currentCycle?.currentStage]);
 
   return (
-    <div className={`${embedded ? 'flex-1' : 'h-screen'} flex flex-col overflow-hidden ${isDarkMode ? 'bg-transparent text-white/[0.85]' : 'bg-zinc-50 text-zinc-900'}`}>
+    <div className={`${embedded ? 'flex-1' : 'h-screen'} flex flex-col overflow-hidden ${isDarkMode ? 'bg-transparent text-white/[0.87]' : 'bg-transparent text-zinc-900'}`}>
       {!embedded && <ControlPanel />}
 
       {!campaign ? (
@@ -116,6 +116,23 @@ function LeftPanel({
   selectedStage: StageName | null;
   onSelectStage: (s: StageName) => void;
 }) {
+  const { startCycle, stopCycle, resetResearch, systemStatus } = useCampaign();
+  const isRunning = systemStatus === 'running';
+
+  const handleStart = useCallback(async () => {
+    if (isRunning) return;
+    try { await startCycle(); } catch { /* surfaced via context error */ }
+  }, [isRunning, startCycle]);
+
+  const handleRedo = useCallback(async () => {
+    if (isRunning) return;
+    try {
+      await resetResearch();
+      // Small delay so state clears before starting
+      await new Promise(r => setTimeout(r, 150));
+      await startCycle();
+    } catch { /* surfaced via context error */ }
+  }, [isRunning, resetResearch, startCycle]);
   const config = getResearchModelConfig();
   const limits = getResearchLimits();
   const [activePreset, setActivePreset] = useState<ResearchDepthPreset | 'custom'>(getActiveResearchPreset());
@@ -151,14 +168,13 @@ function LeftPanel({
   const save = (key: string, val: string) => localStorage.setItem(key, val);
 
   const modelOptions = [
+    { value: 'qwen3.5:0.8b', label: 'Qwen 3.5 0.8B' },
+    { value: 'qwen3.5:2b', label: 'Qwen 3.5 2B' },
+    { value: 'qwen3.5:4b', label: 'Qwen 3.5 4B' },
     { value: 'qwen3.5:9b', label: 'Qwen 3.5 9B' },
-    { value: 'qwen3.5:35b', label: 'Qwen 3.5 35B' },
     { value: 'qwen3.5:27b', label: 'Qwen 3.5 27B' },
     { value: 'local:qwen3.5:9b', label: 'Qwen 9B Local' },
-    { value: 'local:qwen3.5:35b', label: 'Qwen 35B Local' },
-    { value: 'qwen3.5:4b', label: 'Qwen 3.5 4B' },
-    { value: 'qwen3.5:2b', label: 'Qwen 3.5 2B' },
-    { value: 'qwen3.5:0.8b', label: 'Qwen 3.5 0.8B' },
+    { value: 'local:qwen3.5:27b', label: 'Qwen 27B Local' },
   ];
 
   const modelRoles: { id: keyof typeof models; storageKey: string; label: string }[] = [
@@ -200,7 +216,7 @@ function LeftPanel({
   const completed = cycles.filter((c: Cycle) => c.status === 'complete');
 
   return (
-    <div className={`w-60 flex-shrink-0 flex flex-col overflow-hidden ${isDark ? 'bg-transparent' : 'bg-white'}`}>
+    <div className={`w-60 flex-shrink-0 flex flex-col overflow-hidden bg-transparent`}>
 
 
       {/* ── Brand header ── */}
@@ -216,14 +232,14 @@ function LeftPanel({
             )}
             <span className={`text-[12px] font-semibold truncate ${isDark ? 'text-white/[0.85]' : 'text-zinc-900'}`}>{brandName}</span>
           </div>
-          <button onClick={onClear} className={`text-[10px] flex-shrink-0 transition-colors ml-2 ${isDark ? 'text-white/[0.15] hover:text-white/[0.55]' : 'text-zinc-300 hover:text-zinc-500'}`}>
+          <button onClick={onClear} className={`text-[10px] flex-shrink-0 transition-colors ml-2 ${isDark ? 'text-white/[0.30] hover:text-white/[0.55]' : 'text-zinc-400 hover:text-zinc-500'}`}>
             Switch
           </button>
         </div>
         {p?.brand?.positioning && (
           <p className={`text-[10px] mt-0.5 line-clamp-1 ${labelCls}`}>{p.brand.positioning}</p>
         )}
-        <p className={`text-[10px] mt-0.5 ${isDark ? 'text-white/[0.15]' : 'text-zinc-300'}`}>
+        <p className={`text-[10px] mt-0.5 ${isDark ? 'text-white/[0.30]' : 'text-zinc-400'}`}>
           {completed.length === 0 ? 'No cycles yet' : `${completed.length} cycle${completed.length !== 1 ? 's' : ''} done`}
         </p>
       </div>
@@ -255,19 +271,19 @@ function LeftPanel({
                   }}
                   className={`flex items-center justify-between px-2.5 py-1.5 rounded-md transition-all ${
                     isActive
-                      ? isDark ? 'bg-white/[0.08] text-white/[0.85]' : 'bg-zinc-800 text-white'
-                      : isDark ? 'text-white/[0.30] hover:bg-white/[0.04] hover:text-white/[0.55]' : 'text-zinc-400 hover:bg-zinc-50 hover:text-zinc-600'
+                      ? isDark ? 'bg-[rgba(43,121,255,0.12)] text-white/[0.90]' : 'bg-blue-50 text-blue-700'
+                      : isDark ? 'text-white/[0.45] hover:bg-white/[0.04] hover:text-white/[0.65]' : 'text-zinc-500 hover:bg-zinc-50 hover:text-zinc-700'
                   }`}
                 >
                   <span className="flex items-center gap-2">
                     <span className="text-[11px] font-medium leading-none">{preset.label}</span>
                     {isActive && (
-                      <span className={`text-[9px] leading-none ${isDark ? 'text-white/[0.55]' : 'text-zinc-400'}`}>
+                      <span className={`text-[9px] leading-none ${isDark ? 'text-blue-300/60' : 'text-blue-500'}`}>
                         {preset.limits.maxIterations} iter · {preset.limits.minSources} src
                       </span>
                     )}
                   </span>
-                  <span className={`text-[9px] font-mono leading-none tabular-nums ${isActive ? (isDark ? 'text-white/[0.55]' : 'text-zinc-400') : 'opacity-40'}`}>{preset.time}</span>
+                  <span className={`text-[9px] font-mono leading-none tabular-nums ${isActive ? (isDark ? 'text-blue-300/50' : 'text-blue-500') : isDark ? 'text-white/[0.25]' : 'text-zinc-400'}`}>{preset.time}</span>
                 </button>
               );
             })}
@@ -351,7 +367,7 @@ function LeftPanel({
                 <div key={id}>
                   <div className="flex items-center justify-between">
                     <span className={`text-[9px] ${labelCls}`}>{brainNames[id] || id}</span>
-                    <span className={`text-[9px] font-mono ${isDark ? 'text-white/[0.30]' : 'text-zinc-500'}`}>{brainTemps[id]?.toFixed(1)}</span>
+                    <span className={`text-[9px] font-mono ${isDark ? 'text-white/[0.45]' : 'text-zinc-500'}`}>{brainTemps[id]?.toFixed(1)}</span>
                   </div>
                   <input type="range" min="0" max="1.5" step="0.05" value={brainTemps[id] ?? 0.7}
                     onChange={(e) => {
@@ -376,8 +392,8 @@ function LeftPanel({
               isDark ? 'hover:bg-white/[0.04]' : 'hover:bg-zinc-50'
             }`}
           >
-            <span className={`text-[11px] font-medium flex-1 ${isDark ? 'text-white/[0.30]' : 'text-zinc-400'}`}>Brand DNA</span>
-            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke={isDark ? 'rgba(255,255,255,0.15)' : '#d4d4d8'} strokeWidth="2.5" strokeLinecap="round">
+            <span className={`text-[11px] font-medium flex-1 ${isDark ? 'text-white/[0.45]' : 'text-zinc-500'}`}>Brand DNA</span>
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke={isDark ? 'rgba(255,255,255,0.25)' : '#d4d4d8'} strokeWidth="2.5" strokeLinecap="round">
               <path d="M7 17L17 7M17 7H7M17 7V17" />
             </svg>
           </button>
@@ -397,11 +413,11 @@ function LeftPanel({
                       if (cur > 0) onSelectCycleIdx(cur - 1);
                     }}
                     disabled={(viewingCycleIdx ?? cycles.length - 1) === 0}
-                    className={`w-4 h-4 flex items-center justify-center rounded transition-colors disabled:opacity-20 ${isDark ? 'text-white/[0.30] hover:text-white/[0.55]' : 'text-zinc-400 hover:text-zinc-600'}`}
+                    className={`w-4 h-4 flex items-center justify-center rounded transition-colors disabled:opacity-20 ${isDark ? 'text-white/[0.40] hover:text-white/[0.65]' : 'text-zinc-400 hover:text-zinc-600'}`}
                   >
                     <svg width="6" height="6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
                   </button>
-                  <span className={`text-[9px] font-mono tabular-nums ${isDark ? 'text-white/[0.30]' : 'text-zinc-400'}`}>
+                  <span className={`text-[9px] font-mono tabular-nums ${isDark ? 'text-white/[0.40]' : 'text-zinc-400'}`}>
                     {(viewingCycleIdx ?? cycles.length - 1) + 1}/{cycles.length}
                   </span>
                   <button
@@ -411,7 +427,7 @@ function LeftPanel({
                       else onSelectCycleIdx(null); // snap back to live
                     }}
                     disabled={viewingCycleIdx === null}
-                    className={`w-4 h-4 flex items-center justify-center rounded transition-colors disabled:opacity-20 ${isDark ? 'text-white/[0.30] hover:text-white/[0.55]' : 'text-zinc-400 hover:text-zinc-600'}`}
+                    className={`w-4 h-4 flex items-center justify-center rounded transition-colors disabled:opacity-20 ${isDark ? 'text-white/[0.40] hover:text-white/[0.65]' : 'text-zinc-400 hover:text-zinc-600'}`}
                   >
                     <svg width="6" height="6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
                   </button>
@@ -419,7 +435,7 @@ function LeftPanel({
                     <button
                       onClick={() => onSelectCycleIdx(null)}
                       title="Back to live"
-                      className={`ml-0.5 text-[8px] font-medium px-1 py-0.5 rounded transition-colors ${isDark ? 'text-white/[0.30] hover:text-white/[0.55] bg-white/[0.04]' : 'text-zinc-400 hover:text-zinc-600 bg-zinc-100'}`}
+                      className={`ml-0.5 text-[8px] font-medium px-1 py-0.5 rounded transition-colors ${isDark ? 'text-blue-400/70 hover:text-blue-400 bg-blue-500/10' : 'text-blue-600 hover:text-blue-700 bg-blue-50'}`}
                     >live</button>
                   )}
                 </div>
@@ -433,6 +449,66 @@ function LeftPanel({
             />
           </div>
         )}
+
+        {/* ── Run Controls ── */}
+        <div className={`px-3 py-3 border-t ${isDark ? 'border-white/[0.08]' : 'border-black/[0.06]'}`}>
+          {isRunning ? (
+            /* Stop button — visible while running */
+            <button
+              onClick={stopCycle}
+              className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-[12px] font-semibold transition-all ${
+                isDark
+                  ? 'bg-red-950/50 text-red-400 border border-red-800/60 hover:bg-red-950/70 hover:border-red-600'
+                  : 'bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:border-red-300'
+              }`}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="4" y="4" width="16" height="16" rx="2" />
+              </svg>
+              Stop
+            </button>
+          ) : cycles.length === 0 || displayedCycle?.status === 'stopped' ? (
+            /* Start button — no cycles yet, or last cycle stopped */
+            <button
+              onClick={handleStart}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-[12px] font-semibold transition-all text-white"
+              style={{ background: 'rgba(43,121,255,0.9)', boxShadow: '0 2px 12px rgba(43,121,255,0.25)' }}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5,3 19,12 5,21" />
+              </svg>
+              Start Research
+            </button>
+          ) : displayedCycle?.status === 'complete' ? (
+            /* Redo button — last cycle is complete */
+            <button
+              onClick={handleRedo}
+              className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-[12px] font-medium transition-all ${
+                isDark
+                  ? 'bg-white/[0.05] text-white/[0.55] border border-white/[0.10] hover:bg-white/[0.08] hover:text-white/[0.75]'
+                  : 'bg-zinc-100 text-zinc-500 border border-zinc-200 hover:bg-zinc-200 hover:text-zinc-700'
+              }`}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                <path d="M3 3v5h5" />
+              </svg>
+              Run Again
+            </button>
+          ) : (
+            /* Start button — idle with no completed cycles */
+            <button
+              onClick={handleStart}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-[12px] font-semibold transition-all text-white"
+              style={{ background: 'rgba(43,121,255,0.9)', boxShadow: '0 2px 12px rgba(43,121,255,0.25)' }}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5,3 19,12 5,21" />
+              </svg>
+              Start Research
+            </button>
+          )}
+        </div>
       </div>
 
     </div>
@@ -462,42 +538,40 @@ function VisionModelSelector({ selectCls, labelCls }: { selectCls: string; label
 // ── Ready Screen — campaign loaded, no cycles yet ──
 
 function StartScreen({ isDarkMode }: { isDarkMode: boolean }) {
-  const { startCycle } = useCampaign();
-  const [starting, setStarting] = useState(false);
+  const { startCycle, systemStatus } = useCampaign();
+  const isRunning = systemStatus === 'running';
 
   const handleStart = async () => {
-    setStarting(true);
+    if (isRunning) return; // prevent double-start
     try {
       await startCycle();
     } catch {
-      setStarting(false);
+      // error is surfaced via context error state
     }
   };
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center p-6">
-      <div className="text-center space-y-4">
-        <div className={`w-10 h-10 mx-auto rounded-xl ${isDarkMode ? 'bg-white/[0.04] border border-white/[0.06]' : 'bg-zinc-50 border border-zinc-100'} flex items-center justify-center`}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={isDarkMode ? 'rgba(255,255,255,0.25)' : '#a1a1aa'} strokeWidth="1.5" strokeLinecap="round">
-            <polygon points="5 3 19 12 5 21 5 3" />
-          </svg>
-        </div>
-        <div className="space-y-1">
-          <p className={`text-[12px] font-medium ${isDarkMode ? 'text-white/[0.55]' : 'text-zinc-500'}`}>Ready to research</p>
-          <p className={`text-[10px] ${isDarkMode ? 'text-white/[0.15]' : 'text-zinc-300'}`}>Select a depth preset, then start</p>
+    <div className="flex-1 flex flex-col items-center justify-center p-8">
+      <div className="text-center space-y-5">
+        <div className="space-y-2">
+          <p className={`text-[14px] font-semibold ${isDarkMode ? 'text-white/[0.75]' : 'text-zinc-700'}`}>Ready to research</p>
+          <p className={`text-[12px] leading-relaxed ${isDarkMode ? 'text-white/[0.40]' : 'text-zinc-400'}`}>Choose a research depth in the sidebar, then start the cycle.</p>
         </div>
         <button
           onClick={handleStart}
-          disabled={starting}
-          className={`px-6 py-2 rounded-lg text-[11px] font-medium transition-all ${
-            starting
-              ? isDarkMode ? 'bg-white/[0.04] text-white/[0.15] cursor-wait' : 'bg-zinc-100 text-zinc-300 cursor-wait'
-              : isDarkMode
-                ? 'bg-white/[0.08] text-white/[0.85] hover:bg-white/[0.12] border border-white/[0.06]'
-                : 'bg-zinc-800 text-white hover:bg-zinc-700'
+          disabled={isRunning}
+          className={`px-8 py-2.5 rounded-lg text-[12px] font-semibold transition-all ${
+            isRunning
+              ? 'opacity-40 cursor-wait'
+              : ''
           }`}
+          style={{
+            background: isRunning ? (isDarkMode ? 'rgba(43,121,255,0.1)' : 'rgba(43,121,255,0.06)') : 'rgba(43,121,255,0.9)',
+            color: isRunning ? (isDarkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.3)') : '#fff',
+            boxShadow: isRunning ? 'none' : '0 2px 12px rgba(43,121,255,0.25)',
+          }}
         >
-          {starting ? 'Starting...' : 'Start Research'}
+          {isRunning ? 'Starting...' : 'Start Research'}
         </button>
       </div>
     </div>

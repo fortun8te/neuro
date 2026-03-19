@@ -4,7 +4,7 @@
 import { ollamaService } from './ollama';
 import { screenshotService, type ScreenshotResult } from './wayfayer';
 import { recordResearchSource } from './researchAudit';
-import { getVisionModel } from './modelConfig';
+import { getVisionModel, getThinkMode } from './modelConfig';
 import type { Campaign, VisualAnalysis, VisualFindings } from '../types';
 
 const VISION_MODEL = getVisionModel();
@@ -34,34 +34,25 @@ async function analyzeScreenshot(
 ): Promise<VisualAnalysis | null> {
   if (!screenshot.image_base64 || screenshot.error) return null;
 
-  const prompt = `Analyze this competitor website/ad screenshot. The brand we're competing against: ${campaign.brand} selling ${campaign.productDescription}.
-
-Describe what you see:
-1. DOMINANT_COLORS: List 3-4 main colors (be specific, e.g. "deep navy", "warm coral", "muted sage green")
-2. LAYOUT_STYLE: How is the page laid out? (hero image, split screen, grid, scroll-heavy, minimal?)
-3. VISUAL_TONE: What feeling does it convey? (premium, clinical, playful, warm, edgy, trustworthy?)
-4. KEY_VISUAL_ELEMENTS: What stands out? (product photos, lifestyle images, before-afters, trust badges, testimonials, icons?)
-5. TEXT_OVERLAY_STYLE: Typography approach? (bold headlines, elegant serif, overlaid on images, minimal text?)
-6. CTA_STYLE: Call-to-action design? (button color, size, placement, urgency text?)
-7. OVERALL_IMPRESSION: 2-3 sentences on what this visual strategy communicates
-8. COMPETITIVE_INSIGHT: What does this reveal about their marketing strategy?
-
-Use this exact format with labels:
-DOMINANT_COLORS: ...
-LAYOUT_STYLE: ...
-VISUAL_TONE: ...
-KEY_VISUAL_ELEMENTS: ...
-TEXT_OVERLAY_STYLE: ...
-CTA_STYLE: ...
-OVERALL_IMPRESSION: ...
-COMPETITIVE_INSIGHT: ...`;
+  const prompt = `Competitor page for "${campaign.productDescription}". Extract exactly:
+COLORS: [3-4 hex or named colors visible in hero/header/CTA]
+LAYOUT: [hero-banner|split-screen|product-grid|long-scroll|minimal-centered]
+TONE: [premium|clinical|playful|warm|edgy|trustworthy|corporate]
+HERO: [what is the main visual — photo/illustration/video/gradient, subject matter]
+SOCIAL_PROOF: [testimonials|star-ratings|badges|logos|user-counts|none]
+TYPOGRAPHY: [headline style: bold-sans|elegant-serif|handwritten|minimal] [body: size estimate]
+CTA: [button color] [text on button] [position: top|center|bottom|sticky] [shape: rounded|pill|square]
+DIFFERENTIATOR: [1 sentence — what visual choice makes this brand stand out from others in this category]`;
 
   try {
     const result = await ollamaService.generateStream(
       prompt,
-      'Analyze visual advertising and web design. Be specific about colors, layout, and design choices.',
+      'One line per label. No preamble. Exact values only.',
       {
         model: VISION_MODEL,
+        temperature: 0.2,
+        num_predict: 400,
+        think: getThinkMode('vision'),
         images: [screenshot.image_base64],
         signal,
       }
@@ -92,14 +83,14 @@ function parseVisualAnalysis(output: string, url: string): VisualAnalysis {
   return {
     url,
     analysisTimestamp: Date.now(),
-    dominantColors: extractList('DOMINANT_COLORS'),
-    layoutStyle: extract('LAYOUT_STYLE'),
-    visualTone: extract('VISUAL_TONE'),
-    keyVisualElements: extractList('KEY_VISUAL_ELEMENTS'),
-    textOverlayStyle: extract('TEXT_OVERLAY_STYLE'),
-    ctaStyle: extract('CTA_STYLE'),
-    overallImpression: extract('OVERALL_IMPRESSION'),
-    competitiveInsight: extract('COMPETITIVE_INSIGHT'),
+    dominantColors: extractList('COLORS'),
+    layoutStyle: extract('LAYOUT'),
+    visualTone: extract('TONE'),
+    keyVisualElements: [...extractList('HERO'), ...extractList('SOCIAL_PROOF')].filter(Boolean),
+    textOverlayStyle: extract('TYPOGRAPHY'),
+    ctaStyle: extract('CTA'),
+    overallImpression: extract('DIFFERENTIATOR'),
+    competitiveInsight: extract('DIFFERENTIATOR'),
   };
 }
 
@@ -126,29 +117,24 @@ async function synthesizeVisualFindings(
      Strategy: ${a.competitiveInsight}`
   ).join('\n\n');
 
-  const prompt = `You are a visual strategist analyzing competitor visual approaches for ${campaign.brand} (${campaign.productDescription}).
+  const prompt = `Visual strategy for ${campaign.brand} (${campaign.productDescription}).
 
-COMPETITOR VISUAL ANALYSES:
 ${analysisText}
 
-Based on these visual analyses, identify:
-
 COMMON_PATTERNS:
-- [What visual approaches ALL or MOST competitors share]
+- [what ALL/MOST competitors share visually]
 
 VISUAL_GAPS:
-- [What NONE of them do visually — unclaimed visual territory]
+- [what NONE do — unclaimed visual territory]
 
 RECOMMENDED_DIFFERENTIATION:
-- [How ${campaign.brand} should look DIFFERENT — specific actionable visual choices]
-
-Be specific and actionable.`;
+- [how ${campaign.brand} should look DIFFERENT — specific choices]`;
 
   try {
     const result = await ollamaService.generateStream(
       prompt,
-      'Synthesize visual competitive intelligence into actionable creative direction.',
-      { model: 'qwen3.5:9b', signal }
+      'Bullet points only. Be specific — name colors, layouts, patterns. No preamble.',
+      { model: 'qwen3.5:9b', temperature: 0.3, num_predict: 500, think: getThinkMode('strategy'), signal }
     );
 
     const extractSection = (key: string): string[] => {
@@ -182,9 +168,12 @@ export async function analyzeImageWithVision(
   try {
     return await ollamaService.generateStream(
       analysisPrompt,
-      'Analyze this image in detail for marketing intelligence.',
+      'Structured output only. Format: WHAT: [subject/content] WHERE: [layout/placement] STYLE: [visual treatment] MOOD: [emotional tone]. No preamble.',
       {
         model: VISION_MODEL,
+        temperature: 0.2,
+        num_predict: 400,
+        think: getThinkMode('vision'),
         images: [imageBase64],
         signal,
       }

@@ -6,7 +6,7 @@
  * White main content area with rounded left corners
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCampaign } from '../context/CampaignContext';
 import { useTheme } from '../context/ThemeContext';
@@ -18,11 +18,16 @@ import { SettingsModal } from './SettingsModal';
 import { BrandHubDrawer } from './BrandHubDrawer';
 import { NomadIcon } from './NomadIcon';
 import { SidebarGradient } from './SidebarGradient';
-import { GreetingOverlay } from './GreetingOverlay';
-import { WayfayerPlusPanel } from './WayfayerPlusPanel';
+import { MeshGradient } from '@paper-design/shaders-react';
 import { AgentPanel } from './AgentPanel';
+import { BGPattern } from './BGPattern';
+import { EtherealBG } from './EtherealBG';
 import { healthMonitor, type ServiceStatus } from '../utils/healthMonitor';
+import { ollamaService } from '../utils/ollama';
 import { glassCard } from '../styles/tokens';
+import { GlassFilter } from './LiquidGlass';
+import { ComputerViewSimplified } from './ComputerViewSimplified';
+import { ResponseStream } from './ResponseStream';
 
 export type AppView = 'make' | 'research' | 'test' | 'computer' | 'agent';
 
@@ -34,7 +39,7 @@ function NavIcon({ src, alt }: { src: string; alt: string }) {
 // Glow colors extracted from each icon's dominant color
 const NAV_GLOW: Record<AppView, string> = {
   research: '59, 130, 246',   // blue
-  make:     '250, 126, 12',   // orange
+  make:     '43, 121, 255',   // blue
   test:     '34, 197, 94',    // green
   agent:    '148, 190, 210',  // silver-blue
   computer: '247, 89, 93',    // red
@@ -50,24 +55,28 @@ const NAV_ITEMS: Array<{
   { key: 'research',  label: 'Research',  shortcut: 'R', icon: <NavIcon src="/icons/research.png" alt="Research" />, group: 'core' },
   { key: 'make',      label: 'Make',      shortcut: 'M', icon: <NavIcon src="/icons/make.png" alt="Make" />, group: 'core' },
   { key: 'test',      label: 'Test',      shortcut: 'T', icon: <NavIcon src="/icons/test.png" alt="Test" />, group: 'core' },
-  { key: 'agent',     label: 'Agent',     shortcut: 'A', icon: <NavIcon src="/icons/agent.png" alt="Agent" />, group: 'tools' },
+  { key: 'agent',     label: 'Nomad',     shortcut: 'A', icon: <NavIcon src="/icons/agent.png" alt="Nomad" />, group: 'tools' },
   { key: 'computer',  label: 'Computer',  shortcut: 'C', icon: <NavIcon src="/icons/computer.png" alt="Computer" />, group: 'tools' },
 ];
 
 
 export function AppShell() {
-  const [activeView, setActiveView] = useState<AppView>('research');
+  // Randomize ambient gradient transform + speed per page load
+  const ambientRng = useRef({
+    rotation: Math.random() * 360,
+    tx: (Math.random() - 0.5) * 60,
+    ty: (Math.random() - 0.5) * 60,
+    speed: 0.15 + Math.random() * 0.1, // 0.15–0.25 (ambient is slower)
+  });
+
+  const [activeView, setActiveView] = useState<AppView>(() => {
+    const saved = localStorage.getItem('nomad-last-view') as AppView | null;
+    return saved && ['make', 'research', 'test', 'computer', 'agent'].includes(saved) ? saved : 'agent';
+  });
   const [pulsingView, setPulsingView] = useState<AppView | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showBrandHub, setShowBrandHub] = useState(false);
-  const [showGreeting, setShowGreeting] = useState(() => {
-    // Show greeting on every new app instance (tab/refresh)
-    if (!sessionStorage.getItem('nomad-greeted')) {
-      sessionStorage.setItem('nomad-greeted', '1');
-      return true;
-    }
-    return false;
-  });
+  const [showGreeting] = useState(false); // greeting overlay removed
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [healthState, setHealthState] = useState<Record<string, ServiceStatus>>({});
   const { systemStatus, currentCycle, campaign, clearCampaign } = useCampaign();
@@ -83,6 +92,7 @@ export function AppShell() {
   // Health monitor
   useEffect(() => {
     healthMonitor.start();
+    ollamaService.startupCheck();
     const unsubscribe = healthMonitor.onStatusChange((name, _old, newStatus) => {
       setHealthState(prev => ({ ...prev, [name]: newStatus }));
     });
@@ -130,14 +140,54 @@ export function AppShell() {
   }, []);
 
   return (
-    <div className={`flex relative ${isDarkMode ? 'bg-black' : 'bg-white'}`} style={{ height: '100dvh', overflow: 'clip' }}>
+    <div className={`flex relative ${isDarkMode ? 'bg-black' : 'bg-white'}`} style={{ height: '100dvh', overflow: 'visible' }}>
+      {/* Hidden SVG filter definitions for liquid glass */}
+      <GlassFilter />
+      {/* Glow border effect for nav buttons */}
+      <style>{`
+        .nomad-nav-btn {
+          position: relative;
+        }
+        .nomad-nav-btn::before {
+          content: "";
+          position: absolute;
+          inset: -2px;
+          border-radius: 16px;
+          background: radial-gradient(
+            120px 120px at var(--x, 50%) var(--y, 50%),
+            var(--glow-color, rgba(43, 121, 255, 0.35)),
+            transparent 100%
+          );
+          mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+          -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+          mask-composite: exclude;
+          -webkit-mask-composite: xor;
+          padding: 2px;
+          pointer-events: none;
+          opacity: 0;
+          transition: opacity 0.25s ease;
+        }
+        .nomad-nav-btn:hover::before {
+          opacity: 1;
+        }
+      `}</style>
+
       {/* ══ SIDEBAR — overflow visible so gradient bleeds behind main content rounded corners ══ */}
       <aside
-        className="h-full flex flex-col shrink-0 z-10 relative"
+        className="h-full flex flex-col shrink-0 z-30 relative"
+        onPointerMove={(e) => {
+          // Update glow position on all nav buttons relative to each button
+          const buttons = e.currentTarget.querySelectorAll('.nomad-nav-btn') as NodeListOf<HTMLElement>;
+          buttons.forEach(btn => {
+            const rect = btn.getBoundingClientRect();
+            btn.style.setProperty('--x', `${e.clientX - rect.left}px`);
+            btn.style.setProperty('--y', `${e.clientY - rect.top}px`);
+          });
+        }}
         style={{
           width: sidebarExpanded ? 282 : 70,
           transition: 'width 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-          overflow: isDarkMode ? 'visible' : 'hidden',
+          overflow: 'hidden',
         }}
       >
         {/* ── Sidebar Gradient (SVG filter-based) ── */}
@@ -146,7 +196,7 @@ export function AppShell() {
         {/* Logo — clickable for greeting + collapse toggle */}
         <div className={`relative z-10 flex items-center pt-5 pb-6 ${sidebarExpanded ? 'px-5' : 'justify-center px-0'}`}>
           <button
-            onClick={() => { play('open'); setShowGreeting(true); }}
+            onClick={() => { play('open'); }}
             className={`flex items-center gap-2.5 hover:opacity-80 transition-opacity min-w-0 ${sidebarExpanded ? 'text-left' : 'justify-center'}`}
           >
             <NomadIcon size={20} animated={isRunning} className="text-white/80 shrink-0" />
@@ -190,14 +240,14 @@ export function AppShell() {
                 key={key}
                 onClick={() => {
                   if (!active) play('navigate');
-                  setActiveView(key);
+                  setActiveView(key); localStorage.setItem('nomad-last-view', key);
                   setPulsingView(key);
                   setTimeout(() => setPulsingView(null), 600);
                 }}
                 whileHover={{ scale: 1.01, x: sidebarExpanded ? 1 : 0 }}
                 whileTap={{ scale: 0.98 }}
                 transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-                className={`group relative flex items-center rounded-[14px] transition-all ${
+                className={`nomad-nav-btn group relative flex items-center rounded-[14px] transition-all ${
                   sidebarExpanded ? 'gap-3.5 px-3.5 py-3 text-left w-full' : 'justify-center p-1.5 mx-auto'
                 } ${
                   active
@@ -268,14 +318,14 @@ export function AppShell() {
                 key={key}
                 onClick={() => {
                   if (!active) play('navigate');
-                  setActiveView(key);
+                  setActiveView(key); localStorage.setItem('nomad-last-view', key);
                   setPulsingView(key);
                   setTimeout(() => setPulsingView(null), 600);
                 }}
                 whileHover={{ scale: 1.01, x: sidebarExpanded ? 1 : 0 }}
                 whileTap={{ scale: 0.98 }}
                 transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-                className={`group relative flex items-center rounded-[14px] transition-all ${
+                className={`nomad-nav-btn group relative flex items-center rounded-[14px] transition-all ${
                   sidebarExpanded ? 'gap-3.5 px-3.5 py-3 text-left w-full' : 'justify-center p-1.5 mx-auto'
                 } ${
                   active
@@ -333,11 +383,9 @@ export function AppShell() {
           {/* Settings button — one clean full-width button */}
           <button
             onClick={() => { play('open'); setShowSettings(true); }}
-            className="flex items-center w-full transition-all hover:brightness-125"
+            className="nomad-glass-btn flex items-center w-full"
             style={{
-              background: 'rgba(255,255,255,0.04)',
               borderRadius: 14,
-              border: '1px solid rgba(255,255,255,0.06)',
               padding: sidebarExpanded ? '10px 14px' : '10px 0',
               justifyContent: sidebarExpanded ? 'flex-start' : 'center',
               gap: 10,
@@ -387,21 +435,61 @@ export function AppShell() {
         </div>
       </aside>
 
+      {/* ══ AMBIENT GRADIENT — full-viewport bleed, dark mode only ══ */}
+      {isDarkMode && (
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ zIndex: 10, overflow: 'hidden' }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              inset: -40,
+              transform: `rotate(${ambientRng.current.rotation}deg) translate(${ambientRng.current.tx}px, ${ambientRng.current.ty}px)`,
+            }}
+          >
+            <MeshGradient
+              colors={['#000000', '#050510', '#0a1628', '#0d1f3c', '#2B79FF']}
+              speed={ambientRng.current.speed}
+              distortion={0.4}
+              swirl={0.15}
+              grainMixer={0.0}
+              grainOverlay={0.0}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                opacity: 0.06,
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* ══ MAIN CONTENT ══ */}
       <main
         className={`flex-1 flex flex-col overflow-hidden z-20 relative ${
           isDarkMode ? 'rounded-l-[20px] mt-2' : 'bg-white'
         }`}
         style={{
-          ...(isDarkMode ? { background: 'rgba(14, 14, 18, 0.99)' } : {}),
-          border: isDarkMode ? '1px solid rgba(255,255,255,0.08)' : 'none',
+          ...(isDarkMode ? { background: 'linear-gradient(180deg, rgba(10, 10, 14, 0.94) 0%, rgba(8, 12, 20, 0.96) 100%)' } : {}),
+          border: isDarkMode ? '1px solid rgba(255,255,255,0.06)' : 'none',
           boxShadow: isDarkMode
-            ? '0 8px 40px rgba(0,0,0,0.5), -4px 0 20px rgba(43,121,255,0.03)'
+            ? '0 8px 40px rgba(0,0,0,0.5), -4px 0 20px rgba(43,121,255,0.04), inset 0 1px 0 rgba(255,255,255,0.03)'
             : 'none',
         }}
       >
+        {/* Background layers */}
+        {isDarkMode && (
+          <div className="absolute inset-0 overflow-hidden pointer-events-none rounded-l-[20px]" style={{ zIndex: 0 }}>
+            <EtherealBG />
+            <BGPattern variant="dots" mask="fade-edges" />
+          </div>
+        )}
+
         {/* Top bar */}
-        <div className={`relative flex items-center h-12 px-5 shrink-0 border-b overflow-hidden ${isDarkMode ? 'rounded-tl-[20px]' : ''} ${
+        <div className={`relative flex items-center h-12 shrink-0 border-b overflow-hidden ${isDarkMode ? 'rounded-tl-[20px] px-7' : 'px-5'} ${
           isDarkMode ? 'border-white/[0.08] bg-transparent' : 'border-zinc-100 bg-white/80 backdrop-blur-sm'
         }`} style={{ zIndex: 1 }}>
           <div className="flex items-center gap-3 flex-1">
@@ -421,12 +509,8 @@ export function AppShell() {
           <button
             onClick={() => { play('open'); setShowSettings(true); }}
             title="Settings (Shift+S)"
-            className="flex items-center justify-center w-8 h-8 transition-all hover:brightness-125"
+            className="nomad-glass-btn flex items-center justify-center w-8 h-8"
             style={{
-              background: 'rgba(255,255,255,0.04)',
-              backdropFilter: 'blur(12px)',
-              WebkitBackdropFilter: 'blur(12px)',
-              border: '1px solid rgba(255,255,255,0.08)',
               borderRadius: 10,
               color: isDarkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.3)',
             }}
@@ -449,16 +533,7 @@ export function AppShell() {
               {activeView === 'research' && <Dashboard embedded />}
               {activeView === 'make' && <MakeStudio />}
               {activeView === 'test' && <TestView />}
-              {activeView === 'computer' && (
-                <div className="h-full flex items-center justify-center overflow-hidden p-4">
-                  <div className="w-full max-w-[960px] h-full flex flex-col overflow-hidden rounded-xl" style={{
-                    boxShadow: isDarkMode ? '0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06)' : '0 4px 24px rgba(0,0,0,0.08)',
-                    background: isDarkMode ? 'rgba(255,255,255,0.02)' : '#fff',
-                  }}>
-                    <WayfayerPlusPanel standalone />
-                  </div>
-                </div>
-              )}
+              {activeView === 'computer' && <ComputerViewSimplified />}
               {activeView === 'agent' && <AgentPanel />}
             </motion.div>
           </AnimatePresence>
@@ -466,7 +541,6 @@ export function AppShell() {
       </main>
 
       {/* Modals */}
-      <GreetingOverlay open={showGreeting} onClose={() => setShowGreeting(false)} />
       <SettingsModal isOpen={showSettings} onClose={() => { play('close'); setShowSettings(false); }} isRunning={isRunning} />
       <BrandHubDrawer
         isOpen={showBrandHub}
@@ -493,6 +567,7 @@ function TestView() {
   const { isDarkMode } = useTheme();
   const testOutput = currentCycle?.stages?.test?.agentOutput;
   const testComplete = currentCycle?.stages?.test?.status === 'complete';
+  const isRunning = currentCycle?.stages?.test?.status === 'in-progress';
 
   return (
     <div className={`h-full flex items-center justify-center p-8 overflow-y-auto ${isDarkMode ? 'bg-transparent' : 'bg-zinc-50'}`}>
@@ -500,7 +575,17 @@ function TestView() {
         <div className={`max-w-3xl w-full p-8 ${glassCard(isDarkMode)}`}>
           <h2 className={`text-[14px] font-semibold mb-4 ${isDarkMode ? 'text-white/[0.85]' : 'text-[#414243]'}`}>Test Results</h2>
           <div className={`font-mono text-[12px] whitespace-pre-wrap leading-relaxed ${isDarkMode ? 'text-white/[0.55]' : 'text-zinc-600'}`}>
-            {testOutput}
+            {isRunning ? (
+              <ResponseStream
+                textStream={testOutput}
+                mode="typewriter"
+                speed={25}
+                characterChunkSize={1}
+                className={`text-[12px] leading-relaxed whitespace-pre-wrap ${isDarkMode ? 'text-white/[0.55]' : 'text-zinc-600'}`}
+              />
+            ) : (
+              testOutput
+            )}
           </div>
         </div>
       ) : (

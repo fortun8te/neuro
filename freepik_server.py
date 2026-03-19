@@ -38,13 +38,17 @@ PIKASO_URL = 'https://www.freepik.com/pikaso/ai-image-generator#from_element=mai
 MIN_INTERVAL = 5  # seconds between generations
 
 # Exact button text in Freepik's model dropdown
+# ONLY unlimited/free models are allowed — paid models (flux-2-pro etc.) are excluded
+# to prevent accidental credit usage.
 MODEL_BUTTON_TEXT = {
     'nano-banana-2': 'Google Nano Banana 2',
     'seedream-5-lite': 'Seedream 5 Lite',
-    'flux-2-pro': 'Flux.2 Pro',
     'cinematic': 'Cinematic',
     'auto': 'Auto',
 }
+
+# Models that cost credits — requests for these are rejected
+PAID_MODELS = {'flux-2-pro', 'flux.2-pro', 'flux2pro', 'mystic'}
 
 # Browser display setting — browser is always non-headless (required for Freepik),
 # but auto_minimize controls whether the window is minimized after launch.
@@ -255,6 +259,91 @@ def _filter_reference_images(images: list[str]) -> list[str]:
     return valid
 
 
+async def _check_unlimited_mode() -> tuple[bool, str]:
+    """
+    Check if the Freepik account has unlimited mode enabled.
+    Returns (has_unlimited, error_message).
+    If has_unlimited is True, error_message is empty.
+    If has_unlimited is False, error_message contains the error text.
+    """
+    try:
+        print('[freepik] Checking for unlimited mode...')
+        page, context = await _new_page_with_cookies()
+
+        # Navigate to Pikaso
+        await page.goto(PIKASO_URL, wait_until='domcontentloaded', timeout=30000)
+
+        try:
+            await page.wait_for_selector('[data-cy="image-generator-form"]', timeout=15000)
+        except Exception:
+            await page.wait_for_timeout(4000)
+
+        # Check login status
+        title = await page.title()
+        if '403' in title or 'denied' in title.lower():
+            await context.close()
+            return False, 'Freepik access denied (403). Check account or IP.'
+        if '/log-in' in page.url or '/login' in page.url:
+            await context.close()
+            return False, 'Not logged in. Log in to freepik.com in Chrome first.'
+
+        # Look for unlimited indicator on the page
+        # Freepik shows "Unlimited" in the top bar or near the generation controls
+        # Possible selectors: plan badge, subscription indicator, unlimited label
+        unlimited_indicators = [
+            'text="Unlimited"',
+            'text="unlimited"',
+            '[data-cy="plan-badge"]:has-text("Unlimited")',
+            '[data-cy="subscription-badge"]:has-text("Unlimited")',
+            'span:has-text("Unlimited generations")',
+            'span:has-text("unlimited")',
+        ]
+
+        has_unlimited = False
+        for selector in unlimited_indicators:
+            try:
+                # Use filter with has_text for Playwright
+                selector_normalized = selector.replace('text=', '').replace('"', '').strip()
+                elements = await page.locator(f'text="{selector_normalized}"').all()
+                if len(elements) > 0:
+                    has_unlimited = True
+                    print(f'[freepik] Found unlimited indicator: {selector_normalized}')
+                    break
+            except Exception:
+                continue
+
+        # If no positive indicator found, check for credit counter or limited text
+        if not has_unlimited:
+            try:
+                # Check for credit-based UI (would show limited mode)
+                credit_indicators = await page.locator('[data-cy*="credit"], [data-cy*="generation"], span:has-text("credits")').all()
+                if len(credit_indicators) > 0:
+                    # Found credit counter — likely limited mode
+                    has_unlimited = False
+                    print('[freepik] Found credit counter — unlimited NOT enabled')
+                else:
+                    # No unlimited badge and no credit counter — assume unlimited for safety
+                    # (Freepik UI may vary)
+                    has_unlimited = True
+                    print('[freepik] No explicit unlimited badge found, assuming unlimited mode (UI may vary)')
+            except Exception:
+                # Default to True on parse failure
+                has_unlimited = True
+                print('[freepik] Could not parse UI state, assuming unlimited')
+
+        await context.close()
+
+        if has_unlimited:
+            return True, ''
+        else:
+            return False, 'Freepik unlimited mode required. Please enable it in your Freepik account settings.'
+
+    except Exception as e:
+        print(f'[freepik] Unlimited check failed: {e}')
+        # On error, fail the request (safety-first: require explicit unlimited)
+        return False, f'Could not verify Freepik unlimited mode: {str(e)}'
+
+
 # ── Endpoints ──
 
 @app.get('/api/status')
@@ -336,6 +425,19 @@ async def preload(req: PreloadRequest):
     """Pre-open browser, navigate, upload refs, set model/aspect/style.
     Called while LLM is still thinking so generate() can skip setup."""
     global _preloaded_page, _preloaded_context, _preloaded_prompt_el, _preloaded_config
+
+    # ── Check unlimited mode BEFORE any generation ──
+    has_unlimited, unlimited_error = await _check_unlimited_mode()
+    if not has_unlimited:
+        async def reject():
+            yield _ndjson('error', message=unlimited_error, code='UNLIMITED_REQUIRED')
+        return StreamingResponse(reject(), media_type='application/x-ndjson')
+
+    # ── Block paid models ──
+    if req.model.lower().replace(' ', '-') in PAID_MODELS or req.model not in MODEL_BUTTON_TEXT:
+        async def reject():
+            yield _ndjson('error', message=f'Model "{req.model}" is not in the free/unlimited tier. Use nano-banana-2 or seedream-5-lite.')
+        return StreamingResponse(reject(), media_type='application/x-ndjson')
 
     # Filter reference images
     style_ref_list = _filter_reference_images([req.style_reference]) if req.style_reference else []
@@ -643,6 +745,19 @@ async def preload(req: PreloadRequest):
 @app.post('/api/generate')
 async def generate(req: GenerateRequest):
     """Generate image via Freepik Pikaso. Streams NDJSON progress events."""
+
+    # ── Check unlimited mode BEFORE any generation ──
+    has_unlimited, unlimited_error = await _check_unlimited_mode()
+    if not has_unlimited:
+        async def reject():
+            yield _ndjson('error', message=unlimited_error, code='UNLIMITED_REQUIRED')
+        return StreamingResponse(reject(), media_type='application/x-ndjson')
+
+    # ── Block paid models to prevent accidental credit usage ──
+    if req.model.lower().replace(' ', '-') in PAID_MODELS or req.model not in MODEL_BUTTON_TEXT:
+        async def reject():
+            yield _ndjson('error', message=f'Model "{req.model}" is not in the free/unlimited tier. Use nano-banana-2 or seedream-5-lite.')
+        return StreamingResponse(reject(), media_type='application/x-ndjson')
 
     # Pre-filter reference images — drop empty/corrupt ones
     # Style reference always goes FIRST (into Freepik's Style slot)

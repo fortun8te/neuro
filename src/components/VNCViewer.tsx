@@ -1,15 +1,12 @@
 /**
  * VNCViewer — React wrapper for noVNC RFB client.
- * Renders a live VNC stream from the Docker sandbox's websockify.
  */
 
 import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle, useState } from 'react';
 
-// noVNC doesn't have TS types — import as any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let RFB: any = null;
 
-// Dynamic import of noVNC (it's an ES module)
 const loadRFB = async () => {
   if (RFB) return RFB;
   try {
@@ -23,13 +20,14 @@ const loadRFB = async () => {
 };
 
 export interface VNCViewerProps {
-  wsUrl: string;               // e.g. "ws://localhost:5901"
-  viewOnly?: boolean;          // true = watch mode, false = interactive
-  scaleViewport?: boolean;     // auto-scale to fit container
+  wsUrl: string;
+  viewOnly?: boolean;
+  scaleViewport?: boolean;
   style?: React.CSSProperties;
   className?: string;
   onConnect?: () => void;
   onDisconnect?: (clean: boolean) => void;
+  onUserInteraction?: () => void;
 }
 
 export interface VNCViewerHandle {
@@ -38,7 +36,7 @@ export interface VNCViewerHandle {
 }
 
 export const VNCViewer = forwardRef<VNCViewerHandle, VNCViewerProps>(function VNCViewer(
-  { wsUrl, viewOnly = true, scaleViewport = true, style, className, onConnect, onDisconnect },
+  { wsUrl, viewOnly = true, scaleViewport = true, style, className, onConnect, onDisconnect, onUserInteraction },
   ref
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -48,9 +46,7 @@ export const VNCViewer = forwardRef<VNCViewerHandle, VNCViewerProps>(function VN
 
   const disconnect = useCallback(() => {
     if (rfbRef.current) {
-      try {
-        rfbRef.current.disconnect();
-      } catch {}
+      try { rfbRef.current.disconnect(); } catch {}
       rfbRef.current = null;
     }
   }, []);
@@ -73,7 +69,6 @@ export const VNCViewer = forwardRef<VNCViewerHandle, VNCViewerProps>(function VN
       const RFBClass = await loadRFB();
       if (!RFBClass || !mounted || !containerRef.current) return;
 
-      // Clean up previous connection
       if (rfbRef.current) {
         try { rfbRef.current.disconnect(); } catch {}
       }
@@ -121,7 +116,6 @@ export const VNCViewer = forwardRef<VNCViewerHandle, VNCViewerProps>(function VN
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wsUrl]);
 
-  // Update viewOnly when prop changes (without reconnecting)
   useEffect(() => {
     if (rfbRef.current) {
       rfbRef.current.viewOnly = viewOnly;
@@ -129,10 +123,19 @@ export const VNCViewer = forwardRef<VNCViewerHandle, VNCViewerProps>(function VN
     }
   }, [viewOnly]);
 
+  // Detect user interaction when not viewOnly
+  const handleUserAction = useCallback(() => {
+    if (!viewOnly && onUserInteraction) {
+      onUserInteraction();
+    }
+  }, [viewOnly, onUserInteraction]);
+
   return (
     <div
       ref={containerRef}
       className={className}
+      onClick={handleUserAction}
+      onKeyDown={handleUserAction}
       style={{
         width: '100%',
         height: '100%',
@@ -144,28 +147,18 @@ export const VNCViewer = forwardRef<VNCViewerHandle, VNCViewerProps>(function VN
     >
       {status === 'connecting' && (
         <div style={{
-          position: 'absolute',
-          inset: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: 'rgba(255,255,255,0.25)',
-          fontSize: 12,
-          fontFamily: 'monospace',
+          position: 'absolute', inset: 0, display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
+          color: 'rgba(255,255,255,0.25)', fontSize: 12, fontFamily: 'monospace',
         }}>
           Connecting to sandbox...
         </div>
       )}
       {status === 'disconnected' && (
         <div style={{
-          position: 'absolute',
-          inset: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: 'rgba(239,68,68,0.5)',
-          fontSize: 12,
-          fontFamily: 'monospace',
+          position: 'absolute', inset: 0, display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
+          color: 'rgba(239,68,68,0.5)', fontSize: 12, fontFamily: 'monospace',
         }}>
           Sandbox disconnected
         </div>

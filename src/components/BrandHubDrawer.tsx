@@ -244,8 +244,8 @@ export function BrandHubDrawer({
 let _dnaCounter = 0;
 export function DNAIcon({ size = 20, animated = false, isDark = false }: { size?: number; animated?: boolean; isDark?: boolean }) {
   const [uid] = useState(() => `dna-${++_dnaCounter}`);
-  const violet = isDark ? '#6BA3FF' : '#2B79FF';
-  const indigo = isDark ? '#4D8FFF' : '#1D6AE5';
+  const accentLight = isDark ? '#6BA3FF' : '#2B79FF';
+  const accentDark = isDark ? '#4D8FFF' : '#1D6AE5';
   const glow = isDark ? 'rgba(43,121,255,0.45)' : 'rgba(43,121,255,0.3)';
   const glowLg = isDark ? 'rgba(43,121,255,0.2)' : 'rgba(43,121,255,0.12)';
 
@@ -287,10 +287,10 @@ export function DNAIcon({ size = 20, animated = false, isDark = false }: { size?
           {/* Back helix strand (slightly transparent for depth) */}
           <path d="M16 2C16 2 8 6 8 12s8 10 8 10" stroke={`url(#${uid}-b)`} strokeWidth="2" strokeLinecap="round" opacity="0.5" />
           {/* Rungs (connecting bars) */}
-          <line x1="9.5" y1="5" x2="14.5" y2="5" stroke={violet} strokeWidth="1.5" strokeLinecap="round" opacity="0.6" />
-          <line x1="8" y1="9" x2="16" y2="9" stroke={indigo} strokeWidth="1.5" strokeLinecap="round" opacity="0.7" />
-          <line x1="8" y1="15" x2="16" y2="15" stroke={violet} strokeWidth="1.5" strokeLinecap="round" opacity="0.7" />
-          <line x1="9.5" y1="19" x2="14.5" y2="19" stroke={indigo} strokeWidth="1.5" strokeLinecap="round" opacity="0.6" />
+          <line x1="9.5" y1="5" x2="14.5" y2="5" stroke={accentLight} strokeWidth="1.5" strokeLinecap="round" opacity="0.6" />
+          <line x1="8" y1="9" x2="16" y2="9" stroke={accentDark} strokeWidth="1.5" strokeLinecap="round" opacity="0.7" />
+          <line x1="8" y1="15" x2="16" y2="15" stroke={accentLight} strokeWidth="1.5" strokeLinecap="round" opacity="0.7" />
+          <line x1="9.5" y1="19" x2="14.5" y2="19" stroke={accentDark} strokeWidth="1.5" strokeLinecap="round" opacity="0.6" />
           {/* Front helix strand (fully opaque for 3D depth) */}
           <path d="M8 2C8 2 16 6 16 12s-8 10-8 10" stroke={`url(#${uid}-a)`} strokeWidth="2.5" strokeLinecap="round" filter={size >= 18 ? `url(#${uid}-glow)` : undefined} />
           {/* Specular highlights for 3D feel */}
@@ -1139,8 +1139,8 @@ function ColorSwatch({ color, isDark }: { color: string; isDark: boolean }) {
 
 const bulletColors: Record<string, { dark: string; light: string }> = {
   red: { dark: 'text-red-400/60', light: 'text-red-400' },
-  orange: { dark: 'text-orange-400/60', light: 'text-orange-400' },
-  amber: { dark: 'text-amber-400/60', light: 'text-amber-500' },
+  orange: { dark: 'text-blue-400/60', light: 'text-blue-400' },
+  amber: { dark: 'text-blue-400/60', light: 'text-blue-500' },
   emerald: { dark: 'text-emerald-400/60', light: 'text-emerald-500' },
   blue: { dark: 'text-blue-400/60', light: 'text-blue-500' },
   violet: { dark: 'text-blue-400/60', light: 'text-blue-500' },

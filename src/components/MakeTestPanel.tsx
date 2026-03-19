@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { layoutTemplates, selectTemplate, type AspectRatioType } from '../utils/layoutTemplates';
+import { layoutTemplates, selectTemplate } from '../utils/layoutTemplates';
 import { useTheme } from '../context/ThemeContext';
 
 interface MakeTestPanelProps {
@@ -283,7 +283,7 @@ export function MakeTestPanel({ isDarkMode: propDarkMode }: MakeTestPanelProps) 
     }
   };
 
-  const bgClass = isDarkMode ? 'bg-[#0f0f0f]' : 'bg-zinc-50';
+  const bgClass = isDarkMode ? 'bg-transparent' : 'bg-zinc-50';
   const inputBgClass = isDarkMode ? 'bg-white/[0.03] border-white/[0.08] text-white/[0.85]' : 'bg-white border-zinc-300 text-black';
   const labelClass = isDarkMode ? 'text-white/[0.55]' : 'text-zinc-700';
   const borderClass = isDarkMode ? 'border-white/[0.08]' : 'border-zinc-300';

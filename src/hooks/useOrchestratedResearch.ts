@@ -1,7 +1,7 @@
-import { orchestrator, type OrchestratorState } from '../utils/researchAgents';
+import { orchestrator } from '../utils/researchAgents';
 import { useResearchAgent } from './useResearchAgent';
-import { runCouncil, extractFindingsFromVerdict, type CouncilVerdict } from '../utils/council';
-import { getResearchModelConfig, getResearchLimits, getActiveResearchPreset } from '../utils/modelConfig';
+import { runCouncil, extractFindingsFromVerdict } from '../utils/council';
+import { getResearchModelConfig, getResearchLimits, getActiveResearchPreset, getCouncilScaling } from '../utils/modelConfig';
 import { createResearchAudit, buildResearchAuditTrail, recordResearchModel } from '../utils/researchAudit';
 import type { Campaign, ResearchFindings } from '../types';
 
@@ -189,8 +189,14 @@ export function useOrchestratedResearch() {
       } catch (err) {
         if (signal?.aborted) throw err;
         const errMsg = err instanceof Error ? err.message : String(err);
+        const isIdleTimeout = errMsg.includes('No response from model');
         onProgress?.(`\n[PHASE 1 ERROR] Web research failed: ${errMsg}\n`);
-        onProgress?.('  → Is Wayfayer running on port 8889? Is SearXNG up on port 8888?\n');
+        if (isIdleTimeout) {
+          onProgress?.('  → Model is not responding. Check that Ollama is running and the model is loaded.\n');
+          onProgress?.('  → Try: ollama list (to see loaded models), then ollama run <model> to warm it up.\n');
+        } else {
+          onProgress?.('  → Is Wayfayer running on port 8889? Is SearXNG up on port 8888?\n');
+        }
         onProgress?.('  → Continuing with LLM analysis only.\n\n');
         console.error('Web research error:', err);
       }
@@ -242,7 +248,11 @@ export function useOrchestratedResearch() {
       } catch (err) {
         if (signal?.aborted) throw err;
         const errMsg = err instanceof Error ? err.message : String(err);
+        const isIdleTimeout = errMsg.includes('No response from model');
         onProgress?.(`\n[PHASE 2 ERROR] Desire analysis failed: ${errMsg}\n`);
+        if (isIdleTimeout) {
+          onProgress?.('  → Model is not responding. Check Ollama connection and model status.\n');
+        }
         onProgress?.('  → Continuing with web findings only.\n\n');
         console.error('Desire research error:', err);
       }
@@ -250,11 +260,16 @@ export function useOrchestratedResearch() {
 
     // ──────────────────────────────────────────────────
     // PHASE 3: Council of Marketing Brains
-    // NOW has web data + desire findings to analyze — much richer context
-    // 7 brains (sequential) → 3 heads → 1 verdict
+    // Scales with preset: SQ/QK skip, NR 4 brains, EX 7 brains, MX 13 brains
     // ──────────────────────────────────────────────────
     if (!signal?.aborted) {
-      onProgress?.('[PHASE 3] Council of Marketing Brains — 7 Brains Analyzing (Sequential)\n\n');
+      const councilScale = getCouncilScaling();
+
+      if (councilScale.skipCouncil) {
+        onProgress?.('[PHASE 3] Council SKIPPED (SQ/QK preset — using orchestrator decisions)\n\n');
+      } else {
+        onProgress?.(`[PHASE 3] Council of Marketing Brains — ${councilScale.brainIds.length} Brains -> ${councilScale.councilHeadCount} Head(s) -> Verdict\n\n`);
+      }
 
       try {
         // Get competitor screenshots if available (for Visual Brain)
@@ -265,14 +280,14 @@ export function useOrchestratedResearch() {
 
         councilVerdict = await runCouncil(
           campaign,
-          researchFindings,  // NOW enriched with web data + desire analysis
+          researchFindings,
           (msg) => {
             councilOutput += msg;
             onProgress?.(msg);
           },
           signal,
           {
-            maxIterations: 2,  // Allow council to iterate if confidence is low
+            maxIterations: 2,
             confidenceThreshold: 7,
             competitorScreenshots,
           }
@@ -283,13 +298,24 @@ export function useOrchestratedResearch() {
         researchFindings = { ...researchFindings, ...councilFindings };
         researchFindings.councilVerdict = councilVerdict;
 
-        onProgress?.('\n[PHASE 3 COMPLETE] Council verdict delivered.\n\n');
+        const creativeNote = councilVerdict.creativeAngles?.length
+          ? ` + ${councilVerdict.creativeAngles.length} creative angles`
+          : '';
+        const mergeNote = councilVerdict.mergedBrains?.length
+          ? ` (${councilVerdict.mergedBrains.length} brain pairs merged for overlap)`
+          : '';
+        onProgress?.(`\n[PHASE 3 COMPLETE] Council verdict delivered${creativeNote}${mergeNote}.\n\n`);
       } catch (err) {
         if (signal?.aborted) throw err;
         const errMsg = err instanceof Error ? err.message : String(err);
+        const isIdleTimeout = errMsg.includes('No response from model');
         onProgress?.(`\n[COUNCIL ERROR] Council failed: ${errMsg}\n`);
-        onProgress?.('  → Is Ollama running? Check the connection at Settings → Ollama URL\n');
-        onProgress?.('  → Using web + desire findings only.\n\n');
+        if (isIdleTimeout) {
+          onProgress?.('  -> Model is not responding for 30+ seconds. Check Ollama status.\n');
+        } else {
+          onProgress?.('  -> Is Ollama running? Check the connection at Settings -> Ollama URL\n');
+        }
+        onProgress?.('  -> Using web + desire findings only.\n\n');
         console.error('Council error:', err);
       }
     }

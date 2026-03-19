@@ -16,9 +16,9 @@ export type CycleMode = 'full' | 'concepting';
 // full = all 8 stages
 // concepting = research + brand-dna + persona-dna + angles only
 
-export type StageStatus = 'pending' | 'in-progress' | 'complete';
+export type StageStatus = 'pending' | 'in-progress' | 'complete' | 'stopped';
 export type CampaignStatus = 'active' | 'paused' | 'archived';
-export type CycleStatus = 'in-progress' | 'complete';
+export type CycleStatus = 'in-progress' | 'complete' | 'stopped';
 export type SystemStatus = 'idle' | 'running' | 'error';
 
 // ─ Ad Library ─
@@ -647,9 +647,6 @@ export interface CampaignContextType {
   updateCampaign: (updates: Partial<Campaign>) => Promise<void>;
   startCycle: () => Promise<void>;
   stopCycle: () => void;
-  clearCampaign: () => void;
-  resetResearch: () => Promise<void>;
-  loadCampaignById: (id: string) => Promise<void>;
   completeStage: (stageName: StageName, output: string) => Promise<void>;
   setCampaign: (campaign: Campaign) => void;
 }

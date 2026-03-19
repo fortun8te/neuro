@@ -129,12 +129,11 @@ function buildPrompt(action: string, expectedOutcome?: string): string {
     ? `Expected result: ${expectedOutcome}`
     : 'Determine if the action succeeded based on the current page state.';
 
-  return `Action taken: ${action}
+  return `Action: ${action}
 ${expected}
 
-Look at the screenshot. Did the action succeed?
-Reply with ONLY valid JSON (no markdown, no code blocks):
-{"success": true/false, "observation": "what you see on screen", "suggestion": "if failed, what to try instead", "confidence": 0.0-1.0}`;
+Quick check: did the page change as expected? Answer in JSON only — no markdown:
+{"success": true/false, "observation": "brief description, max 15 words", "suggestion": "only if failed: one specific next action", "confidence": 0.0-1.0}`;
 }
 
 /**
@@ -206,7 +205,7 @@ export async function verify(opts: VerifyOptions): Promise<VerificationResult> {
   try {
     const response = await ollamaService.generateStream(
       prompt,
-      'You are a visual verification agent. Analyze the screenshot and determine if the described action succeeded. Reply with JSON only.',
+      'Visual verification agent. Quick yes/no: did the action work? Short JSON answer, max 15-word observation. Assume success if page looks normal and changed.',
       {
         model,
         images: [screenshotB64],

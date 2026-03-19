@@ -7,7 +7,9 @@ import { ModelOutputDebug } from './ModelOutputDebug';
 import { MakeTestPanel } from './MakeTestPanel';
 import { TestResultsPanel } from './TestResultsPanel';
 import { tokenTracker } from '../utils/tokenStats';
-import { ShineText } from './ShineText';
+import { TextShimmer } from './TextShimmer';
+import { ResponseStream } from './ResponseStream';
+import { ProgressiveBlur } from './ProgressiveBlur';
 
 const STAGE_LABELS: Record<StageName, string> = {
   'research':    'Research',
@@ -27,7 +29,8 @@ function formatModelName(model: string): string {
   const modelPart = isLocal ? parts.slice(1).join(':') : model;
   const [name, size] = modelPart.split(':');
   let displayName = name
-    .replace(/^qwen/, 'Qwen ');
+    .replace(/^qwen/, 'Qwen ')
+;
   const displaySize = size ? ` ${size.toUpperCase()}` : '';
   const prefix = isLocal ? 'Local ' : '';
   return `${prefix}${displayName}${displaySize}`.trim();
@@ -45,11 +48,13 @@ interface StagePanelProps {
   isRunning?: boolean;
   isDarkMode?: boolean;
   viewStage?: StageName | null;
+  onUpdateOutput?: (stageName: StageName, output: string) => void;
+  onPauseForInput?: (event: any) => Promise<string>;
 }
 
 export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewStage }: StagePanelProps) {
   const { isDarkMode: themeDarkMode } = useTheme();
-  const { campaign } = useCampaign();
+  const { campaign, stopCycle } = useCampaign();
   const isDark = propDarkMode !== undefined ? propDarkMode : themeDarkMode;
   const outputRef = useRef<HTMLDivElement>(null);
   const thinkRef = useRef<HTMLDivElement>(null);
@@ -90,20 +95,20 @@ export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewSta
     }
   }, [tokenInfo.liveThinkSnippet, tokenInfo.liveResponseSnippet, thinkExpanded]);
 
-  // Auto-expand when stage starts, collapse when stage completes
-  const wasStageActiveRef = useRef(false);
-  const stageStatus = cycle?.stages[viewStage || cycle?.currentStage || 'research']?.status;
-  const stageIsActive = stageStatus === 'in-progress';
+  // Auto-expand on generation start, collapse when model goes idle
+  const wasActiveRef = useRef(false);
   useEffect(() => {
-    if (stageIsActive && !wasStageActiveRef.current) {
-      setThinkExpanded(true);
+    const isActive = tokenInfo.isGenerating || tokenInfo.isThinking || tokenInfo.isModelLoading;
+    if (isActive && !wasActiveRef.current) {
+      setThinkExpanded(true); // expand when new call starts
     }
-    if (!stageIsActive && wasStageActiveRef.current) {
-      const t = setTimeout(() => setThinkExpanded(false), 2000);
+    if (!isActive && wasActiveRef.current) {
+      // Collapse after a short delay so user can see the final token flash
+      const t = setTimeout(() => setThinkExpanded(false), 1800);
       return () => clearTimeout(t);
     }
-    wasStageActiveRef.current = stageIsActive;
-  }, [stageIsActive]);
+    wasActiveRef.current = isActive;
+  }, [tokenInfo.isGenerating, tokenInfo.isThinking, tokenInfo.isModelLoading]);
 
   if (!cycle) return null;
 
@@ -117,10 +122,11 @@ export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewSta
 
   const isActive = stageData.status === 'in-progress';
   const isComplete = stageData.status === 'complete';
+  const isStopped = stageData.status === 'stopped';
 
   // Token state
   const hasActivity = tokenInfo.isGenerating || tokenInfo.isThinking || tokenInfo.isModelLoading;
-  const tokenColor = tokenInfo.isModelLoading ? '#d97706' : tokenInfo.isThinking ? '#2B79FF' : '#2B79FF';
+  const tokenColor = tokenInfo.isModelLoading ? '#2B79FF' : tokenInfo.isThinking ? '#2B79FF' : '#2B79FF';
   const tokenLabel = tokenInfo.isModelLoading ? 'Loading' : tokenInfo.isThinking ? 'Thinking' : 'Generating';
 
   return (
@@ -128,10 +134,10 @@ export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewSta
 
       {/* ── Stage header ── */}
       <div className={`flex-shrink-0 flex items-center gap-3 px-5 py-2.5 border-b ${
-        isDark ? 'border-white/[0.08] bg-[#0f0f0f]' : 'border-zinc-200 bg-white'
+        isDark ? 'border-zinc-800/60 bg-transparent' : 'border-zinc-200 bg-white'
       }`}>
         {/* Stage name */}
-        <h2 className={`text-[13px] font-semibold ${isDark ? 'text-white/[0.85]' : 'text-zinc-900'}`}>
+        <h2 className={`text-[13px] font-semibold ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
           {STAGE_LABELS[currentStage]}
         </h2>
 
@@ -141,18 +147,21 @@ export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewSta
             ? isDark ? 'bg-blue-500/10 text-blue-400' : 'bg-blue-50 text-blue-600'
             : isComplete
             ? isDark ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-50 text-emerald-600'
-            : isDark ? 'bg-zinc-800 text-zinc-600' : 'bg-zinc-100 text-zinc-400'
+            : isStopped
+            ? isDark ? 'bg-zinc-500/10 text-zinc-400' : 'bg-zinc-50 text-zinc-600'
+            : isDark ? 'bg-zinc-800 text-zinc-500' : 'bg-zinc-100 text-zinc-400'
         }`}>
           <span className={`w-1.5 h-1.5 rounded-full ${
             isActive ? 'animate-pulse bg-blue-400' :
             isComplete ? 'bg-emerald-500' :
+            isStopped ? 'bg-zinc-500' :
             isDark ? 'bg-zinc-700' : 'bg-zinc-300'
           }`} />
-          {isActive ? 'Running' : isComplete ? 'Complete' : 'Pending'}
+          {isActive ? 'Running' : isComplete ? 'Complete' : isStopped ? 'Stopped' : 'Pending'}
         </span>
 
         {elapsed !== null && (
-          <span className={`text-[11px] tabular-nums ${isDark ? 'text-white/[0.30]' : 'text-zinc-400'}`}>
+          <span className={`text-[11px] tabular-nums ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
             {formatTime(elapsed)}
           </span>
         )}
@@ -176,13 +185,29 @@ export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewSta
           </button>
         )}
 
+        {/* Stop button — prominent when stage is running */}
+        {isActive && isRunning && (
+          <button
+            onClick={() => stopCycle()}
+            className={`ml-auto flex items-center gap-1.5 px-3 py-1 rounded text-[11px] font-semibold tracking-wide uppercase transition-all ${
+              isDark
+                ? 'bg-red-950/40 text-red-400 border border-red-800/60 hover:bg-red-950/60 hover:border-red-600'
+                : 'bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:border-red-400'
+            }`}
+            title="Stop research pipeline"
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2" /></svg>
+            Stop
+          </button>
+        )}
+
         {/* Live token badge in header (only when active) */}
         {isActive && tokenInfo.liveTokens > 0 && (
-          <div className="ml-auto flex items-center gap-1.5 tabular-nums">
+          <div className={`flex items-center gap-1.5 tabular-nums ${isRunning ? '' : 'ml-auto'}`}>
             <span className="text-[12px] font-semibold" style={{ color: tokenColor }}>
               {tokenInfo.liveTokens.toLocaleString()}
             </span>
-            <span className={`text-[9px] ${isDark ? 'text-white/[0.30]' : 'text-zinc-400'}`}>tok</span>
+            <span className={`text-[9px] ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>tok</span>
             {tokenInfo.tokensPerSec > 0 && (
               <span className="text-[10px]" style={{ color: tokenColor, opacity: 0.6 }}>{tokenInfo.tokensPerSec} t/s</span>
             )}
@@ -191,39 +216,38 @@ export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewSta
       </div>
 
       {/* ── Think mode panel ── live raw token stream, collapsible ── */}
-      {isActive && (
-        <div className={`flex-shrink-0 border-b ${isDark ? 'border-white/[0.08] bg-[#0c0c0c]' : 'border-zinc-200 bg-zinc-50'}`}>
+      {isActive && (tokenInfo.isThinking || tokenInfo.isGenerating || tokenInfo.liveThinkSnippet || tokenInfo.liveResponseSnippet) && (
+        <div className={`flex-shrink-0 border-b ${isDark ? 'border-zinc-800/60 bg-transparent' : 'border-zinc-200 bg-zinc-50'}`}>
           {/* think panel header */}
           <button
             onClick={() => setThinkExpanded(e => !e)}
-            className={`w-full flex items-center gap-2 px-4 py-1.5 text-left transition-colors group ${
-              isDark ? 'hover:bg-zinc-800/30' : 'hover:bg-zinc-100/60'
+            className={`w-full flex items-center gap-2 px-4 py-2 text-left transition-all group cursor-pointer ${
+              isDark ? 'hover:bg-zinc-800/50' : 'hover:bg-zinc-100/80'
             }`}
+            title="Click to expand thinking tokens"
           >
             <span className="w-3 h-3 flex items-center justify-center flex-shrink-0">
               {tokenInfo.isThinking ? (
-                <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: '#2B79FF' }} />
+                <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: '#2B79FF', boxShadow: '0 0 4px #2B79FF' }} />
               ) : (
-                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.15)' : '#d4d4d8' }} />
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: isDark ? '#3f3f46' : '#d4d4d8' }} />
               )}
             </span>
-            <span className="text-[10px] font-medium flex-1 truncate" style={{
-              color: tokenInfo.isThinking ? '#2B79FF' : tokenInfo.isModelLoading ? '#d97706' : hasActivity ? (isDark ? 'rgba(255,255,255,0.30)' : '#71717a') : isDark ? '#3f3f46' : '#a1a1aa'
+            <span className="text-[11px] font-semibold flex-1 truncate" style={{
+              color: tokenInfo.isThinking ? '#2B79FF' : isDark ? '#71717a' : '#9ca3af'
             }}>
-              {tokenInfo.isModelLoading
-                ? `Loading ${formatModelName(tokenInfo.activeModel)}…`
-                : tokenInfo.isThinking
-                ? (tokenInfo.liveThinkSnippet.slice(-80).split('\n').at(-1) || 'Thinking…')
-                : tokenInfo.isGenerating
-                ? (tokenInfo.liveResponseSnippet.slice(-80).split('\n').at(-1) || 'Generating…')
-                : tokenInfo.callCount > 0
-                ? `${tokenInfo.sessionTotal.toLocaleString()} tokens · ${tokenInfo.callCount} calls`
-                : 'Waiting for model…'}
+              {tokenInfo.isThinking ? '🧠 Model Thinking' : '💭 Reasoning'}
+            </span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded" style={{
+              background: tokenInfo.isThinking ? 'rgba(43,121,255,0.15)' : isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+              color: tokenInfo.isThinking ? '#2B79FF' : isDark ? '#71717a' : '#9ca3af'
+            }}>
+              {thinkExpanded ? 'Hide' : 'Show'}
             </span>
             <svg
-              width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
-              className={`flex-shrink-0 transition-transform duration-150 opacity-30 group-hover:opacity-60 ${thinkExpanded ? '' : '-rotate-90'}`}
-              style={{ color: isDark ? '#71717a' : '#a1a1aa' }}
+              width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+              className={`flex-shrink-0 transition-transform duration-200 ${thinkExpanded ? '' : '-rotate-90'}`}
+              style={{ color: tokenInfo.isThinking ? '#2B79FF' : isDark ? '#71717a' : '#9ca3af' }}
             >
               <path d="M6 9l6 6 6-6" />
             </svg>
@@ -231,44 +255,34 @@ export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewSta
 
           {/* think panel body */}
           {thinkExpanded && (
-            <div
-              ref={thinkRef}
-              className="overflow-y-auto px-4 pb-3"
-              style={{ maxHeight: 160 }}
-            >
-              {tokenInfo.liveThinkSnippet && (
-                <pre className="text-[10px] leading-relaxed whitespace-pre-wrap break-words" style={{
-                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                  color: isDark ? '#1D6AE5' : '#2B79FF',
-                  opacity: 0.7,
-                }}>
-                  {tokenInfo.liveThinkSnippet}
-                </pre>
-              )}
-              {tokenInfo.liveResponseSnippet && (
-                <pre className={`text-[10px] leading-relaxed whitespace-pre-wrap break-words mt-1 ${
-                  tokenInfo.liveThinkSnippet ? 'border-t border-white/[0.08] pt-1' : ''
-                }`} style={{
-                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                  color: isDark ? '#a1a1aa' : '#71717a',
-                  opacity: 0.8,
-                }}>
-                  {tokenInfo.liveResponseSnippet}
-                </pre>
-              )}
-              {!tokenInfo.liveThinkSnippet && !tokenInfo.liveResponseSnippet && !hasActivity && tokenInfo.callCount > 0 && (
-                <div className="flex items-center gap-3 py-1">
-                  <span className="text-[10px]" style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', color: isDark ? 'rgba(255,255,255,0.30)' : '#a1a1aa' }}>
-                    {tokenInfo.sessionTotal.toLocaleString()} total tokens · {tokenInfo.callCount} LLM calls · {tokenInfo.activeModel && `last: ${formatModelName(tokenInfo.activeModel)}`}
-                  </span>
-                </div>
-              )}
-              {!tokenInfo.liveThinkSnippet && !tokenInfo.liveResponseSnippet && !hasActivity && tokenInfo.callCount === 0 && (
-                <div className="flex items-center gap-2 py-1">
-                  <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.15)' : '#d4d4d8' }} />
-                  <span className="text-[10px]" style={{ color: isDark ? '#3f3f46' : '#a1a1aa' }}>Preparing…</span>
-                </div>
-              )}
+            <div className="relative overflow-hidden" style={{ maxHeight: 160 }}>
+              <div
+                ref={thinkRef}
+                className="overflow-y-auto px-4 pb-3 h-full"
+                style={{ maxHeight: 160 }}
+              >
+                {tokenInfo.liveThinkSnippet && (
+                  <pre className="text-[10px] leading-relaxed whitespace-pre-wrap break-words" style={{
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                    color: isDark ? '#2B79FF' : '#1D6AE5',
+                    opacity: 0.7,
+                  }}>
+                    {tokenInfo.liveThinkSnippet}
+                  </pre>
+                )}
+                {tokenInfo.liveResponseSnippet && (
+                  <pre className={`text-[10px] leading-relaxed whitespace-pre-wrap break-words mt-1 ${
+                    tokenInfo.liveThinkSnippet ? 'border-t border-zinc-800/40 pt-1' : ''
+                  }`} style={{
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                    color: isDark ? '#a1a1aa' : '#71717a',
+                    opacity: 0.8,
+                  }}>
+                    {tokenInfo.liveResponseSnippet}
+                  </pre>
+                )}
+              </div>
+              <ProgressiveBlur scrollRef={thinkRef} height={24} maxBlur={3} />
             </div>
           )}
         </div>
@@ -285,16 +299,26 @@ export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewSta
           /* Other stages keep the scrolling wrapper */
           <div ref={outputRef} className={`flex-1 overflow-y-auto min-h-0 ${isDark ? 'bg-transparent' : 'bg-zinc-50'}`}>
             <div className="px-5 py-4 max-w-3xl">
-              <div className={isDark ? 'text-white/[0.55]' : 'text-zinc-700'}>
-                {stageData.agentOutput.split('\n').map((line, idx) => (
-                  <div key={idx} className={`text-[13px] leading-relaxed ${
-                    line.startsWith('§')
-                      ? isDark ? 'text-blue-400 font-semibold' : 'text-blue-600 font-semibold'
-                      : ''
-                  }`} style={{ lineHeight: '1.6' }}>
-                    {line.startsWith('§') ? line.substring(1) : line || <span>&nbsp;</span>}
-                  </div>
-                ))}
+              <div className={isDark ? 'text-zinc-300' : 'text-zinc-700'}>
+                {isActive ? (
+                  <ResponseStream
+                    textStream={stageData.agentOutput}
+                    mode="typewriter"
+                    speed={35}
+                    characterChunkSize={2}
+                    className="text-[13px] leading-relaxed whitespace-pre-wrap"
+                  />
+                ) : (
+                  stageData.agentOutput.split('\n').map((line, idx) => (
+                    <div key={idx} className={`text-[13px] leading-relaxed ${
+                      line.startsWith('§')
+                        ? isDark ? 'text-blue-400 font-semibold' : 'text-blue-600 font-semibold'
+                        : ''
+                    }`} style={{ lineHeight: '1.6' }}>
+                      {line.startsWith('§') ? line.substring(1) : line || <span>&nbsp;</span>}
+                    </div>
+                  ))
+                )}
               </div>
               {currentStage === 'test' && cycle.testVerdict && (
                 <div className="mt-4">
@@ -326,12 +350,10 @@ export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewSta
                   animation: 'nomad-shimmer-bar 1.5s ease-in-out infinite',
                 }} />
               </div>
-              <ShineText variant={isDark ? 'dark' : 'light'} className="text-[11px]" speed={4}>
-                <span style={{ color: 'rgba(43,121,255,0.5)' }}>Processing</span>
-              </ShineText>
+              <TextShimmer className="text-[11px] [--shimmer-base:rgba(43,121,255,0.3)] [--shimmer-highlight:rgba(43,121,255,0.9)]" duration={1.8}>Processing</TextShimmer>
             </>
           ) : (
-            <span className={`text-[12px] ${isDark ? 'text-white/[0.15]' : 'text-zinc-300'}`}>No output yet</span>
+            <span className={`text-[12px] ${isDark ? 'text-zinc-500' : 'text-zinc-300'}`}>No output yet</span>
           )}
         </div>
       )}
@@ -339,38 +361,42 @@ export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewSta
       {/* ── Token bar — always visible when running ── */}
       {isActive && (
         <div className={`flex-shrink-0 flex items-center gap-3 px-5 py-2 border-t tabular-nums ${
-          isDark ? 'border-white/[0.08] bg-[#0c0c0c]' : 'border-zinc-200 bg-white'
+          isDark ? 'border-zinc-800/60 bg-transparent' : 'border-zinc-200 bg-white'
         }`}>
           {/* Status dot */}
           <span
             className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${hasActivity ? 'animate-pulse' : ''}`}
-            style={{ backgroundColor: hasActivity ? tokenColor : isDark ? 'rgba(255,255,255,0.15)' : '#d4d4d8' }}
+            style={{ backgroundColor: hasActivity ? tokenColor : isDark ? '#3f3f46' : '#d4d4d8' }}
           />
 
           {/* Status + model */}
-          <span className="text-[11px] font-medium" style={{ color: hasActivity ? tokenColor : isDark ? 'rgba(255,255,255,0.30)' : '#a1a1aa' }}>
-            {tokenLabel}
-          </span>
+          {hasActivity ? (
+            <TextShimmer className="text-[11px] font-medium [--shimmer-base:rgba(43,121,255,0.3)] [--shimmer-highlight:rgba(43,121,255,0.9)]" duration={1.8}>{tokenLabel}</TextShimmer>
+          ) : (
+            <span className="text-[11px] font-medium" style={{ color: isDark ? '#71717a' : '#a1a1aa' }}>
+              {tokenLabel}
+            </span>
+          )}
 
           {tokenInfo.activeModel && (
             <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
-              isDark ? 'text-white/[0.30] bg-white/[0.04]' : 'text-zinc-500 bg-zinc-100'
+              isDark ? 'text-zinc-500 bg-zinc-800/60' : 'text-zinc-500 bg-zinc-100'
             }`}>
               {formatModelName(tokenInfo.activeModel)}
             </span>
           )}
 
           {tokenInfo.isModelLoading && tokenInfo.callStartTime && (
-            <span className="text-[10px] tabular-nums" style={{ color: '#d97706', opacity: 0.7 }}>
+            <span className="text-[10px] tabular-nums" style={{ color: '#2B79FF', opacity: 0.7 }}>
               {Math.floor((Date.now() - tokenInfo.callStartTime) / 1000)}s
             </span>
           )}
 
           {/* Right: metrics */}
-          <div className={`ml-auto flex items-center gap-3 ${isDark ? 'text-white/[0.30]' : 'text-zinc-400'}`}>
+          <div className={`ml-auto flex items-center gap-3 ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>
             {tokenInfo.liveTokens > 0 && (
               <span className="text-[11px]">
-                <span className={`font-semibold ${isDark ? 'text-white/[0.85]' : 'text-zinc-700'}`}>{tokenInfo.liveTokens.toLocaleString()}</span>
+                <span className={`font-semibold ${isDark ? 'text-zinc-200' : 'text-zinc-700'}`}>{tokenInfo.liveTokens.toLocaleString()}</span>
                 <span className="text-[9px] ml-0.5">tok</span>
                 {tokenInfo.tokensPerSec > 0 && (
                   <span className="ml-1 text-[10px]">{tokenInfo.tokensPerSec} t/s</span>
@@ -379,7 +405,7 @@ export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewSta
             )}
             {tokenInfo.sessionTotal > 0 && (
               <>
-                <span className={`text-[10px] ${isDark ? 'text-white/[0.08]' : 'text-zinc-200'}`}>|</span>
+                <span className={`text-[10px] ${isDark ? 'text-zinc-600' : 'text-zinc-200'}`}>|</span>
                 <span className="text-[10px]">{tokenInfo.sessionTotal.toLocaleString()} total</span>
               </>
             )}
@@ -393,9 +419,9 @@ export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewSta
       {/* Session summary when complete */}
       {!isActive && isComplete && tokenInfo.sessionTotal > 0 && (
         <div className={`flex-shrink-0 flex items-center justify-between px-5 py-2 border-t ${
-          isDark ? 'border-white/[0.08] bg-[#0c0c0c]' : 'border-zinc-100 bg-zinc-50'
+          isDark ? 'border-zinc-800/50 bg-transparent' : 'border-zinc-100 bg-zinc-50'
         }`}>
-          <span className={`text-[10px] ${isDark ? 'text-zinc-700' : 'text-zinc-400'}`}>Session</span>
+          <span className={`text-[10px] ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>Session</span>
           <div className={`flex items-center gap-3 text-[10px] ${isDark ? 'text-zinc-500' : 'text-zinc-500'}`}>
             <span>{tokenInfo.sessionTotal.toLocaleString()} tokens</span>
             {tokenInfo.callCount > 0 && <span>{tokenInfo.callCount} calls</span>}

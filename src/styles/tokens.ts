@@ -6,7 +6,7 @@
  *   - Text: rgba(255,255,255,0.85) (primary), rgba(255,255,255,0.55) (secondary),
  *           rgba(255,255,255,0.30) (muted/dim), rgba(255,255,255,0.15) (ghost)
  *   - Borders: rgba(255,255,255,0.08) everywhere
- *   - Accent: #2B79FF (blue), #22c55e (green), #ef4444 (red), #f59e0b (amber)
+ *   - Accent: #2B79FF (blue), #22c55e (green), #ef4444 (red)
  *
  * Font sizes:
  *   - Headers: 13-14px semibold
@@ -35,7 +35,6 @@ export const tokens = {
     semantic: {
       green: '#22c55e',
       red: '#ef4444',
-      amber: '#f59e0b',
       blue: '#3b82f6',
       emerald: '#10b981',
     },
@@ -62,7 +61,7 @@ export const tokens = {
     },
     status: {
       healthy: '#22c55e',
-      degraded: '#eab308',
+      degraded: '#3b82f6',
       down: '#ef4444',
       unknown: '#71717a',
     },

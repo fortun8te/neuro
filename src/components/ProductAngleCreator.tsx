@@ -505,7 +505,7 @@ export function ProductAngleCreator({
               {(progressMsg || warningMsg) && (
                 <div className="flex gap-2 mt-1">
                   {progressMsg && <span className={`text-[9px] ${isDark ? 'text-zinc-500' : 'text-zinc-400'}`}>{progressMsg}</span>}
-                  {warningMsg && <span className="text-[9px] text-amber-500">{warningMsg}</span>}
+                  {warningMsg && <span className="text-[9px] text-blue-500">{warningMsg}</span>}
                 </div>
               )}
             </div>

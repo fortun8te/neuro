@@ -1,9 +1,61 @@
 import { ollamaService } from './ollama';
-import { wayfayerService } from './wayfayer';
-import { getResearchModelConfig, getResearchLimits } from './modelConfig';
+import { wayfayerService, screenshotService } from './wayfayer';
+import { getResearchModelConfig, getResearchLimits, getThinkMode } from './modelConfig';
 import { getMethodologySummary, METHODOLOGY_STEPS } from './researchMethodology';
 import { recordResearchSource } from './researchAudit';
 import type { Campaign } from '../types';
+
+// ─────────────────────────────────────────────────────────────
+// Tool integration — direct tool functions for orchestrator use
+// Mirrors agentEngine tools but callable without the ReAct loop.
+// ─────────────────────────────────────────────────────────────
+
+export interface ToolResult {
+  success: boolean;
+  output: string;
+  sources?: string[];
+}
+
+/** Direct web search via Wayfarer — same as agentEngine web_search tool */
+export async function toolWebSearch(query: string, maxResults = 10, signal?: AbortSignal): Promise<ToolResult> {
+  try {
+    const results = await wayfayerService.research(query, maxResults, signal);
+    const text = results.text?.slice(0, 8000) || 'No results found.';
+    const sources = results.sources?.map((s: { url: string }) => s.url) || [];
+    // Record sources in audit trail
+    results.sources?.forEach((src: { url: string; snippet?: string }) => {
+      recordResearchSource({
+        url: src.url,
+        query,
+        source: 'tool:web_search',
+        contentLength: src.snippet?.length || 0,
+        extractedSnippet: src.snippet,
+      });
+    });
+    return { success: true, output: text, sources };
+  } catch (err) {
+    return { success: false, output: `Search failed: ${err instanceof Error ? err.message : err}` };
+  }
+}
+
+/** Direct page analysis via Wayfarer — same as agentEngine analyze_page tool */
+export async function toolAnalyzePage(url: string): Promise<ToolResult> {
+  try {
+    const result = await screenshotService.analyzePage(url);
+    const text = typeof result.page_text === 'object'
+      ? Object.values(result.page_text).join('\n').slice(0, 6000)
+      : String(result.page_text || '').slice(0, 6000);
+    recordResearchSource({
+      url,
+      query: 'analyze_page',
+      source: 'tool:analyze_page',
+      contentLength: text.length,
+    });
+    return { success: !result.error, output: text || 'No content.', sources: [url] };
+  } catch (err) {
+    return { success: false, output: `Analysis failed: ${err instanceof Error ? err.message : err}` };
+  }
+}
 
 /** Build a compact brand context block from preset + reference images */
 function buildOrchestratorBrandContext(campaign: Campaign): string {
@@ -70,7 +122,7 @@ export interface OrchestratorState {
   researchGoals: string[];
   completedResearch: ResearchResult[];
   coverageThreshold: number; // Percentage of dimensions that must be covered (0.0 - 1.0)
-  userProvidedContext?: Record<string, string>; // Answers to questions glm asked
+  userProvidedContext?: Record<string, string>; // Answers to questions orchestrator asked
   reflectionSuggestedTopics?: string[]; // Gaps found by reflection agent
   _visualFindings?: unknown; // Visual scout results, set during orchestration
 }
@@ -78,7 +130,7 @@ export interface OrchestratorState {
 export interface ResearchPauseEvent {
   type: 'pause_for_input';
   question: string;
-  context: string; // Why is glm asking?
+  context: string; // Why is the orchestrator asking?
   suggestedAnswers?: string[]; // Optional suggestions
 }
 
@@ -202,36 +254,29 @@ async function compressPage(
     ? `\nWE ALREADY KNOW (skip repeating these — extract NEW info only):\n${knowledgeSummary.slice(0, 1500)}\n`
     : '';
 
-  const prompt = `Extract facts from this page relevant to: "${researchQuery}"
+  const prompt = `Extract facts about: "${researchQuery}"
 ${knowledgeBlock}
-SOURCE_URL: ${pageUrl}
-Title: ${pageTitle}
+Page: ${pageTitle}
+URL: ${pageUrl}
 
-Page content:
 ${truncated}
 
 RULES:
-1. Every fact MUST include [Source: ${pageUrl}] tag
-2. Preserve exact quotes in "quotation marks" with [Source: ${pageUrl}]
-3. Numbers must be specific: "$4.2B" not "large market"
-4. Skip facts we already know — NEW data only
-5. Max 400 words
-6. If nothing new: NO_RELEVANT_CONTENT
-
-EXTRACT:
-- NUMBERS: market size, growth %, prices, user counts [Source: URL]
-- QUOTES: exact customer words from reviews/forums [Source: URL]
-- COMPETITORS: names + positioning + pricing [Source: URL]
-- OBJECTIONS: complaints, reasons for switching [Source: URL]
-- EVIDENCE: studies, clinical data, expert opinions [Source: URL]
+- End every fact with [Source: ${pageUrl}]
+- Copy exact quotes in "quotation marks"
+- MUST preserve: numbers ($, %, units), dates, study names, sample sizes, URLs
+- MUST preserve: competitor names, pricing, product names, feature lists
+- NEW info only — skip anything from WE ALREADY KNOW block above
+- Strip: navigation, ads, boilerplate, SEO filler, author bios
+- Max 350 words. If nothing relevant: NO_RELEVANT_CONTENT
 
 FACTS:`;
 
   try {
     const compressed = await ollamaService.generateStream(
       prompt,
-      'Extract facts from web pages. Keep source URLs. Preserve exact quotes and numbers. Be concise.',
-      { model: getResearchModelConfig().compressionModel, signal }
+      'Extract facts as bullet points. Never drop numbers, URLs, or quotes. No commentary.',
+      { model: getResearchModelConfig().compressionModel, temperature: 0.2, num_predict: 500, think: getThinkMode('compression'), signal }
     );
 
     if (compressed.includes('NO_RELEVANT_CONTENT')) return '';
@@ -320,58 +365,50 @@ export const researcherAgent = {
         ? `\nWE ALREADY KNOW (don't repeat — focus on NEW insights):\n${knowledgeSummary.slice(0, 800)}\n`
         : '';
 
-      const synthesisPrompt = `Synthesize ${hasWebData ? 'web research findings' : 'your knowledge'} for ad campaign strategy.
-
-${hasWebData ? `Research Data:\n${compressedContent}` : '(No web data available)'}
+      const synthesisPrompt = `Synthesize research: ${query.topic}
+${query.context}
+${hasWebData ? `\nData:\n${compressedContent}` : '(No web data — use general knowledge)'}
 ${knowledgeHint}
-Topic: ${query.topic}
-Context: ${query.context}
-
-Output these sections. Each claim MUST have [Source: URL] or [Source: LLM] tag.
-Skip sections with nothing new.
+Write each section below. Tag every claim [Source: URL] or [Source: LLM]. Skip empty sections.
 
 FINDINGS:
-- New data points not in "WE ALREADY KNOW" [Source: URL]
-- Surprising or contradicting evidence [Source: URL]
+- [fact with number or name] [Source: URL]
 
 VERBATIM:
-- Exact customer quotes preserving slang/typos [Source: URL]
-- How they describe the PROBLEM (not brand language) [Source: URL]
+- "[exact customer quote]" [Source: URL]
 
 COMPETITORS:
-- Named brands + specific pricing + positioning [Source: URL]
-- Structural limitations they can never overcome [Source: URL]
+- [Name]: [price], [positioning] [Source: URL]
 
 EVIDENCE:
-- Specific numbers: "$X.XB market", "XX% growth" [Source: URL]
-- Studies/reports with attribution [Source: URL]
+- [statistic or study result] [Source: URL]
 
-CONFIDENCE: [high/medium/low] — high = 3+ web sources confirm, medium = 1-2 sources, low = LLM inference only
-UNSOURCED_CLAIMS: [list any claims above that lack a web source — these need verification]
-
-COVERAGE: [dimension: covered/uncovered]
-Dimensions: market_size, competitors, objections, trends, regional, pricing, channels, positioning, psychology, media
-
-Be specific. Real names, real numbers, real quotes. No filler.`;
+CONFIDENCE: high/medium/low (based on source count and agreement)
+COVERAGE: market_size, competitors, objections, trends, regional, pricing, channels, positioning, psychology, media [covered/uncovered]`;
 
       const response = await ollamaService.generateStream(
         synthesisPrompt,
-        'Synthesize research into structured findings. Tag every claim with [Source: URL]. Flag unsourced claims. Be concise.',
+        'Synthesize research. Tag claims with sources. Be specific.',
         {
           model: getResearchModelConfig().researcherSynthesisModel,
+          temperature: 0.3,
+          num_predict: 600,
+          think: getThinkMode('synthesis'),
           onChunk,
           signal,
         }
       );
 
-      const coverage_graph = buildCoverageGraph(response);
+      // Ground all claims with source tags (tag naked claims as [LLM inference])
+      const grounded = groundSources(response);
+      const coverage_graph = buildCoverageGraph(grounded);
 
       return {
         query: query.topic,
-        findings: response,
+        findings: grounded,
         sources: [
           ...wayfayerResult.sources.map((s) => s.url),
-          ...extractSources(response),
+          ...extractSources(grounded),
         ],
         coverage_graph,
       };
@@ -380,17 +417,14 @@ Be specific. Real names, real numbers, real quotes. No filler.`;
       // Fallback to LLM-only research
       try {
         onChunk?.('Web search failed, using LLM knowledge only\n');
-        const fallbackPrompt = `Research analyst — provide insights on: ${query.topic}
-Context: ${query.context}
-
-Cover: market size, competitors, objections, pricing, positioning, psychology.
-Tag all claims with [Source: LLM] since no web data available.
-Flag low-confidence claims in UNSOURCED_CLAIMS section.`;
+        const fallbackPrompt = `Research: ${query.topic} | Context: ${query.context}
+Cover: market size, competitors, objections, pricing, positioning.
+Tag all claims [Source: LLM]. No web data available.`;
 
         const response = await ollamaService.generateStream(
           fallbackPrompt,
-          'Provide research insights. Tag claims [Source: LLM]. Be concise and specific.',
-          { model: getResearchModelConfig().researcherSynthesisModel, onChunk, signal }
+          'Research insights. Tag claims [Source: LLM]. Be specific.',
+          { model: getResearchModelConfig().researcherSynthesisModel, temperature: 0.3, num_predict: 600, think: getThinkMode('synthesis'), onChunk, signal }
         );
 
         return {
@@ -406,6 +440,48 @@ Flag low-confidence claims in UNSOURCED_CLAIMS section.`;
     }
   },
 };
+
+// ─────────────────────────────────────────────────────────────
+// Source Grounding — tag ungrounded claims as [LLM inference]
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Post-process research findings to ensure every claim has a source.
+ * Lines that contain factual claims but no [Source: ...] tag get
+ * marked as [LLM inference]. This prevents naked claims from
+ * leaking into downstream stages.
+ */
+export function groundSources(text: string): string {
+  if (!text) return text;
+
+  const lines = text.split('\n');
+  const grounded = lines.map(line => {
+    // Skip empty lines, headers, separators, labels
+    if (!line.trim()) return line;
+    if (/^[─═#\-\*]{3,}/.test(line.trim())) return line;
+    if (/^(FINDINGS|VERBATIM|COMPETITORS|EVIDENCE|COVERAGE|CONFIDENCE|UNSOURCED|WE ALREADY|WHAT'S|RESEARCH|BLIND|BIAS|CONTRADICTION):/.test(line.trim())) return line;
+    if (/^\s*[-•*]\s*$/.test(line)) return line;
+
+    // Already has a source tag — leave it
+    if (/\[Source:\s*[^\]]+\]/.test(line)) return line;
+
+    // Check if this line contains a factual claim (numbers, names, assertions)
+    const isFactualClaim =
+      /\$\d/.test(line) ||                           // dollar amounts
+      /\d+%/.test(line) ||                            // percentages
+      /\d+\s*(billion|million|thousand)/i.test(line) || // large numbers
+      /(?:market|revenue|growth|price|cost)\s/i.test(line) || // market data
+      /(?:studies?|research|report|survey|found that)/i.test(line); // research references
+
+    if (isFactualClaim) {
+      return `${line} [Source: LLM inference]`;
+    }
+
+    return line;
+  });
+
+  return grounded.join('\n');
+}
 
 // ─────────────────────────────────────────────────────────────
 // Orchestrator — manages researchers + reflection agent
@@ -463,9 +539,12 @@ export const orchestrator = {
         let lastThinkEmit = 0;
         const decision = await ollamaService.generateStream(
           evaluationPrompt,
-          'Decide what to research next. Output RESEARCH: [query] lines or COMPLETE: true. Be specific, no filler.',
+          'Output RESEARCH: [query] lines or COMPLETE: true. No filler.',
           {
             model: getResearchModelConfig().orchestratorModel,
+            temperature: 0.5,
+            num_predict: 400,
+            think: getThinkMode('orchestrator'),
             signal,
             onChunk: (c) => {
               decisionBuffer += c;
@@ -821,31 +900,19 @@ DIMENSIONAL GAPS: ${gaps.length > 0 ? gaps.join(', ') : 'NONE DECLARED — OVERC
       // ── Perspective 1: Devil's Advocate ──
       onChunk?.(`\n[Reflection: Devil's Advocate] Finding where research is WRONG...\n`);
       if (!signal?.aborted) {
-        const devilPrompt = `Devil's advocate — find where research is WRONG or based on assumptions.
+        const devilPrompt = `Find where research is WRONG or based on assumptions.
 
 ${sharedContext}
 
-Check for:
-1. Claims based on ASSUMPTION not evidence
-2. Confirmation bias, survivorship bias
-3. Contradictions between sources
-4. Missing alternative explanations
-
-For each weakness, propose a SPECIFIC search query:
-GOOD: "reddit [subreddit] '[competitor]' disappointed OR 'waste of money'"
-BAD: "research sentiment about product"
-
-Output format:
-BIAS RISK: [assumption that could be wrong]
-CONTRADICTION: [evidence contradicting our narrative]
+Check: assumptions without evidence, confirmation bias, contradictions, missing explanations.
 
 RESEARCH TO VERIFY:
-1. [specific query to test assumption]
-2. [specific query for contradicting evidence]
-3. [specific query for alternative explanation]`;
+1. [specific search query]
+2. [specific search query]
+3. [specific search query]`;
 
         try {
-          const response = await ollamaService.generateStream(devilPrompt, 'Find bias and assumptions. Output specific queries to verify. Be concise.', { model: reflectionModel, onChunk, signal });
+          const response = await ollamaService.generateStream(devilPrompt, 'Find bias. Output specific search queries.', { model: reflectionModel, temperature: 0.5, num_predict: 400, think: getThinkMode('reflection'), onChunk, signal });
           const angles = extractResearchAngles(response);
           allAngles.push(...angles);
           onChunk?.(`  [Devil's Advocate] Found ${angles.length} angles\n`);
@@ -858,29 +925,19 @@ RESEARCH TO VERIFY:
       // ── Perspective 2: Depth Auditor ──
       onChunk?.(`\n[Reflection: Depth Auditor] Demanding specifics...\n`);
       if (!signal?.aborted) {
-        const depthPrompt = `Depth auditor — ensure every claim has SPECIFIC, VERIFIABLE evidence.
+        const depthPrompt = `Audit for specificity. Fail vague claims.
 
 ${sharedContext}
 
-FAIL any claim that is vague:
-- Competitors: need real names + URLs, not "various competitors"
-- Numbers: need "$X.XB", "XX%", not "large market" or "growing"
-- Quotes: need exact customer words, not "customers say they want..."
-- Prices: need "$29.99/month", not "competitively priced"
-- Communities: need "r/SkincareAddiction", not "skincare forums"
-
-For each vague claim, propose a specific search query.
-
-SPECIFICITY FAILURES:
-[list vague claims]
+Need: real names, $X.XX prices, exact quotes, specific subreddits. Not "various" or "growing."
 
 RESEARCH TO GET SPECIFICS:
-1. [query for worst gap]
-2. [query for next gap]
-3. [query for next gap]`;
+1. [specific query]
+2. [specific query]
+3. [specific query]`;
 
         try {
-          const response = await ollamaService.generateStream(depthPrompt, 'Audit for specificity. Output queries to fill gaps. Be concise.', { model: reflectionModel, onChunk, signal });
+          const response = await ollamaService.generateStream(depthPrompt, 'Audit specificity. Output search queries.', { model: reflectionModel, temperature: 0.5, num_predict: 400, think: getThinkMode('reflection'), onChunk, signal });
           const angles = extractResearchAngles(response);
           allAngles.push(...angles);
           onChunk?.(`  [Depth Auditor] Found ${angles.length} angles\n`);
@@ -893,32 +950,22 @@ RESEARCH TO GET SPECIFICS:
       // ── Perspective 3: Coverage Checker ──
       onChunk?.(`\n[Reflection: Coverage Checker] Counting data points per dimension...\n`);
       if (!signal?.aborted) {
-        const coveragePrompt = `Coverage checker — count data points per dimension, find blind spots.
+        const coveragePrompt = `Count data points per dimension. Find blind spots.
 
 ${sharedContext}
 
-Count data points per dimension (need 3+ each):
-1. Market size/trends  2. Competitors  3. Objections
-4. Emerging behaviors  5. Regional  6. Pricing
-7. Channels  8. Positioning gaps  9. Psychology
-10. Media consumption  11. Purchase journey
-
-Score each: [Dimension]: [X] data points — PASS/FAIL
-
-Check blind spots: US-only? Outdated? Missing segments?
-
-BLIND SPOTS: [list]
+Dimensions (need 3+ each): market size, competitors, objections, behaviors, regional, pricing, channels, positioning, psychology, media, purchase journey.
+Score: [Dimension]: [X] points — PASS/FAIL
 
 RESEARCH TO FILL GAPS:
 1. [query for worst dimension]
-2. [query for geographic gap]
-3. [query for temporal gap]
-${getResearchLimits().maxVisualBatches > 0 ? `
-VISUAL_SCOUT: [competitor URLs to screenshot, if visual analysis lacking]
-AD_SCOUT: [ad library URLs to screenshot, if ad creative analysis missing]` : ''}`;
+2. [query for geographic/temporal gap]
+3. [query for missing segment]
+${getResearchLimits().maxVisualBatches > 0 ? `VISUAL_SCOUT: [competitor URLs if visual analysis lacking]
+AD_SCOUT: [ad library URLs if ad creative analysis missing]` : ''}`;
 
         try {
-          const response = await ollamaService.generateStream(coveragePrompt, 'Count data points per dimension. Find blind spots. Output queries. Be concise.', { model: reflectionModel, onChunk, signal });
+          const response = await ollamaService.generateStream(coveragePrompt, 'Count data points. Find gaps. Output search queries.', { model: reflectionModel, temperature: 0.5, num_predict: 400, think: getThinkMode('reflection'), onChunk, signal });
           const angles = extractResearchAngles(response);
           allAngles.push(...angles);
           onChunk?.(`  [Coverage Checker] Found ${angles.length} angles\n`);
@@ -1351,7 +1398,18 @@ ${METHODOLOGY_STEPS.map((s, i) => `Step ${i + 1}: ${s.name} — ${s.goals.slice(
 AD_SCOUT: [URLs] — screenshot ad creatives/landing pages`
     : '';
 
-  return `You are the research orchestrator. Decide what to research next.
+  // Build a compact list showing what each past query actually found
+  const queryResults = results.map((r) => {
+    const covered = Object.values(r.coverage_graph).filter(Boolean).length;
+    const total = Object.keys(r.coverage_graph).length;
+    // Show first concrete sourced finding so orchestrator sees what was learned
+    const sourcedLine = r.findings.split('\n')
+      .find(l => l.trim().length > 20 && /\[Source:/.test(l));
+    const found = sourcedLine ? ` → ${sourcedLine.trim().slice(0, 80)}` : '';
+    return `- "${r.query}" (${covered}/${total})${found}`;
+  }).join('\n');
+
+  return `You are a research orchestrator. Identify the MOST IMPORTANT gap and write search queries to fill it.
 
 CAMPAIGN:
 Brand: ${state.campaign.brand} | Product: ${state.campaign.productDescription}
@@ -1359,12 +1417,8 @@ Features: ${Array.isArray(state.campaign.productFeatures) ? state.campaign.produ
 Target: ${state.campaign.targetAudience} | Goal: ${state.campaign.marketingGoal}
 ${buildOrchestratorBrandContext(state.campaign)}${state.userProvidedContext ? `\nUser context: ${Object.entries(state.userProvidedContext).map(([k, v]) => `${k}: ${v}`).join(', ')}` : ''}
 ${knowledgeSection}
-Queries done (${results.length}):
-${results.map((r) => {
-  const covered = Object.values(r.coverage_graph).filter(Boolean).length;
-  const total = Object.keys(r.coverage_graph).length;
-  return `- "${r.query}" (${covered}/${total})`;
-}).join('\n')}
+Queries completed (${results.length}):
+${queryResults}
 
 ${dimensionsList}
 ${methodologyBlock}
@@ -1372,15 +1426,21 @@ ${platformHints}
 ${methodSummary}
 ${reflectionNote}
 
+DECISION PROCESS:
+1. Which gap in WHAT'S STILL MISSING above would hurt the ad campaign most if left unfilled?
+2. What did past queries FAIL to find? Write queries that approach the topic differently.
+3. Target SPECIFIC sources: site:reddit.com, site:amazon.com, "[competitor name] reviews", "[product] complaints"
+4. Prefer concrete nouns and platform names over abstract concepts.
+
 RULES:
 - Need ${limits.minSources}+ sources before stopping
 - ${isFast ? 'Focus on highest-impact gaps only' : 'Every claim needs a source URL'}
-- Reject vague/trend-chasing queries
+- DO NOT write queries that overlap >50% words with past queries
 - Each query must name the gap it fills: RESEARCH: [query] — fills [gap]
 
 ${isFast
   ? `List 1-3 specific queries, or COMPLETE: true if key gaps are covered.`
-  : `List 3-5 SPECIFIC queries with gap explanations:
+  : `List 3-5 SPECIFIC queries:
 RESEARCH: [query] — fills [gap]
 RESEARCH: [query] — fills [gap]
 

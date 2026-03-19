@@ -13,8 +13,8 @@
   },
   "dependencies": {
     "@novnc/novnc": "^1.6.0",
+    "@paper-design/shaders-react": "^0.0.72",
     "@tailwindcss/postcss": "^4.2.1",
-    "antd": "^6.3.1",
     "framer-motion": "^12.35.2",
     "html-to-image": "^1.11.13",
     "idb-keyval": "^6.2.2",

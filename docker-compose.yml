@@ -1,5 +1,14 @@
 version: '3.8'
 
+x-sandbox-base: &sandbox-base
+  build: ./sandbox
+  environment:
+    - DISPLAY=:1
+  shm_size: '512m'
+  restart: unless-stopped
+  networks:
+    - ad-agent-network
+
 services:
   searxng:
     image: searxng/searxng:latest
@@ -12,19 +21,29 @@ services:
     networks:
       - ad-agent-network
 
-  sandbox:
-    build: ./sandbox
-    container_name: nomad-sandbox
+  sandbox-1:
+    <<: *sandbox-base
+    container_name: nomad-sandbox-1
     ports:
-      - "5901:5901"   # WebSocket VNC (noVNC connects here)
       - "8080:8080"   # Sandbox API
+      - "5901:5901"   # WebSocket VNC
       - "9222:9222"   # Chrome CDP (debug)
-    environment:
-      - DISPLAY=:1
-    shm_size: '512m'  # Chrome needs shared memory
-    restart: unless-stopped
-    networks:
-      - ad-agent-network
+
+  sandbox-2:
+    <<: *sandbox-base
+    container_name: nomad-sandbox-2
+    ports:
+      - "8081:8080"   # Sandbox API
+      - "5902:5901"   # WebSocket VNC
+      - "9223:9222"   # Chrome CDP (debug)
+
+  sandbox-3:
+    <<: *sandbox-base
+    container_name: nomad-sandbox-3
+    ports:
+      - "8082:8080"   # Sandbox API
+      - "5903:5901"   # WebSocket VNC
+      - "9224:9222"   # Chrome CDP (debug)
 
 networks:
   ad-agent-network:

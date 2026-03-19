@@ -6,14 +6,22 @@
  *
  * Flow:
  *   Planner creates plan → Executor runs actions → Planner revises → loop
+ *
+ * Supports:
+ *   - Multi-prompt conversation (follow-up instructions mid-run)
+ *   - Tab management (open, switch, close tabs)
+ *   - User-interaction detection (pause when user takes control)
+ *   - Element scoring for smarter target selection
  */
 
 import { ollamaService } from './ollama';
-import { sandboxService, type ElementInfo, type ViewResult } from './sandboxService';
-import { shouldVerify, verifyAction, type VerificationResult } from './visualVerifier';
-import { diagnoseAndRecover, findAlternativeElement, type RecoveryContext, type RecoveryStrategy } from './errorRecovery';
-import { typeText, pressKey as kbPressKey, pressCombo, fillField, parseKeyboardAction, type KeyCombo } from './keyboardService';
-import { extractAccessibilityTree, formatTreeForPlanner, type AccessibilityTree } from './domExtractor';
+import { getThinkMode } from './modelConfig';
+import { sandboxService, MachineClient, machinePool } from './sandboxService';
+import type { ViewResult, ElementInfo } from './sandboxService';
+import { shouldVerify, verifyAction } from './visualVerifier';
+import { diagnoseAndRecover } from './errorRecovery';
+import { typeText, pressKey as kbPressKey, pressCombo, fillField, parseKeyboardAction } from './keyboardService';
+import { extractAccessibilityTree, formatTreeForPlanner } from './domExtractor';
 import { checkPageReadiness, waitForReady } from './pageReadiness';
 import { ensurePageClear } from './popupDismisser';
 
@@ -23,6 +31,7 @@ export interface PlanStep {
   step: number;
   description: string;
   status: 'pending' | 'active' | 'done' | 'failed';
+  targetElement?: string; // description of the element being targeted
 }
 
 export interface AgentPlan {
@@ -32,7 +41,7 @@ export interface AgentPlan {
 }
 
 export interface ExecutorAction {
-  action: 'click' | 'input' | 'type' | 'fill_field' | 'scroll_down' | 'scroll_up' | 'navigate' | 'press_key' | 'back' | 'done' | 'ask_user';
+  action: 'click' | 'input' | 'type' | 'fill_field' | 'scroll_down' | 'scroll_up' | 'navigate' | 'press_key' | 'back' | 'done' | 'ask_user' | 'open_tab' | 'switch_tab' | 'close_tab';
   index?: number;
   text?: string;
   url?: string;
@@ -40,6 +49,25 @@ export interface ExecutorAction {
   question?: string;
   options?: string[];
   reason?: string;
+  tabIndex?: number; // for switch_tab
+  targetDescription?: string; // human-readable description of what we're targeting
+}
+
+// ── Conversation context for multi-prompt support ──
+
+export interface ConversationMessage {
+  role: 'user' | 'agent' | 'system';
+  content: string;
+  timestamp: number;
+}
+
+export interface ConversationContext {
+  messages: ConversationMessage[];
+  actionHistory: string[];
+  currentUrl: string;
+  currentTitle: string;
+  tabCount: number;
+  activeTabIndex: number;
 }
 
 // ── Live stream event types for real-time UI ──
@@ -58,7 +86,11 @@ export type StreamEventType =
   | 'step_complete'
   | 'replan'
   | 'done'
-  | 'error';
+  | 'error'
+  | 'user_paused'
+  | 'user_resumed'
+  | 'tab_changed'
+  | 'waiting_for_input';
 
 export interface StreamEvent {
   type: StreamEventType;
@@ -73,6 +105,7 @@ export interface StreamEvent {
   thinking?: string;
   error?: string;
   progress?: { completedSteps: number; totalSteps: number; totalActions: number };
+  targetElement?: string;
 }
 
 export interface PlanActCallbacks {
@@ -90,26 +123,94 @@ export interface PlanActCallbacks {
   onStream?: (event: StreamEvent) => void;
 }
 
+// ── User Interaction Detection ──
+
+export interface UserInteractionState {
+  isPaused: boolean;
+  lastUserAction: number;
+  pauseReason?: string;
+}
+
+let _userInteractionState: UserInteractionState = {
+  isPaused: false,
+  lastUserAction: 0,
+};
+
+/** Called by UI when user clicks/interacts with the browser */
+export function notifyUserInteraction(): void {
+  _userInteractionState.lastUserAction = Date.now();
+  _userInteractionState.isPaused = true;
+  _userInteractionState.pauseReason = 'User interaction detected';
+}
+
+/** Called when user stops interacting — auto-resume after delay */
+export function clearUserInteraction(): void {
+  _userInteractionState.isPaused = false;
+  _userInteractionState.pauseReason = undefined;
+}
+
+export function getUserInteractionState(): UserInteractionState {
+  return { ..._userInteractionState };
+}
+
+// Auto-resume after 3 seconds of no user activity
+async function waitForUserToFinish(signal?: AbortSignal): Promise<void> {
+  const RESUME_DELAY = 3000;
+  while (_userInteractionState.isPaused && !signal?.aborted) {
+    const elapsed = Date.now() - _userInteractionState.lastUserAction;
+    if (elapsed >= RESUME_DELAY) {
+      clearUserInteraction();
+      break;
+    }
+    await new Promise(r => setTimeout(r, 500));
+  }
+}
+
+// ── Element Scoring ──
+
+/**
+ * Score elements by relevance to the goal text.
+ * Returns elements sorted by score (highest first).
+ */
+function scoreElements(elements: ElementInfo[], goalText: string): Array<ElementInfo & { score: number }> {
+  const goalWords = goalText.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+
+  return elements.map(el => {
+    let score = 0;
+    const text = [el.text, el.ariaLabel, el.placeholder, el.role].filter(Boolean).join(' ').toLowerCase();
+
+    // Exact match bonus
+    for (const word of goalWords) {
+      if (text.includes(word)) score += 3;
+    }
+
+    // Interactive element bonus
+    if (['BUTTON', 'A', 'INPUT', 'SELECT', 'TEXTAREA'].includes(el.tag.toUpperCase())) score += 1;
+
+    // Role bonus
+    if (el.role === 'button' || el.role === 'link') score += 1;
+
+    // Penalize if no text
+    if (!el.text && !el.ariaLabel) score -= 1;
+
+    return { ...el, score };
+  }).sort((a, b) => b.score - a.score);
+}
+
 // ── Planner Agent ──
 
-const PLANNER_SYSTEM = `You are a task planner for a browser automation agent.
+const PLANNER_SYSTEM = `Browser automation planner. Create 3-8 step plan from goal + page state.
 
-Given a goal and the current page state, create a numbered plan of 3-8 concrete steps.
-Each step should be a clear, actionable instruction that a simple executor can follow.
+Rules:
+- Only reference elements currently VISIBLE in the element list. If the target is not listed, add a scroll step first.
+- Be specific: "Click the 'Add to Cart' button" not "Add item". Quote exact text from the element list.
+- Each step = one user-visible action. Don't combine "navigate and click" into one step.
+- If already on the right page, skip navigation. Check the CURRENT PAGE url first.
+- Prefer the shortest path. Don't add verify/confirm steps unless the goal requires checking a result.
+- Multi-tab: use open_tab/switch_tab steps when needed.
 
-Elements include visibility info (visible/hidden), enabled/disabled state, form groupings, and page headings.
-Use this to make smarter plans — target visible, enabled elements and leverage form structure and headings for navigation.
-
-OUTPUT FORMAT (JSON only):
-{"steps": ["Navigate to example.com", "Search for product X", "Click Add to Cart", "Verify cart updated"], "current": 1}
-
-RULES:
-- Steps should be specific ("Click the search box and type 'sea salt spray'") not vague ("Find the product")
-- Include verification steps ("Verify the cart shows 2 items")
-- If the page already shows what we need, skip navigation steps
-- Prefer interacting with visible, enabled elements — avoid hidden or disabled ones
-- Use headings and form groupings to understand page structure
-- Max 8 steps. Be efficient.`;
+Output JSON only:
+{"steps": ["Navigate to example.com", "Click the search box", "Type 'sea salt spray'", "Click Search button"], "current": 1}`;
 
 async function createPlan(
   goal: string,
@@ -119,14 +220,20 @@ async function createPlan(
   pageText: string,
   history: string,
   plannerModel: string,
+  conversation?: ConversationContext,
   signal?: AbortSignal,
 ): Promise<AgentPlan> {
+  const conversationCtx = conversation?.messages.length
+    ? `CONVERSATION:\n${conversation.messages.slice(-5).map(m => `[${m.role}] ${m.content}`).join('\n')}`
+    : '';
+
   const prompt = [
     `GOAL: ${goal}`,
     `CURRENT PAGE: "${pageTitle}" [${pageUrl}]`,
-    elements ? `ELEMENTS ON PAGE:\n${elements.slice(0, 2000)}` : '',
+    elements ? `VISIBLE ELEMENTS:\n${elements.slice(0, 2000)}` : '',
     pageText ? `PAGE TEXT:\n${pageText.slice(0, 1500)}` : '',
     history ? `EXECUTION HISTORY:\n${history}` : '',
+    conversationCtx,
     'Create a step-by-step plan.',
   ].filter(Boolean).join('\n\n');
 
@@ -167,32 +274,35 @@ async function createPlan(
 
 // ── Executor Agent ──
 
-const EXECUTOR_SYSTEM = `You are a browser action executor. Given a task step and the page elements, output ONE action.
+const EXECUTOR_SYSTEM = `Browser executor. One action per turn. JSON only, no markdown.
 
-OUTPUT FORMAT (JSON only, no markdown):
-{"action":"click","index":3,"reason":"clicking Add to Cart button"}
+Format: {"action":"click","index":3,"reason":"Add to Cart"}
 
-ACTIONS:
-- click: {"action":"click","index":N,"reason":"..."}
-- input: {"action":"input","index":N,"text":"...","reason":"..."} — type into a specific element by index
-- type: {"action":"type","text":"...","reason":"..."} — type text into the currently focused element (no index needed)
-- fill_field: {"action":"fill_field","index":N,"text":"...","reason":"..."} — click field, clear it, then type new value
-- scroll_down: {"action":"scroll_down","reason":"..."}
-- scroll_up: {"action":"scroll_up","reason":"..."}
-- navigate: {"action":"navigate","url":"https://...","reason":"..."}
-- press_key: {"action":"press_key","key":"Enter","reason":"..."} — supports combos like "ctrl+a", "ctrl+c", "shift+Tab"
-- back: {"action":"back","reason":"..."}
-- done: {"action":"done","reason":"step complete"}
-- ask_user: {"action":"ask_user","question":"...","options":["A","B"],"reason":"need user choice"}
+Actions: click, input, type, fill_field, scroll_down, scroll_up, navigate, press_key, back, open_tab, switch_tab, close_tab, done, ask_user
 
-RULES:
-- Pick elements by their [index] number
-- Elements may have markers: (disabled), (focused). Only visible elements are listed; hidden ones are omitted.
-- Always prefer enabled elements — never try to interact with disabled ones
-- If the target element is visible, click it immediately
-- If not visible, scroll to find it
-- Output done when the current step is complete
-- ask_user ONLY for real choices (size, color, variant) — never for confirmation`;
+- click/input/fill_field: need "index" + optional "text"
+- navigate/open_tab: need "url"
+- press_key: need "key"
+- ask_user: need "question" + "options"
+- done: task complete
+
+Element matching rules:
+- Match by EXACT text first, then aria-label, then role. Prefer the element whose text most closely matches the task.
+- Buttons/links with the right label > generic divs/spans with similar text.
+- If multiple elements match, pick the one with role=button or role=link over role=generic.
+- NEVER click an element marked (disabled) or (aria-disabled).
+- NEVER click hidden or zero-size elements.
+
+Common mistakes to avoid:
+- Do NOT scroll if the target element is already in the visible list — click it immediately.
+- Do NOT keep scrolling in the same direction more than 3 times. Try scroll_up or a different approach.
+- Do NOT pick a parent container when a child button/link is the actual target.
+- Do NOT use navigate when you just need to click a link on the current page.
+- If RECENT actions show you already scrolled 2+ times, stop scrolling and act on what is visible or report done.
+
+Rules:
+- If target visible, act NOW.
+- ask_user only for real choices, not confirmation.`;
 
 async function executeStep(
   stepDescription: string,
@@ -206,19 +316,20 @@ async function executeStep(
   onThinking?: (text: string) => void,
 ): Promise<ExecutorAction> {
   const prompt = [
-    `CURRENT TASK: ${stepDescription}`,
+    `TASK: ${stepDescription}`,
     `PAGE: "${pageTitle}" [${pageUrl}]`,
-    elements ? `ELEMENTS:\n${elements}` : 'No interactive elements found.',
-    pageText ? `PAGE TEXT (truncated):\n${pageText.slice(0, 1000)}` : '',
-    recentActions ? `RECENT ACTIONS:\n${recentActions}` : '',
-    'What ONE action completes or advances this task?',
+    elements ? `VISIBLE ELEMENTS:\n${elements}` : 'No interactive elements found.',
+    pageText ? `TEXT (truncated):\n${pageText.slice(0, 800)}` : '',
+    recentActions ? `RECENT:\n${recentActions}` : '',
+    'One action. JSON only.',
   ].filter(Boolean).join('\n\n');
 
   let raw = '';
   await ollamaService.generateStream(prompt, EXECUTOR_SYSTEM, {
     model: executorModel,
     temperature: 0.1,
-    num_predict: 100,
+    num_predict: 80,
+    think: getThinkMode('executor'), // small model — auto off
     signal,
     onChunk: (c: string) => { raw += c; onThinking?.(raw); },
   });
@@ -226,14 +337,12 @@ async function executeStep(
   // Parse JSON
   const jsonMatch = raw.match(/\{[\s\S]*?\}/);
   if (!jsonMatch) {
-    // Fallback: scroll down if nothing parsed
     return { action: 'scroll_down', reason: 'Could not parse action, scrolling to find target' };
   }
 
   try {
     return JSON.parse(jsonMatch[0]) as ExecutorAction;
   } catch {
-    // Check for common keywords
     if (raw.toLowerCase().includes('done')) return { action: 'done', reason: 'step complete' };
     if (raw.toLowerCase().includes('scroll')) return { action: 'scroll_down', reason: 'scrolling to find target' };
     return { action: 'scroll_down', reason: 'parse error, scrolling' };
@@ -242,19 +351,19 @@ async function executeStep(
 
 // ── Action Execution Helper ──
 
-async function executeAction(action: ExecutorAction): Promise<string> {
+async function executeAction(action: ExecutorAction, machine?: MachineClient): Promise<string> {
+  const sb = machine ?? machinePool.getDefault();
   switch (action.action) {
     case 'click':
       if (action.index != null) {
-        await sandboxService.click(action.index);
-        // Brief wait — clicks on links/buttons often trigger navigation or loading
+        await sb.click(action.index);
         await waitForReady({ timeout: 5000, minScore: 60 });
         return `Clicked element ${action.index}`;
       }
       return 'No index for click';
     case 'input':
       if (action.index != null && action.text) {
-        await sandboxService.input(action.index, action.text, false);
+        await sb.input(action.index, action.text, false);
         return `Typed "${action.text}" into element ${action.index}`;
       }
       return 'No index/text for input';
@@ -273,14 +382,14 @@ async function executeAction(action: ExecutorAction): Promise<string> {
       }
       return 'No index/text for fill_field';
     case 'scroll_down':
-      await sandboxService.scroll('down', 500);
+      await sb.scroll('down', 500);
       return 'Scrolled down';
     case 'scroll_up':
-      await sandboxService.scroll('up', 500);
+      await sb.scroll('up', 500);
       return 'Scrolled up';
     case 'navigate':
       if (action.url) {
-        await sandboxService.navigate(action.url);
+        await sb.navigate(action.url);
         const navReadiness = await waitForReady({ timeout: 8000, minScore: 70 });
         try { await ensurePageClear(); } catch {} // dismiss popups on new page
         return `Navigated to ${action.url} (readiness: ${navReadiness.score}/100)`;
@@ -298,9 +407,28 @@ async function executeAction(action: ExecutorAction): Promise<string> {
       }
       return 'No key specified';
     case 'back':
-      await sandboxService.back();
+      await sb.back();
       await waitForReady({ timeout: 5000, minScore: 60 });
       return 'Went back';
+    case 'open_tab':
+      if (action.url) {
+        await sb.consoleExec(`window.open("${action.url}", "_blank")`);
+        await waitForReady({ timeout: 5000, minScore: 50 });
+        return `Opened new tab: ${action.url}`;
+      }
+      return 'No URL for open_tab';
+    case 'switch_tab':
+      if (action.tabIndex != null) {
+        const tabNum = Math.min(Math.max(action.tabIndex + 1, 1), 9);
+        await kbPressKey(`ctrl+${tabNum}`);
+        await waitForReady({ timeout: 3000, minScore: 50 });
+        return `Switched to tab ${action.tabIndex}`;
+      }
+      return 'No tabIndex for switch_tab';
+    case 'close_tab':
+      await kbPressKey('ctrl+w');
+      await waitForReady({ timeout: 3000, minScore: 50 });
+      return 'Closed current tab';
     case 'done':
       return 'Step complete';
     default:
@@ -310,11 +438,8 @@ async function executeAction(action: ExecutorAction): Promise<string> {
 
 // ── Accessibility Tree Helper ──
 
-/**
- * Try to get the rich accessibility tree from domExtractor.
- * Falls back to basic sandboxService.formatElements() if extraction fails.
- */
-async function getEnrichedElements(viewResult: ViewResult): Promise<string> {
+async function getEnrichedElements(viewResult: ViewResult, machine?: MachineClient): Promise<string> {
+  const sb = machine ?? machinePool.getDefault();
   try {
     const tree = await extractAccessibilityTree();
     if (tree.elements.length > 0) {
@@ -323,8 +448,7 @@ async function getEnrichedElements(viewResult: ViewResult): Promise<string> {
   } catch (err) {
     console.warn('[planActAgent] Accessibility tree extraction failed, using basic elements:', err);
   }
-  // Fallback to basic element formatting
-  return sandboxService.formatElements(viewResult.elements);
+  return sb.formatElements(viewResult.elements);
 }
 
 // ── Main Plan-Act Loop ──
@@ -336,8 +460,12 @@ export async function runPlanAct(
   callbacks: PlanActCallbacks,
   maxActions: number = 30,
   signal?: AbortSignal,
+  conversation?: ConversationContext,
+  machine?: MachineClient,
 ): Promise<void> {
-  // Stream helper — emits to both legacy callbacks and unified stream
+  const sb = machine ?? machinePool.getDefault();
+
+  // Stream helper
   const emit = (event: Omit<StreamEvent, 'timestamp'>) => {
     callbacks.onStream?.({ ...event, timestamp: Date.now() } as StreamEvent);
   };
@@ -345,7 +473,7 @@ export async function runPlanAct(
   // Get initial page state
   let viewResult: ViewResult;
   try {
-    viewResult = await sandboxService.view();
+    viewResult = await sb.view();
   } catch (e) {
     emit({ type: 'error', error: `Sandbox not available: ${e}` });
     callbacks.onError?.(`Sandbox not available: ${e}`);
@@ -355,9 +483,14 @@ export async function runPlanAct(
   // Auto-dismiss any popups/cookie banners before we start
   try { await ensurePageClear(); } catch {}
 
-  // Try accessibility tree first, fall back to basic elements
-  const elementsText = await getEnrichedElements(viewResult);
+  const elementsText = await getEnrichedElements(viewResult, sb);
   const actionLog: string[] = [];
+
+  // Add conversation context
+  if (conversation) {
+    conversation.currentUrl = viewResult.url;
+    conversation.currentTitle = viewResult.title;
+  }
 
   // Phase 1: Create plan
   callbacks.onThinking?.('Planning...');
@@ -369,6 +502,7 @@ export async function runPlanAct(
     viewResult.pageText,
     '',
     plannerModel,
+    conversation,
     signal,
   );
   callbacks.onPlan?.(plan);
@@ -379,10 +513,20 @@ export async function runPlanAct(
   // Phase 2: Execute steps
   let totalActions = 0;
   let consecutiveScrolls = 0;
+  const MAX_CONSECUTIVE_SCROLLS = 4;
 
   for (let stepIdx = 0; stepIdx < plan.steps.length; stepIdx++) {
     if (signal?.aborted) break;
     if (totalActions >= maxActions) break;
+
+    // Check for user interaction — pause if needed
+    if (_userInteractionState.isPaused) {
+      emit({ type: 'user_paused', result: 'User interaction detected, pausing...' });
+      await waitForUserToFinish(signal);
+      emit({ type: 'user_resumed', result: 'Resuming after user interaction' });
+      // Refresh page state after user interaction
+      try { viewResult = await sb.view(); } catch { break; }
+    }
 
     const step = plan.steps[stepIdx];
     step.status = 'active';
@@ -395,24 +539,29 @@ export async function runPlanAct(
       if (signal?.aborted) break;
       if (totalActions >= maxActions) break;
 
-      // Check page readiness before refreshing state
+      // Check for user interaction mid-step
+      if (_userInteractionState.isPaused) {
+        emit({ type: 'user_paused', result: 'User interaction detected, pausing...' });
+        await waitForUserToFinish(signal);
+        emit({ type: 'user_resumed', result: 'Resuming after user interaction' });
+      }
+
+      // Check page readiness
       try {
         const preViewReadiness = await checkPageReadiness();
         if (preViewReadiness.score < 50) {
           await waitForReady({ timeout: 3000, minScore: 50, signal });
         }
-      } catch {
-        // readiness check failed, proceed anyway
-      }
+      } catch {}
 
       // Refresh page state
       try {
-        viewResult = await sandboxService.view();
+        viewResult = await sb.view();
       } catch {
         break;
       }
 
-      const currentElements = await getEnrichedElements(viewResult);
+      const currentElements = await getEnrichedElements(viewResult, sb);
       const recentLog = actionLog.slice(-5).join('\n');
 
       // Get action from executor
@@ -430,11 +579,11 @@ export async function runPlanAct(
 
       if (signal?.aborted) break;
 
-      // Handle ask_user separately (needs callback)
+      // Handle ask_user
       if (action.action === 'ask_user') {
         if (callbacks.onAskUser && action.question && action.options?.length) {
           const answer = await callbacks.onAskUser(action.question, action.options);
-          actionLog.push(`[ask_user] ${action.question} → User chose: ${answer}`);
+          actionLog.push(`[ask_user] ${action.question} -> User chose: ${answer}`);
           callbacks.onAction?.(action, `User chose: ${answer}`);
           totalActions++;
           consecutiveScrolls = 0;
@@ -442,16 +591,23 @@ export async function runPlanAct(
         continue;
       }
 
-      // Execute the action with verification + error recovery
-      emit({ type: 'action_decided', stepIndex: stepIdx, action });
+      // Emit target element info for UI display
+      const targetDesc = action.reason || (action.index != null ? `element [${action.index}]` : action.action);
+      emit({ type: 'action_decided', stepIndex: stepIdx, action, targetElement: targetDesc });
       emit({ type: 'action_executing', stepIndex: stepIdx, action });
+
       let result = '';
       let actionFailed = false;
       try {
-        result = await executeAction(action);
+        result = await executeAction(action, sb);
         if (action.action === 'done') stepDone = true;
+
+        // Track consecutive scrolls with enforced limit
         if (action.action === 'scroll_down' || action.action === 'scroll_up') {
           consecutiveScrolls++;
+          if (consecutiveScrolls >= MAX_CONSECUTIVE_SCROLLS) {
+            result += ` (LIMIT: scrolled ${consecutiveScrolls}x without clicking — stopping scroll)`;
+          }
         } else {
           consecutiveScrolls = 0;
         }
@@ -460,7 +616,7 @@ export async function runPlanAct(
         actionFailed = true;
       }
 
-      actionLog.push(`[${action.action}] ${action.reason || ''} → ${result}`);
+      actionLog.push(`[${action.action}] ${action.reason || ''} -> ${result}`);
       callbacks.onAction?.(action, result);
       emit({ type: 'action_result', stepIndex: stepIdx, action, result, progress: { completedSteps: stepIdx, totalSteps: plan.steps.length, totalActions } });
       totalActions++;
@@ -478,20 +634,17 @@ export async function runPlanAct(
           emit({ type: 'verify_result', stepIndex: stepIdx, action, verification });
 
           if (!verification.success && verification.confidence > 0.6) {
-            // Verification says action didn't work — treat as failure
             actionFailed = true;
             result = `Verification failed: ${verification.observation}`;
-            actionLog.push(`[verify] FAILED — ${verification.observation}${verification.suggestion ? ' | Suggestion: ' + verification.suggestion : ''}`);
+            actionLog.push(`[verify] FAILED -- ${verification.observation}${verification.suggestion ? ' | Suggestion: ' + verification.suggestion : ''}`);
           }
-        } catch {
-          // Verification failed to run — continue anyway
-        }
+        } catch {}
       }
 
       // ── Error Recovery ──
       if (actionFailed && !signal?.aborted) {
         let freshView: ViewResult | null = null;
-        try { freshView = await sandboxService.view(); } catch {}
+        try { freshView = await sb.view(); } catch {}
 
         const recoveryCtx: RecoveryContext = {
           action: action.action,
@@ -507,7 +660,7 @@ export async function runPlanAct(
         const strategies = diagnoseAndRecover(recoveryCtx);
         let recovered = false;
 
-        for (const strategy of strategies.slice(0, 2)) { // try top 2 strategies
+        for (const strategy of strategies.slice(0, 2)) {
           if (signal?.aborted) break;
           callbacks.onRecovery?.(strategy, action, result);
           emit({ type: 'recovery_start', stepIndex: stepIdx, action, recovery: strategy });
@@ -515,42 +668,44 @@ export async function runPlanAct(
           try {
             if (strategy.type === 'wait_and_retry') {
               await new Promise(r => setTimeout(r, strategy.delay || 500));
-              await executeAction(action);
+              await executeAction(action, sb);
               recovered = true;
             } else if (strategy.type === 'scroll_and_retry') {
-              await sandboxService.scroll('down', 400);
+              await sb.scroll('down', 400);
               await new Promise(r => setTimeout(r, 200));
-              await executeAction(action);
+              await executeAction(action, sb);
               recovered = true;
             } else if (strategy.type === 'alternative_element' && strategy.action?.index != null) {
-              const altAction = { ...action, index: strategy.action.index };
-              await executeAction(altAction);
+              const altAction = { ...action, index: strategy.action.index as number };
+              await executeAction(altAction, sb);
               recovered = true;
             } else if (strategy.type === 'refresh') {
-              await sandboxService.navigate(viewResult.url);
-              recovered = true; // page refreshed, let next iteration retry
+              await sb.navigate(viewResult.url);
+              recovered = true;
             } else if (strategy.type === 'navigate_back') {
-              await sandboxService.back();
+              await sb.back();
               recovered = true;
             } else if (strategy.type === 'skip') {
               stepDone = true;
               recovered = true;
             }
           } catch {
-            continue; // recovery strategy failed, try next
+            continue;
           }
 
           if (recovered) {
             actionLog.push(`[recovery] ${strategy.type}: ${strategy.description}`);
+            emit({ type: 'recovery_result', stepIndex: stepIdx, recovery: strategy, result: 'recovered' });
             break;
           }
         }
       }
 
-      // Safety: if scrolled 4+ times without clicking, mark step done
-      if (consecutiveScrolls >= 4) {
+      // Safety: enforced scroll limit
+      if (consecutiveScrolls >= MAX_CONSECUTIVE_SCROLLS) {
         stepDone = true;
         consecutiveScrolls = 0;
+        actionLog.push('[scroll_limit] Hit scroll limit, moving to next step');
       }
     }
 
@@ -562,8 +717,8 @@ export async function runPlanAct(
     if ((stepIdx + 1) % 3 === 0 && stepIdx < plan.steps.length - 1) {
       callbacks.onThinking?.('Re-evaluating plan...');
       try {
-        viewResult = await sandboxService.view();
-        const replanElements = await getEnrichedElements(viewResult);
+        viewResult = await sb.view();
+        const replanElements = await getEnrichedElements(viewResult, sb);
         const updatedPlan = await createPlan(
           goal,
           viewResult.title,
@@ -572,9 +727,9 @@ export async function runPlanAct(
           viewResult.pageText,
           actionLog.slice(-10).join('\n'),
           plannerModel,
+          conversation,
           signal,
         );
-        // Replace remaining steps
         for (let i = stepIdx + 1; i < plan.steps.length; i++) {
           const newIdx = i - stepIdx - 1;
           if (newIdx < updatedPlan.steps.length) {
@@ -593,4 +748,43 @@ export async function runPlanAct(
   const summary = `Completed ${totalActions} actions across ${plan.steps.filter(s => s.status === 'done').length}/${plan.steps.length} steps`;
   emit({ type: 'done', result: summary, progress: { completedSteps: plan.steps.filter(s => s.status === 'done').length, totalSteps: plan.steps.length, totalActions } });
   callbacks.onDone?.(summary);
+}
+
+// ── Follow-up: handle a new user message during or after execution ──
+
+export async function handleFollowUp(
+  message: string,
+  conversation: ConversationContext,
+  plannerModel: string,
+  executorModel: string,
+  callbacks: PlanActCallbacks,
+  maxActions: number = 30,
+  signal?: AbortSignal,
+  machine?: MachineClient,
+): Promise<void> {
+  // Add user message to conversation
+  conversation.messages.push({
+    role: 'user',
+    content: message,
+    timestamp: Date.now(),
+  });
+
+  // Run plan-act with conversation context
+  await runPlanAct(
+    message,
+    plannerModel,
+    executorModel,
+    callbacks,
+    maxActions,
+    signal,
+    conversation,
+    machine,
+  );
+
+  // Add completion to conversation
+  conversation.messages.push({
+    role: 'agent',
+    content: `Completed task: ${message}`,
+    timestamp: Date.now(),
+  });
 }

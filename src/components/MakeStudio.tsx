@@ -26,7 +26,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useSoundEngine } from '../hooks/useSoundEngine';
 import { ollamaService } from '../utils/ollama';
 import { generateImage, checkServerStatus, preloadFreepik, restartFreepikBrowser, forceKillFreepik } from '../utils/freepikService';
-import { storage, type StoredImage, type VisionRound } from '../utils/storage';
+import { storage } from '../utils/storage';
 import { knowledge } from '../utils/knowledge';
 import { NomadIcon } from './NomadIcon';
 import { OrbitalLoader } from './OrbitalLoader';
@@ -36,10 +36,9 @@ import { toPng } from 'html-to-image';
 import { SIMPLETICS_PRESET } from '../utils/presetCampaigns';
 import { pdfToImages } from '../utils/pdfUtils';
 import { AdLibraryBrowser } from './AdLibraryBrowser';
-import { getRelevantReferences, getCache, type AdDescription } from '../utils/adLibraryCache';
+import { getRelevantReferences, getCache } from '../utils/adLibraryCache';
 import { loadAdImageBase64 } from '../utils/adLibraryLoader';
 import { ProductAngleCreator } from './ProductAngleCreator';
-import { getVisionModel } from '../utils/modelConfig';
 import { DesireBoard } from './DesireBoard';
 import type { DeepDesire } from '../types';
 
@@ -344,8 +343,8 @@ function extractStrategyLabel(html: string): string {
 /** Lightweight syntax highlighting for HTML code (regex-based, no parser) */
 function highlightHtml(raw: string, isDark: boolean): string {
   const c = isDark
-    ? { tag: '#93c5fd', attr: '#fbbf24', str: '#86efac', comment: '#6b7280', punct: '#a1a1aa' }
-    : { tag: '#2563eb', attr: '#d97706', str: '#16a34a', comment: '#9ca3af', punct: '#71717a' };
+    ? { tag: '#93c5fd', attr: '#7dd3fc', str: '#86efac', comment: '#6b7280', punct: '#a1a1aa' }
+    : { tag: '#2563eb', attr: '#0284c7', str: '#16a34a', comment: '#9ca3af', punct: '#71717a' };
   // HTML-escape
   let code = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   // Comments
@@ -553,21 +552,20 @@ export function MakeStudio() {
   const [llmModel, setLlmModel] = useState(() => {
     const v = localStorage.getItem('make_llm_model');
     // Migrate: local 35b is too slow — force remote
-    if (v?.startsWith('local:') && v.includes('35b')) { localStorage.removeItem('make_llm_model'); return 'qwen3.5:35b'; }
-    return v || 'qwen3.5:35b';
+    if (v?.startsWith('local:') && v.includes('35b')) { localStorage.removeItem('make_llm_model'); return 'qwen3.5:27b'; }
+    return v || 'qwen3.5:27b';
   });
   const [htmlLlmModel, setHtmlLlmModel] = useState(() => {
     const v = localStorage.getItem('make_html_llm_model');
-    if (v?.startsWith('local:') && v.includes('35b')) { localStorage.removeItem('make_html_llm_model'); return 'qwen3.5:35b'; }
-    return v || 'qwen3.5:35b';
+    if (v?.startsWith('local:') && v.includes('35b')) { localStorage.removeItem('make_html_llm_model'); return 'qwen3.5:27b'; }
+    return v || 'qwen3.5:27b';
   });
   const [showResearchSummary, setShowResearchSummary] = useState(false);
   const [visionFeedbackEnabled, setVisionFeedbackEnabled] = useState(() => (localStorage.getItem('make_vision_feedback') || 'false') === 'true');
   const [visionRounds, setVisionRounds] = useState(() => parseInt(localStorage.getItem('make_vision_rounds') || '3', 10));
 
-  // Vision model — reads from centralized config, respects local: routing
-  const _vm = getVisionModel();
-  const visionModel = htmlLlmModel.startsWith('local:') && !_vm.startsWith('local:') ? `local:${_vm}` : _vm;
+  // Vision model follows HTML model's routing (local: or remote)
+  const visionModel = htmlLlmModel.startsWith('local:') ? 'local:qwen3.5:0.8b' : 'qwen3.5:0.8b';
 
   // Vision QA round history — for side-by-side comparison view
   const [visionHistory, setVisionHistory] = useState<VisionRoundSnapshot[]>([]);
@@ -824,46 +822,6 @@ export function MakeStudio() {
         100% { opacity: 0; transform: scale(0.6) rotate(4deg); filter: blur(6px); }
       }
 
-      @keyframes nomad-dot-flicker {
-        0%, 100% { opacity: 0.02; }
-        50% { opacity: 0.06; }
-      }
-
-      @keyframes nomad-dot-flicker-alt {
-        0%, 100% { opacity: 0.04; }
-        40% { opacity: 0.02; }
-        80% { opacity: 0.06; }
-      }
-
-      @keyframes nomad-grid-noise {
-        0% { opacity: 0.30; }
-        8% { opacity: 0.37; }
-        16% { opacity: 0.43; }
-        24% { opacity: 0.39; }
-        32% { opacity: 0.31; }
-        40% { opacity: 0.24; }
-        48% { opacity: 0.28; }
-        56% { opacity: 0.36; }
-        64% { opacity: 0.45; }
-        72% { opacity: 0.41; }
-        80% { opacity: 0.33; }
-        88% { opacity: 0.25; }
-        96% { opacity: 0.30; }
-        100% { opacity: 0.30; }
-      }
-
-      @keyframes nomad-grid-wave {
-        0% { opacity: 0.15; transform: translateY(0px) scaleY(0.95); }
-        25% { opacity: 0.45; transform: translateY(-3px) scaleY(1.03); }
-        50% { opacity: 0.65; transform: translateY(0px) scaleY(1.05); }
-        75% { opacity: 0.40; transform: translateY(3px) scaleY(0.97); }
-        100% { opacity: 0.15; transform: translateY(0px) scaleY(0.95); }
-      }
-
-      @keyframes nomad-grid-drift {
-        0% { transform: translate(0, 0); }
-        100% { transform: translate(13.5px, 13.5px); }
-      }
 
       @keyframes nomad-bar-shimmer {
         0% { left: -40%; }
@@ -888,43 +846,6 @@ export function MakeStudio() {
         50% { box-shadow: 0 0 30px rgba(161,161,170,0.12), 0 4px 20px rgba(0,0,0,0.2); }
       }
 
-      .nomad-grid-bg {
-        background-image:
-          radial-gradient(circle, rgba(255, 255, 255, 0.04) 0.5px, transparent 0.5px);
-        background-size: 24px 24px;
-        background-position: 0 0;
-        pointer-events: none;
-        transition: opacity 0.5s ease-in-out;
-      }
-
-      .nomad-grid-bg::before,
-      .nomad-grid-bg::after {
-        content: '';
-        position: absolute;
-        inset: 0;
-        background-image:
-          radial-gradient(circle, rgba(255, 255, 255, 1) 0.5px, transparent 0.5px);
-        background-size: 24px 24px;
-        pointer-events: none;
-        opacity: 0.02;
-      }
-
-      .nomad-grid-bg::before {
-        background-position: 0 0;
-        animation: nomad-dot-flicker 6s ease-in-out infinite;
-      }
-
-      .nomad-grid-bg::after {
-        background-position: 12px 12px;
-        animation: nomad-dot-flicker-alt 8s ease-in-out 2s infinite;
-      }
-
-      .nomad-grid-bg.wave::before {
-        animation: nomad-dot-flicker 3s ease-in-out infinite;
-      }
-      .nomad-grid-bg.wave::after {
-        animation: nomad-dot-flicker-alt 4s ease-in-out 1s infinite;
-      }
     `;
     document.head.appendChild(style);
   }, []);
@@ -1100,10 +1021,10 @@ export function MakeStudio() {
   }, [addReferenceImages]);
 
   // ── Mode definitions ──
-  const modes: { key: AdMode; label: string; icon: React.ReactNode }[] = [
-    { key: 'static', label: 'Image', icon: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg> },
-    { key: 'funnel', label: 'Desires', icon: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> },
-    { key: 'custom', label: 'See more', icon: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> },
+  const modes: { key: AdMode; label: string; icon: string }[] = [
+    { key: 'static', label: 'Image', icon: '◻' },
+    { key: 'funnel', label: 'Desires', icon: '◎' },
+    { key: 'custom', label: 'See more', icon: '✦' },
   ];
 
   // ── Aspect ratio dimensions ──
@@ -1326,7 +1247,7 @@ YOU MUST USE THIS EXACT HTML SKELETON — just fill in the content and style the
   .headline h1 { font-size:${Math.round(htmlDim.w * 0.075)}px; font-weight:800; line-height:1.05; }
   .info { padding:${Math.round(htmlDim.h * 0.01)}px ${Math.round(htmlDim.w * 0.04)}px; flex-shrink:0; }
   .cta { padding:${Math.round(htmlDim.h * 0.015)}px ${Math.round(htmlDim.w * 0.04)}px ${Math.round(htmlDim.h * 0.025)}px; flex-shrink:0; }
-  .cta button { width:100%; padding:${Math.round(htmlDim.h * 0.018)}px; font-size:${Math.round(htmlDim.w * 0.04)}px; font-weight:700; border-radius:12px; border:none; cursor:pointer; background:#5383F0; color:#fff; }
+  .cta button { width:100%; padding:${Math.round(htmlDim.h * 0.018)}px; font-size:${Math.round(htmlDim.w * 0.04)}px; font-weight:700; border-radius:12px; border:none; cursor:pointer; background:#2B79FF; color:#fff; }
   /* ADD YOUR CUSTOM STYLES BELOW — colors, backgrounds, effects */
 </style>
 </head><body>
@@ -1346,7 +1267,7 @@ RULES FOR FILLING IN THE SKELETON:
 3. Product image in .hero MUST stay huge — the flex:1 gives it ~45% of height. NEVER shrink .hero.
 4. Headline font-size: ${Math.round(htmlDim.w * 0.065)}-${Math.round(htmlDim.w * 0.09)}px, weight 800. MAX 6 WORDS.
 5. Font stack: 'Suisse Intl','Inter',system-ui,sans-serif everywhere. No other fonts.
-6. CTA button: #5383F0 background, white text, full width. Always visible at bottom.
+6. CTA button: #2B79FF background, white text, full width. Always visible at bottom.
 7. DO NOT use position:absolute on anything. Flex only.
 8. Product img: ONLY use max-width % + object-fit:contain. NEVER fixed px width/height.
 9. Max 3-4 text elements total: headline + subtext + CTA. This is a billboard, not a brochure.
@@ -1507,7 +1428,7 @@ COPY: Sound like a real DTC brand. Short, punchy, specific. Not generic marketin
     if (b.packagingDesign || p?.packaging) {
       rules.push(`- Product must appear as described: ${b.packagingDesign || p?.packaging}`);
     }
-    rules.push('- Brand action blue: #5383F0 — use for ALL CTA buttons, badges, and interactive accent elements');
+    rules.push('- Brand action blue: #2B79FF — use for ALL CTA buttons, badges, and interactive accent elements');
     if (b.colors) rules.push(`- Brand palette: ${b.colors}`);
     if (b.fonts) rules.push(`- Typography: ${b.fonts}`);
     if (b.imageStyle) rules.push(`- Image style: ${b.imageStyle}`);
@@ -1768,13 +1689,10 @@ Be honest and specific. This feedback drives the next revision.`;
     const isPass = auditUpper.includes('PASS') && !hasCritical && !hasMajor;
 
     if (isPass) {
-      // Ad passed brand review
-      setGenerationProgress('Vision QA: approved [OK]');
+      setGenerationProgress('Vision QA: approved ✓');
       await new Promise(r => setTimeout(r, 1200));
       return ''; // empty = no changes needed, stop looping
     }
-
-    // VisionQA issues found — continue to rewrite
 
     // ── Step 2: LLM rewrites the prompt to fix issues ──
     // The LLM gets the FULL brand context + research + knowledge to write great copy.
@@ -2012,7 +1930,6 @@ Create a complete, production-ready HTML ad. This screenshot IS the final delive
           // Even 1 round = audit + refine (not just audit).
           // Wrapped in its own try/catch so VisionQA crashes don't kill the whole generation.
           if (visionFeedbackEnabled && screenshot && !signal?.aborted) try {
-            // VisionQA starting rounds
             const refImages = uploadedImages.filter(img => img.type === 'layout');
             const refBase64 = refImages.length > 0 ? refImages[0].base64 : null;
             const brandCtx = presetEnabled ? (getPresetContext() || '') : '';
@@ -2044,7 +1961,6 @@ Create a complete, production-ready HTML ad. This screenshot IS the final delive
                 break;
               }
 
-              // VisionQA feedback received
               allFeedback += (allFeedback ? `\n\n--- Round ${round + 1} ---\n` : '') + feedback;
 
               // Update variant with latest feedback
@@ -2091,7 +2007,6 @@ Create a complete, production-ready HTML ad. This screenshot IS the final delive
                   ));
                   // Track in vision history for side-by-side comparison
                   setVisionHistory(prev => [...prev, { round: round + 1, screenshot: newScreenshot, feedback }]);
-                  // VisionQA refined ad HTML updated
                 }
               } else {
                 console.warn(`[VisionQA] Refinement produced invalid HTML for ad ${i + 1} round ${round + 1}`);
@@ -2100,7 +2015,6 @@ Create a complete, production-ready HTML ad. This screenshot IS the final delive
 
             // ── Update IndexedDB with refined HTML + screenshot ──
             if (currentHtml !== cleanHtml) {
-              // VisionQA updating stored image with refined HTML + screenshot
               const updatedStored: StoredImage = {
                 id: variant.id,
                 imageBase64: currentScreenshot,
@@ -2139,12 +2053,12 @@ Create a complete, production-ready HTML ad. This screenshot IS the final delive
         // Smooth transition between variants
         if (i < count - 1) {
           setGenerationPhase('between');
-          setGenerationProgress(`[OK] Ad ${i + 1} done — creating next...`);
+          setGenerationProgress(`✓ Ad ${i + 1} done — creating next...`);
           await new Promise(r => setTimeout(r, 400));
         } else if (count > 0) {
           // Final ad done
           setGenerationPhase('between');
-          setGenerationProgress(`[OK] All ${count} ads created`);
+          setGenerationProgress(`✓ All ${count} ads created`);
           await new Promise(r => setTimeout(r, 800));
         }
       } catch (err) {
@@ -2432,8 +2346,8 @@ RULES:
           model: llmModel,
           signal,
           onChunk: (chunk) => setLlmOutput(prev => prev + chunk),
-          // NOTE: Don't send images to text-only LLMs (qwen, lfm) — causes errors.
-          // The prompt already contains all brand/product data. MiniCPM handles vision.
+          // NOTE: Don't send images to text-only LLMs — causes errors.
+          // The prompt already contains all brand/product data. Vision model handles screenshots.
         }
       );
 
@@ -2475,7 +2389,6 @@ RULES:
 
       imagePrompt = shortParts.join(' ');
 
-      // RefCopy LLM prompt assembled
     } catch (err) {
       if (signal?.aborted) {
         setGenerationPhase('idle');
@@ -2497,8 +2410,6 @@ RULES:
 
     // Filter out any empty/corrupt refs before sending
     const cleanRefs = allRefs.filter(b64 => b64 && b64.length > 500);
-    // RefCopy sending reference images to Freepik
-
     // ── Step 5: Generate candidates from Freepik ──
     // Generate renderCount candidates, then MiniCPM picks the best one for refinement
     const candidateCount = visionFeedbackEnabled ? renderCount : 1;
@@ -2585,7 +2496,6 @@ Best product placement and no competitor branding visible.`;
         const pickMatch = pickResult.match(/(\d+)/);
         const pickedIdx = pickMatch ? Math.max(0, Math.min(allCandidates.length - 1, parseInt(pickMatch[1]) - 1)) : 0;
         currentImageBase64 = allCandidates[pickedIdx];
-        // VisionQA picked candidate
         setGenerationProgress(`Selected candidate ${pickedIdx + 1}/${allCandidates.length}`);
       } catch (err) {
         if (signal?.aborted) { setGenerationPhase('idle'); return; }
@@ -2701,7 +2611,6 @@ Best product placement and no competitor branding visible.`;
 
           // Empty string = PASS (no issues found) — stop looping
           if (!refinedPrompt || signal?.aborted) {
-            // VisionQA round approved — stopping
             allFeedback += `\nRound ${round + 1}: PASSED`;
             rounds.push({
               round: round + 1,
@@ -2751,7 +2660,6 @@ Best product placement and no competitor branding visible.`;
 
             // Persist to IndexedDB (round-by-round, so nothing is lost on crash)
             await updateStored([], allFeedback.trim(), currentImageBase64, currentPrompt);
-            // VisionQA round saved
           }
         } catch (err) {
           if (signal?.aborted) break;
@@ -2792,7 +2700,6 @@ Best product placement and no competitor branding visible.`;
     } else {
       setGenerationProgress('Auto-picking reference ads...');
       targets = await autoPickReferences(batchRefCount);
-      // RefCopy auto-picked targets
       if (targets.length === 0) {
         setGenerationProgress('No valid ad library references found — open Ad Library and pre-analyze first');
         setTimeout(() => setGenerationProgress(''), 4000);
@@ -3033,7 +2940,7 @@ INSTRUCTIONS:
           strategyLabel,
           htmlSource: cleanHtml,
           htmlScreenshot: screenshotBase64,
-          sourceHtmlId: selectedImage?.sourceHtmlId,
+          sourceHtmlId: (selectedImage as any).sourceHtmlId,
         };
         await persistImage(refined);
         setSelectedImage(refined);
@@ -3075,7 +2982,7 @@ INSTRUCTIONS:
             campaignId: campaign?.id,
             campaignBrand: campaign?.brand,
             strategyLabel: selectedImage.strategyLabel,
-            sourceHtmlId: selectedImage?.sourceHtmlId,
+            sourceHtmlId: (selectedImage as any).sourceHtmlId,
           };
           await persistImage(refined);
           setSelectedImage(refined);
@@ -3147,21 +3054,6 @@ INSTRUCTIONS:
 
     // ── PATH 3 (Freepik direct): User prompt → Image model ──
     if (!llmEnabled) {
-      // Ensure we have something to send — use a sensible default if prompt is empty/short
-      let finalImagePrompt = (prompt || '').trim();
-      if (!finalImagePrompt) {
-        // Use brand context or a generic prompt so it doesn't crash
-        const brand = campaign?.brand || campaign?.presetData?.brand || '';
-        const product = campaign?.productDescription || '';
-        if (brand || product) {
-          finalImagePrompt = `${brand} ${product} — professional advertisement, premium quality`.trim();
-        } else {
-          finalImagePrompt = 'Modern professional advertisement, premium quality, clean design';
-        }
-        setGenerationProgress(`No prompt — using: "${finalImagePrompt.slice(0, 60)}…"`);
-        await new Promise(r => setTimeout(r, 1500));
-      }
-
       // Quick health check before wasting time
       try {
         const healthOk = await checkServerStatus();
@@ -3178,11 +3070,12 @@ INSTRUCTIONS:
       setGenerationProgress('Sending to image model...');
       setServerWarning('');
 
+      const finalImagePrompt = prompt;
+
       setGenerationProgress(`Sending to ${modelName}...`);
 
       // Send ALL uploaded images to Freepik (product + layout refs)
-      let allRefBase64s: string[] = [];
-      try { allRefBase64s = getCleanBase64s(uploadedImages); } catch { /* ignore bad refs */ }
+      const allRefBase64s = getCleanBase64s(uploadedImages);
       let result = await generateImage({
         prompt: finalImagePrompt,
         model: imageModel,
@@ -3542,7 +3435,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
         await Promise.race([htmlGenPromise, htmlTimeout]);
 
         if (!htmlOutput.trim()) {
-          setLlmOutput(prev => prev + '\n─── [WARN] LLM returned empty HTML ───\n');
+          setLlmOutput(prev => prev + '\n─── ⚠ LLM returned empty HTML ───\n');
           setGenerationProgress('LLM returned empty HTML — try again');
           await new Promise(r => setTimeout(r, 2000));
           imageCountRef.current -= 1;
@@ -3562,7 +3455,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
         setLlmOutput(prev => prev + '\n\n─── Rendering layout to image... ───\n');
         const layoutScreenshot = await captureHtmlScreenshot(cleanHtml, dim.w, dim.h);
 
-        const layoutStatus = layoutScreenshot ? '[OK] Layout rendered and captured' : '[WARN] Layout generated (screenshot failed — continuing without layout ref)';
+        const layoutStatus = layoutScreenshot ? '✓ Layout rendered and captured' : '⚠ Layout generated (screenshot failed — continuing without layout ref)';
         setLlmOutput(prev => prev + `─── ${layoutStatus} ───\n`);
 
         if (layoutScreenshot) {
@@ -3824,7 +3717,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
         await Promise.race([htmlGenPromise, htmlTimeout]);
 
         if (!htmlOutput.trim()) {
-          setLlmOutput(prev => prev + '\n─── [WARN] LLM returned empty HTML ───\n');
+          setLlmOutput(prev => prev + '\n─── ⚠ LLM returned empty HTML ───\n');
           setGenerationProgress('LLM returned empty HTML — try again');
           await new Promise(r => setTimeout(r, 2000));
           imageCountRef.current -= 1;
@@ -3844,7 +3737,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
         setLlmOutput(prev => prev + '\n\n─── Rendering layout to image... ───\n');
         const layoutScreenshot = await captureHtmlScreenshot(cleanHtml, dim.w, dim.h);
 
-        const layoutStatus = layoutScreenshot ? '[OK] Layout rendered and captured' : '[WARN] Layout generated (screenshot failed — continuing without layout ref)';
+        const layoutStatus = layoutScreenshot ? '✓ Layout rendered and captured' : '⚠ Layout generated (screenshot failed — continuing without layout ref)';
         setLlmOutput(prev => prev + `─── ${layoutStatus} ───\n`);
 
         if (layoutScreenshot) {
@@ -3943,7 +3836,8 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
   // ══════════════════════════════════════════════════════
   const handleGenerate = useCallback(async () => {
     if (isGenerating || isRendering) return;
-    // Non-LLM non-refcopy: allow empty prompt — generateSingleImage will use fallback
+    // Non-LLM non-refcopy mode requires a prompt
+    if (!llmEnabled && !referenceCopyEnabled && !prompt.trim()) return;
     playSound('launch');
 
     // Validation: Check for missing critical inputs
@@ -3956,10 +3850,10 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
        currentCycle.researchFindings.avatarLanguage?.length);
 
     if (!hasPrompt && !hasBrand) {
-      warnings.push('[!] Missing: Add a prompt or load brand preset');
+      warnings.push('⚠️ Missing: Add a prompt or load brand preset');
     }
     if (htmlEnabled && !hasPrompt && !hasResearch) {
-      warnings.push('[!] Tip: Add a prompt or run research for better results');
+      warnings.push('⚠️ Tip: Add a prompt or run research for better results');
     }
 
     // Show warnings if any
@@ -4235,8 +4129,6 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
 
       {/* ── Gallery / Canvas Area ── */}
       <div className="flex-1 min-h-0 flex overflow-hidden relative">
-        {/* ── Animated Dotted Grid Background ── */}
-        <div className={`absolute inset-0 nomad-grid-bg ${isGenerating ? 'wave' : ''}`} />
 
         {/* ── Main Content Area ── */}
         <div ref={galleryScrollRef} className="flex-1 h-full overflow-y-auto px-6 py-6 relative z-10 bg-transparent">
@@ -4273,7 +4165,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                 <div className="px-4 py-2.5 flex items-center gap-3">
                   {/* Pulsing dot */}
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                    generationPhase === 'capturing' ? 'bg-amber-400' : 'bg-emerald-400 animate-pulse'
+                    generationPhase === 'capturing' ? 'bg-blue-400' : 'bg-emerald-400 animate-pulse'
                   }`} />
                   {/* Ad counter */}
                   {batchCurrent > 0 && (
@@ -4359,7 +4251,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                         {htmlDim.w}x{htmlDim.h}
                       </span>
                       {generationPhase === 'capturing' && (
-                        <span className={`text-[9px] font-medium mt-1 px-2 py-0.5 rounded-full ${theme === 'dark' ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-600'}`}>
+                        <span className={`text-[9px] font-medium mt-1 px-2 py-0.5 rounded-full ${theme === 'dark' ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-100 text-blue-600'}`}>
                           Capturing...
                         </span>
                       )}
@@ -4754,7 +4646,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                     {availablePipelines.map(p => {
                       const label = p === 'html-ad' ? 'HTML' : p === 'reference-copy' ? 'Ref Copy' : p === 'html-to-render' ? 'Render' : p === 'direct' ? 'Direct' : p.split('-')[0];
                       const active = pipelineFilter === p;
-                      const color = p === 'html-ad' ? 'emerald' : p === 'reference-copy' ? 'blue' : p === 'html-to-render' ? 'indigo' : 'zinc';
+                      const color = p === 'html-ad' ? 'emerald' : p === 'reference-copy' ? 'blue' : p === 'html-to-render' ? 'blue' : 'zinc';
                       return (
                         <button
                           key={p}
@@ -5260,7 +5152,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                       onClick={() => { setReferenceCopyTarget(null); localStorage.removeItem('make_reference_copy_target'); setReferenceStyle(''); localStorage.removeItem('make_reference_style'); }}
                       className={`text-[10px] px-1.5 py-1 rounded-md ${theme === 'dark' ? 'text-zinc-500 hover:text-zinc-300' : 'text-zinc-400 hover:text-zinc-600'}`}
                     >
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                      ✕
                     </button>
                   </>
                 ) : (
@@ -5279,7 +5171,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
               {referenceCopyTarget && (
                 <div className={`px-3 pb-2.5 border-t ${theme === 'dark' ? 'border-blue-500/20' : 'border-blue-200/60'}`}>
                   <div className="flex items-center justify-between mt-2 mb-1">
-                    <span className={`text-[9px] uppercase tracking-widest font-bold ${theme === 'dark' ? 'text-blue-400/60' : 'text-blue-500'}`}>
+                    <span className={`text-[9px] uppercase tracking-widest font-bold ${theme === 'dark' ? 'text-blue-400/60' : 'text-blue-400'}`}>
                       Style brief
                     </span>
                     {referenceStyle && (
@@ -5295,8 +5187,8 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                     rows={2}
                     className={`w-full text-[11px] leading-relaxed rounded-lg px-2.5 py-2 resize-none focus:outline-none transition-colors placeholder:italic ${
                       theme === 'dark'
-                        ? 'bg-zinc-900/50 text-zinc-200 placeholder:text-zinc-500/40 border border-zinc-700/50 focus:border-blue-500/40'
-                        : 'bg-white text-zinc-800 placeholder:text-zinc-400 border border-zinc-200 focus:border-blue-400'
+                        ? 'bg-zinc-900/50 text-blue-200 placeholder:text-blue-500/40 border border-blue-500/20 focus:border-blue-500/40'
+                        : 'bg-white text-blue-900 placeholder:text-blue-300 border border-blue-200 focus:border-blue-400'
                     }`}
                   />
                 </div>
@@ -5362,9 +5254,9 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                       <span className="max-w-[80px] truncate">@img{idx + 1}</span>
                       <button
                         onClick={() => removeUploadedImage(idx)}
-                        className="ml-0.5 opacity-50 hover:opacity-100 cursor-pointer"
+                        className="ml-0.5 opacity-50 hover:opacity-100 cursor-pointer text-[10px]"
                       >
-                        <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                        ✕
                       </button>
                     </div>
                   );
@@ -5426,7 +5318,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
 
                 {/* Preset indicator */}
                 {presetEnabled && campaign?.presetData && (
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-medium whitespace-nowrap ${theme === 'dark' ? 'bg-amber-900/30 text-amber-400' : 'bg-amber-50 text-amber-600'}`}>
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-medium whitespace-nowrap ${theme === 'dark' ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>
                     {campaign.brand} preset
                   </span>
                 )}
@@ -5533,7 +5425,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                     <path d="M12 22l4-13" />
                   </svg>
                   {(campaign?.presetData || uploadedImages.length > 0) && (
-                    <span className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full ${theme === 'dark' ? 'bg-amber-500' : 'bg-amber-400'}`} />
+                    <span className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full ${theme === 'dark' ? 'bg-blue-500' : 'bg-blue-400'}`} />
                   )}
                 </button>
 
@@ -5729,14 +5621,14 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                                       ? 'bg-blue-500/10 border-blue-400/30 text-blue-600' + (theme === 'dark' ? ' !text-blue-400' : '')
                                       : theme === 'dark' ? 'border-zinc-700 text-zinc-600' : 'border-zinc-200 text-zinc-400'
                                   }`}
-                                ><span className="inline-flex items-center gap-1">{presetEnabled ? <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg> : <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/></svg>} Brand data</span></button>
+                                >{presetEnabled ? '●' : '○'} Brand data</button>
                                 <button onClick={() => setResearchEnabled(!researchEnabled)}
                                   className={`px-2 py-0.5 rounded text-[9px] font-medium transition-all border ${
                                     researchEnabled
                                       ? 'bg-blue-500/10 border-blue-400/30 text-blue-600' + (theme === 'dark' ? ' !text-blue-400' : '')
                                       : theme === 'dark' ? 'border-zinc-700 text-zinc-600' : 'border-zinc-200 text-zinc-400'
                                   }`}
-                                ><span className="inline-flex items-center gap-1">{researchEnabled ? <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg> : <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/></svg>} Research</span></button>
+                                >{researchEnabled ? '●' : '○'} Research</button>
                               </div>
 
                               {/* Mode */}
@@ -5807,39 +5699,11 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                           )}
                         </div>
 
-                        {/* ── MODELS ── */}
-                        {llmEnabled && (
+                        {/* ── QA & GATES ── */}
+                        {llmEnabled && (htmlEnabled || referenceCopyEnabled || researchEnabled) && (
                           <div className={`border-t pt-3 ${theme === 'dark' ? 'border-zinc-800' : 'border-zinc-100'}`}>
-                            <p className={`text-[9px] uppercase tracking-widest font-bold mb-2 ${theme === 'dark' ? 'text-zinc-600' : 'text-zinc-400'}`}>Models</p>
+                            <p className={`text-[9px] uppercase tracking-widest font-bold mb-2 ${theme === 'dark' ? 'text-zinc-600' : 'text-zinc-400'}`}>Quality</p>
                             <div className="space-y-1.5">
-                              <div className="flex items-center justify-between">
-                                <span className={`text-[10px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-500'}`}>Ad strategy</span>
-                                <select value={llmModel} onChange={(e) => { setLlmModel(e.target.value); localStorage.setItem('make_llm_model', e.target.value); }}
-                                  className={`text-[10px] font-medium rounded px-1.5 py-0.5 focus:outline-none cursor-pointer ${theme === 'dark' ? 'text-zinc-300 bg-zinc-800 border border-zinc-700' : 'text-zinc-700 bg-white border border-zinc-200'}`}
-                                >
-                                  <option value="qwen3.5:35b">Qwen 3.5 35B</option>
-                                  <option value="local:qwen3.5:35b">Qwen 35B Local</option>
-                                  <option value="qwen3.5:9b">Qwen 3.5 9B</option>
-                                  <option value="local:qwen3.5:9b">Qwen 9B Local</option>
-                                  <option value="qwen3.5:0.8b">Qwen 0.8B</option>
-                                  <option value="qwen3.5:2b">Qwen 3.5 2B</option>
-                                </select>
-                              </div>
-                              {htmlEnabled && (
-                                <div className="flex items-center justify-between">
-                                  <span className={`text-[10px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-500'}`}>HTML coder</span>
-                                  <select value={htmlLlmModel} onChange={(e) => { setHtmlLlmModel(e.target.value); localStorage.setItem('make_html_llm_model', e.target.value); }}
-                                    className={`text-[10px] font-medium rounded px-1.5 py-0.5 focus:outline-none cursor-pointer ${theme === 'dark' ? 'text-zinc-300 bg-zinc-800 border border-zinc-700' : 'text-zinc-700 bg-white border border-zinc-200'}`}
-                                  >
-                                    <option value="qwen3.5:35b">Qwen 3.5 35B</option>
-                                    <option value="local:qwen3.5:35b">Qwen 35B Local</option>
-                                    <option value="qwen3.5:9b">Qwen 3.5 9B</option>
-                                    <option value="local:qwen3.5:9b">Qwen 9B Local</option>
-                                    <option value="qwen3.5:0.8b">Qwen 0.8B</option>
-                                    <option value="qwen3.5:2b">Qwen 3.5 2B</option>
-                                  </select>
-                                </div>
-                              )}
                               {(htmlEnabled || referenceCopyEnabled) && (
                                 <div className="flex items-center justify-between">
                                   <span className={`text-[10px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-500'}`}>Vision QA</span>
@@ -5867,7 +5731,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                                 <div className="flex items-center justify-between">
                                   <span className={`text-[10px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-500'}`}>Research gate</span>
                                   <button onClick={() => { const next = !researchReadinessCheck; setResearchReadinessCheck(next); localStorage.setItem('make_research_readiness', String(next)); }}
-                                    className={`relative w-7 h-[16px] rounded-full transition-colors ${researchReadinessCheck ? 'bg-amber-500' : theme === 'dark' ? 'bg-zinc-700' : 'bg-zinc-300'}`}
+                                    className={`relative w-7 h-[16px] rounded-full transition-colors ${researchReadinessCheck ? 'bg-blue-500' : theme === 'dark' ? 'bg-zinc-700' : 'bg-zinc-300'}`}
                                   >
                                     <span className={`absolute top-[2px] w-3 h-3 bg-white rounded-full shadow transition-transform ${researchReadinessCheck ? 'left-[12px]' : 'left-[2px]'}`} />
                                   </button>
@@ -5882,7 +5746,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                           <div className={`border-t pt-2 ${theme === 'dark' ? 'border-zinc-800' : 'border-zinc-100'}`}>
                             <button onClick={() => setShowResearchSummary(!showResearchSummary)}
                               className={`text-[10px] font-medium transition-colors ${theme === 'dark' ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'}`}
-                            ><span className="inline-flex items-center gap-1">{showResearchSummary ? <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg> : <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>} Research</span></button>
+                            >{showResearchSummary ? '▾' : '▸'} Research</button>
                             {showResearchSummary && currentCycle?.researchFindings && (
                               <div className={`rounded p-2 mt-1 text-[9px] space-y-0.5 border ${theme === 'dark' ? 'bg-blue-900/20 border-blue-800/40 text-zinc-300' : 'bg-blue-50 border-blue-200 text-zinc-700'}`}>
                                 {currentCycle.researchFindings.deepDesires?.length > 0 && <div>Desires: {currentCycle.researchFindings.deepDesires.length}</div>}
@@ -5906,7 +5770,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
 
                 {/* Research readiness warning */}
                 {researchReadinessWarning && (
-                  <div className={`px-3 py-1.5 rounded-lg text-[10px] font-medium mb-1 ${theme === 'dark' ? 'bg-amber-900/30 text-amber-300 border border-amber-700/40' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                  <div className={`px-3 py-1.5 rounded-lg text-[10px] font-medium mb-1 ${theme === 'dark' ? 'bg-blue-900/30 text-blue-300 border border-blue-700/40' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>
                     {researchReadinessWarning}
                   </div>
                 )}
@@ -5930,7 +5794,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                   {isGenerating ? (
                     <button
                       onClick={handleCancelGeneration}
-                      className="h-10 px-4 rounded-full flex items-center justify-center gap-1.5 transition-all duration-200 bg-red-500 text-white hover:bg-red-600 shadow-[0_1px_3px_rgba(239,68,68,0.3),0_2px_6px_rgba(239,68,68,0.15)]"
+                      className="nomad-glass-btn nomad-glass-btn-danger h-10 px-4 rounded-full flex items-center justify-center gap-1.5 text-white"
                       title="Cancel generation"
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -5942,10 +5806,10 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                     <button
                       onClick={handleGenerate}
                       disabled={!llmEnabled && !prompt.trim()}
-                      className={`h-10 rounded-full flex items-center justify-center gap-1.5 transition-all duration-200 px-4 ${
+                      className={`nomad-glass-btn nomad-glass-btn-primary h-10 rounded-full flex items-center justify-center gap-1.5 px-4 ${
                         !llmEnabled && !prompt.trim()
-                          ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
-                          : 'bg-zinc-900 text-white hover:bg-zinc-800 shadow-[0_1px_3px_rgba(0,0,0,0.2),0_2px_6px_rgba(0,0,0,0.1)] hover:shadow-[0_2px_6px_rgba(0,0,0,0.25),0_4px_12px_rgba(0,0,0,0.12)] hover:-translate-y-px active:translate-y-0 active:shadow-[0_1px_2px_rgba(0,0,0,0.15)]'
+                          ? 'opacity-40 cursor-not-allowed'
+                          : 'text-white'
                       }`}
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -6145,7 +6009,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                             {/* Status dot */}
                             <span className={`absolute bottom-0.5 right-0.5 w-2 h-2 rounded-full border border-white/50 ${
                               round.status === 'passed' ? 'bg-green-400' :
-                              round.status === 'revised' ? 'bg-amber-400' :
+                              round.status === 'revised' ? 'bg-blue-400' :
                               round.status === 'candidate' ? 'bg-blue-400' :
                               'bg-zinc-400'
                             }`} />
@@ -6164,7 +6028,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                           <div className="flex items-center gap-1.5">
                             <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
                               round.status === 'passed' ? 'bg-green-500/20 text-green-400' :
-                              round.status === 'revised' ? 'bg-amber-500/20 text-amber-400' :
+                              round.status === 'revised' ? 'bg-blue-500/20 text-blue-400' :
                               round.status === 'candidate' ? 'bg-blue-500/20 text-blue-400' :
                               theme === 'dark' ? 'bg-zinc-700 text-zinc-400' : 'bg-zinc-200 text-zinc-500'
                             }`}>
@@ -6275,7 +6139,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                     <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-medium ${
                       selectedImage.htmlSource
                         ? theme === 'dark' ? 'bg-blue-900/40 text-blue-400' : 'bg-blue-50 text-blue-500'
-                        : theme === 'dark' ? 'bg-amber-900/40 text-amber-400' : 'bg-amber-50 text-amber-500'
+                        : theme === 'dark' ? 'bg-blue-900/40 text-blue-400' : 'bg-blue-50 text-blue-500'
                     }`}>
                       {selectedImage.htmlSource ? 'LLM' : 'Freepik'}
                     </span>
@@ -6345,7 +6209,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                       disabled={!refinePrompt.trim() || isRefining}
                       className={`self-end px-3 py-2 rounded-lg text-[10px] font-semibold transition-colors ${
                         isRefining
-                          ? theme === 'dark' ? 'bg-amber-900/40 text-amber-400 cursor-wait' : 'bg-amber-100 text-amber-600 cursor-wait'
+                          ? theme === 'dark' ? 'bg-blue-900/40 text-blue-400 cursor-wait' : 'bg-blue-100 text-blue-600 cursor-wait'
                           : refinePrompt.trim()
                             ? theme === 'dark' ? 'bg-zinc-100 text-zinc-900 hover:bg-white' : 'bg-zinc-900 text-white hover:bg-zinc-800'
                             : theme === 'dark' ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed' : 'bg-zinc-100 text-zinc-300 cursor-not-allowed'
@@ -6355,7 +6219,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                     </button>
                   </div>
                   {refineProgress && (
-                    <p className={`text-[9px] mt-1 animate-pulse ${theme === 'dark' ? 'text-amber-400' : 'text-amber-500'}`}>{refineProgress}</p>
+                    <p className={`text-[9px] mt-1 animate-pulse ${theme === 'dark' ? 'text-blue-400' : 'text-blue-500'}`}>{refineProgress}</p>
                   )}
                 </div>
 
@@ -6459,7 +6323,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                   <p className={`font-mono text-[10px] uppercase tracking-[0.15em] font-bold ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
                     Brand Assets
                     {uploadedImages.length > 0 && <span className="ml-1.5 text-zinc-500">({uploadedImages.length})</span>}
-                    {pdfProcessing && <span className="ml-1.5 text-amber-400 animate-pulse">Processing PDF...</span>}
+                    {pdfProcessing && <span className="ml-1.5 text-blue-400 animate-pulse">Processing PDF...</span>}
                   </p>
                   <input
                     ref={presetFileInputRef}
@@ -6629,8 +6493,8 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                       <span className={`font-mono text-[10px] uppercase tracking-[0.15em] font-bold ${headerCls}`}>
                         {title}{subtitle && <span className={`ml-1.5 font-normal normal-case tracking-normal ${labelCls}`}>{subtitle}</span>}
                       </span>
-                      <span className={`${labelCls} shrink-0 transition-transform ${presetSections[id] ? 'rotate-90' : ''}`}>
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                      <span className={`text-[10px] ${labelCls} shrink-0 transition-transform ${presetSections[id] ? 'rotate-90' : ''}`}>
+                        ▶
                       </span>
                     </button>
                     {presetSections[id] && (

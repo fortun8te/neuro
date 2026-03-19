@@ -1,7 +1,9 @@
 /**
  * Health Monitor — Continuous heartbeat system for all services
- * Polls Wayfayer, SearXNG, and Ollama at regular intervals
+ * Polls Wayfayer, SearXNG, and Ollama at regular intervals.
+ * Ollama endpoint is read dynamically from getOllamaEndpoint() on each check.
  */
+import { getOllamaEndpoint } from './modelConfig';
 
 export type ServiceStatus = 'healthy' | 'degraded' | 'down' | 'unknown';
 
@@ -22,20 +24,23 @@ const POLL_INTERVAL = 30_000; // 30s
 const DEGRADED_THRESHOLD = 2; // consecutive failures before "degraded"
 const DOWN_THRESHOLD = 4;     // consecutive failures before "down"
 
-const DEFAULT_SERVICES: Array<{ name: string; url: string; probe: string }> = [
+/** Static services — ollama is dynamic (resolved at check time) */
+const STATIC_SERVICES: Array<{ name: string; url: string; probe: string }> = [
   { name: 'wayfayer', url: 'http://localhost:8889', probe: '/health' },
   { name: 'searxng', url: 'http://localhost:8888', probe: '/healthz' },
-  { name: 'ollama', url: 'http://localhost:8889/ollama', probe: '/api/tags' },
 ];
 
 class HealthMonitor {
   private services: Map<string, ServiceHealth> = new Map();
   private probes: Map<string, string> = new Map();
+  /** Services whose probe URL is resolved dynamically each check */
+  private dynamicServices: Set<string> = new Set();
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private listeners: Set<StatusChangeCallback> = new Set();
 
   constructor() {
-    for (const svc of DEFAULT_SERVICES) {
+    // Static services
+    for (const svc of STATIC_SERVICES) {
       this.services.set(svc.name, {
         name: svc.name,
         url: svc.url,
@@ -46,6 +51,19 @@ class HealthMonitor {
       });
       this.probes.set(svc.name, `${svc.url}${svc.probe}`);
     }
+
+    // Ollama — dynamic endpoint
+    const ollamaUrl = getOllamaEndpoint();
+    this.services.set('ollama', {
+      name: 'ollama',
+      url: ollamaUrl,
+      status: 'unknown',
+      lastCheck: 0,
+      latencyMs: 0,
+      consecutiveFailures: 0,
+    });
+    this.probes.set('ollama', `${ollamaUrl}/api/tags`);
+    this.dynamicServices.add('ollama');
   }
 
   onStatusChange(cb: StatusChangeCallback) {
@@ -62,6 +80,15 @@ class HealthMonitor {
   async checkService(name: string): Promise<ServiceHealth> {
     const svc = this.services.get(name);
     if (!svc) throw new Error(`Unknown service: ${name}`);
+
+    // Re-resolve dynamic endpoints (user may have changed settings)
+    if (this.dynamicServices.has(name)) {
+      if (name === 'ollama') {
+        const endpoint = getOllamaEndpoint();
+        svc.url = endpoint;
+        this.probes.set(name, `${endpoint}/api/tags`);
+      }
+    }
 
     const probeUrl = this.probes.get(name)!;
     const start = performance.now();

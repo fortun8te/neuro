@@ -352,7 +352,7 @@ Be specific enough that this description alone could be used as a prompt to gene
                   onClick={() => setSelectedAspectRatio(null)}
                   className={`w-full px-3 py-2 text-left text-xs font-medium transition-colors rounded mb-1 ${
                     !selectedAspectRatio
-                      ? isDark ? 'bg-amber-600/40 text-white' : 'bg-amber-100 text-amber-900'
+                      ? isDark ? 'bg-blue-600/40 text-white' : 'bg-blue-100 text-blue-900'
                       : isDark ? 'text-zinc-300 hover:bg-zinc-700/30' : 'text-zinc-600 hover:bg-zinc-100'
                   }`}
                 >
@@ -364,7 +364,7 @@ Be specific enough that this description alone could be used as a prompt to gene
                     onClick={() => setSelectedAspectRatio(ratio.key)}
                     className={`w-full px-3 py-2 text-left text-xs transition-colors rounded mb-1 flex items-center gap-2 ${
                       selectedAspectRatio === ratio.key
-                        ? isDark ? 'bg-amber-600/40 text-white font-medium' : 'bg-amber-100 text-amber-900 font-medium'
+                        ? isDark ? 'bg-blue-600/40 text-white font-medium' : 'bg-blue-100 text-blue-900 font-medium'
                         : isDark ? 'text-zinc-300 hover:bg-zinc-700/30' : 'text-zinc-600 hover:bg-zinc-100'
                     }`}
                   >
@@ -598,8 +598,8 @@ Be specific enough that this description alone could be used as a prompt to gene
                     {sections.map(s => (
                       <div key={s.label}>
                         <span className={`text-[9px] font-bold uppercase tracking-wider ${
-                          s.label === 'COLORS' ? (isDark ? 'text-amber-400' : 'text-amber-600')
-                          : s.label === 'MOOD' ? (isDark ? 'text-purple-400' : 'text-purple-600')
+                          s.label === 'COLORS' ? (isDark ? 'text-blue-400' : 'text-blue-600')
+                          : s.label === 'MOOD' ? (isDark ? 'text-blue-400' : 'text-blue-600')
                           : s.label === 'CTA' ? (isDark ? 'text-green-400' : 'text-green-600')
                           : isDark ? 'text-zinc-500' : 'text-zinc-400'
                         }`}>
@@ -654,8 +654,8 @@ Be specific enough that this description alone could be used as a prompt to gene
                       }}
                       className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
                         isDark
-                          ? 'bg-purple-600/80 text-white hover:bg-purple-600'
-                          : 'bg-purple-500 text-white hover:bg-purple-600'
+                          ? 'bg-blue-600/80 text-white hover:bg-blue-600'
+                          : 'bg-blue-500 text-white hover:bg-blue-600'
                       }`}
                     >
                       Reference this layout
@@ -670,8 +670,8 @@ Be specific enough that this description alone could be used as a prompt to gene
                       }}
                       className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
                         isDark
-                          ? 'bg-purple-500 text-white hover:bg-purple-400'
-                          : 'bg-purple-600 text-white hover:bg-purple-500'
+                          ? 'bg-blue-500 text-white hover:bg-blue-400'
+                          : 'bg-blue-600 text-white hover:bg-blue-500'
                       }`}
                     >
                       Copy This Ad

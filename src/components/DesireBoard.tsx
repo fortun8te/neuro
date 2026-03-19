@@ -29,8 +29,8 @@ interface DesireBoardProps {
 
 const INTENSITY_CONFIG: Record<string, { bg: string; text: string; border: string; label: string }> = {
   low:      { bg: 'bg-zinc-100 dark:bg-zinc-800', text: 'text-zinc-600 dark:text-zinc-400', border: 'border-zinc-300 dark:border-zinc-700', label: 'Low' },
-  moderate: { bg: 'bg-amber-50 dark:bg-amber-950/30', text: 'text-amber-700 dark:text-amber-400', border: 'border-amber-300 dark:border-amber-800', label: 'Moderate' },
-  high:     { bg: 'bg-orange-50 dark:bg-orange-950/30', text: 'text-orange-700 dark:text-orange-400', border: 'border-orange-300 dark:border-orange-800', label: 'High' },
+  moderate: { bg: 'bg-blue-50 dark:bg-blue-950/30', text: 'text-blue-700 dark:text-blue-400', border: 'border-blue-300 dark:border-blue-800', label: 'Moderate' },
+  high:     { bg: 'bg-blue-50 dark:bg-blue-900/30', text: 'text-blue-600 dark:text-blue-300', border: 'border-blue-400 dark:border-blue-700', label: 'High' },
   extreme:  { bg: 'bg-red-50 dark:bg-red-950/30', text: 'text-red-700 dark:text-red-400', border: 'border-red-300 dark:border-red-800', label: 'Extreme' },
 };
 
@@ -356,7 +356,7 @@ function DesireCard({
   const amplified = AMPLIFIED_ICONS[desire.amplifiedDesireType] || AMPLIFIED_ICONS.other;
 
   // Coverage indicator
-  const coverageColor = adCount >= 4 ? 'bg-emerald-500' : adCount >= 2 ? 'bg-emerald-400' : adCount >= 1 ? 'bg-amber-400' : isDark ? 'bg-zinc-700' : 'bg-zinc-300';
+  const coverageColor = adCount >= 4 ? 'bg-emerald-500' : adCount >= 2 ? 'bg-emerald-400' : adCount >= 1 ? 'bg-blue-400' : isDark ? 'bg-zinc-700' : 'bg-zinc-300';
 
   // Mini thumbnails (up to 3)
   const thumbnails = useMemo(

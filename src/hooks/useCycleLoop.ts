@@ -10,11 +10,15 @@ import { playSound, startSoundLoop, stopSoundLoop } from './useSoundEngine';
 import { generateResearchReport } from '../utils/reportGenerator';
 import { visualProgressStore } from '../utils/visualProgressStore';
 import { tokenTracker } from '../utils/tokenStats';
+import { ollamaService } from '../utils/ollama';
 
 
 const FULL_STAGE_ORDER: StageName[] = ['research', 'brand-dna', 'persona-dna', 'angles', 'strategy', 'copywriting', 'production', 'test'];
 const CONCEPTING_STAGE_ORDER: StageName[] = ['research', 'brand-dna', 'persona-dna', 'angles'];
 const STAGE_DELAY = 500; // 500ms delay between stages (snappy)
+
+/** Timeout for the Ollama preflight check (ms) */
+const OLLAMA_PREFLIGHT_TIMEOUT = 8000;
 
 function getStageOrder(mode: CycleMode): StageName[] {
   return mode === 'concepting' ? CONCEPTING_STAGE_ORDER : FULL_STAGE_ORDER;
@@ -56,6 +60,30 @@ function createCycle(campaignId: string, cycleNumber: number, mode: CycleMode = 
     status: 'in-progress',
     mode,
   };
+}
+
+/** Check if an error is an abort/cancel — not a real failure */
+function isAbortError(err: unknown): boolean {
+  if (err instanceof DOMException && err.name === 'AbortError') return true;
+  if (err instanceof Error) {
+    const msg = err.message.toLowerCase();
+    return msg.includes('aborted') || msg.includes('abort') || msg.includes('signal');
+  }
+  return false;
+}
+
+/** Preflight: verify Ollama is reachable before starting the pipeline.
+ *  Returns true if reachable, false otherwise. Uses a short timeout. */
+async function checkOllamaReachable(timeoutMs = OLLAMA_PREFLIGHT_TIMEOUT): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const ok = await ollamaService.checkConnection();
+    clearTimeout(timer);
+    return ok;
+  } catch {
+    return false;
+  }
 }
 
 export function useCycleLoop(askUser?: (question: UserQuestion) => Promise<string>) {
@@ -167,12 +195,17 @@ export function useCycleLoop(askUser?: (question: UserQuestion) => Promise<strin
 
   // Execute a single stage
   const executeStage = useCallback(
-    async (cycle: Cycle, stageName: StageName, campaign: Campaign) => {
+    async (cycle: Cycle, stageName: StageName, campaign: Campaign, signal: AbortSignal) => {
+      // Check abort before starting
+      if (signal.aborted) {
+        throw new DOMException('Stage aborted before start', 'AbortError');
+      }
+
       try {
         const stage = cycle.stages[stageName];
 
-        // If resuming a previously aborted stage, clear partial output to avoid duplicates
-        if (stage.status === 'in-progress' && stage.agentOutput) {
+        // If resuming a previously stopped/aborted stage, clear partial output to avoid duplicates
+        if ((stage.status === 'in-progress' || stage.status === 'stopped') && stage.agentOutput) {
           stage.agentOutput = '';
         }
 
@@ -190,8 +223,6 @@ export function useCycleLoop(askUser?: (question: UserQuestion) => Promise<strin
 
         if (stageName === 'research') {
           // Orchestrated research: Desire-Driven Analysis + Web Search Researchers
-          // Create abort controller for research stage
-          abortControllerRef.current = new AbortController();
           const researchResult = await executeOrchestratedResearch(
             campaign,
             (msg) => {
@@ -200,7 +231,7 @@ export function useCycleLoop(askUser?: (question: UserQuestion) => Promise<strin
             },
             true, // Enable web search orchestration
             campaign.researchMode === 'interactive' ? handleResearchPauseForInput : undefined,
-            abortControllerRef.current.signal
+            signal
           );
 
           result = researchResult.processedOutput;
@@ -212,24 +243,27 @@ export function useCycleLoop(askUser?: (question: UserQuestion) => Promise<strin
           cycle.researchFindings = researchResult.researchFindings;
 
           // Generate research report (mini research paper)
-          try {
-            const report = await generateResearchReport(
-              cycle.researchFindings || { deepDesires: [], objections: [], avatarLanguage: [], whereAudienceCongregates: [], whatTheyTriedBefore: [], competitorWeaknesses: [] },
-              cycle.researchFindings?.auditTrail,
-              researchResult.rawOutput?.slice(0, 12000) || '',
-              abortControllerRef.current?.signal,
-              (msg) => {
-                stage.agentOutput += msg;
-                throttledSetCycle(cycle);
+          if (!signal.aborted) {
+            try {
+              const report = await generateResearchReport(
+                cycle.researchFindings || {} as any,
+                cycle.researchFindings?.auditTrail,
+                researchResult.rawOutput?.slice(0, 12000) || '',
+                signal,
+                (msg) => {
+                  stage.agentOutput += msg;
+                  throttledSetCycle(cycle);
+                }
+              );
+              if (cycle.researchFindings) {
+                cycle.researchFindings.researchReport = report;
               }
-            );
-            if (cycle.researchFindings) {
-              cycle.researchFindings.researchReport = report;
+            } catch (reportErr) {
+              if (isAbortError(reportErr)) throw reportErr;
+              // Report generation is non-critical — don't fail the pipeline
+              console.warn('Report generation failed:', reportErr);
+              stage.agentOutput += '\n[REPORT] Generation failed — continuing pipeline\n';
             }
-          } catch (reportErr) {
-            // Report generation is non-critical — don't fail the pipeline
-            console.warn('Report generation failed:', reportErr);
-            stage.agentOutput += '\n[REPORT] Generation failed — continuing pipeline\n';
           }
         } else {
           // ── All non-research stages: generate with stage-specific prompt ──
@@ -454,15 +488,12 @@ Output your evaluation as ONLY a valid JSON object with this exact structure (no
 }`;
           }
 
-          // Create abort controller for this stage
-          abortControllerRef.current = new AbortController();
-
           // Generate using Ollama with stage-specific model — stream chunks live into agentOutput
           const stageStartTime = Date.now();
           const modelForStage = getModelForStage(stageName);
           result = await generate(prompt, systemPrompt, {
             model: modelForStage,
-            signal: abortControllerRef.current.signal,
+            signal,
             onChunk: (chunk) => {
               stage.agentOutput += chunk;
               throttledSetCycle(cycle);
@@ -527,13 +558,27 @@ Output your evaluation as ONLY a valid JSON object with this exact structure (no
         return stage;
       } catch (err) {
         stopSoundLoop('thinking');
+
+        // On abort, mark stage as stopped (not error) — this is user-initiated
+        if (isAbortError(err)) {
+          const stage = cycle.stages[stageName];
+          stage.status = 'stopped';
+          stage.completedAt = Date.now();
+          setCurrentCycle(refreshCycleReference(cycle));
+          throw err; // re-throw so runCycle's catch handles it
+        }
+
         playSound('error');
-        const msg = err instanceof Error ? err.message : 'Stage execution failed';
+        const errMsg = err instanceof Error ? err.message : 'Stage execution failed';
+        // Make idle timeout errors more user-friendly
+        const msg = errMsg.includes('No response from model')
+          ? 'No response from model — check Ollama connection'
+          : errMsg;
         setError(msg);
         throw err;
       }
     },
-    [generate, executeOrchestratedResearch, throttledSetCycle, handleResearchPauseForInput]
+    [generate, executeOrchestratedResearch, handleResearchPauseForInput, throttledSetCycle]
   );
 
   // Advance to next stage
@@ -556,16 +601,52 @@ Output your evaluation as ONLY a valid JSON object with this exact structure (no
     []
   );
 
+  // Abortable delay — resolves normally OR rejects if abort fires during the wait
+  const abortableDelay = useCallback((ms: number, signal: AbortSignal): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if (signal.aborted) {
+        reject(new DOMException('Delay aborted', 'AbortError'));
+        return;
+      }
+      const timer = setTimeout(() => {
+        signal.removeEventListener('abort', onAbort);
+        resolve();
+      }, ms);
+      timeoutRef.current = timer;
+      function onAbort() {
+        clearTimeout(timer);
+        timeoutRef.current = null;
+        reject(new DOMException('Delay aborted', 'AbortError'));
+      }
+      signal.addEventListener('abort', onAbort, { once: true });
+    });
+  }, []);
+
   // Main cycle loop
   const runCycle = useCallback(
     async (campaign: Campaign, startCycleNumber: number = 1, mode: CycleMode = 'full') => {
+      // ── Preflight: check Ollama is reachable ──
+      setError(null);
+      setIsRunning(true); // Show immediate feedback
+      isRunningRef.current = true;
+
+      const reachable = await checkOllamaReachable();
+      if (!reachable) {
+        setError('Cannot reach Ollama. Check that Wayfarer proxy (port 8889) and Ollama are running.');
+        setIsRunning(false);
+        isRunningRef.current = false;
+        return;
+      }
+
+      // ── Create a single AbortController for the entire run ──
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      const signal = controller.signal;
+
       let cycleNumber = startCycleNumber;
       let cycle = createCycle(campaign.id, cycleNumber, mode);
       cycleRef.current = cycle;
-
-      isRunningRef.current = true;
-      setIsRunning(true);
-      setError(null);
+      setCurrentCycle(refreshCycleReference(cycle));
 
       // Reset per-run stores
       userAnswersRef.current = {};
@@ -580,10 +661,10 @@ Output your evaluation as ONLY a valid JSON object with this exact structure (no
         campaign = { ...campaign, productFeatures: [...campaign.productFeatures, `[User direction: ${preResearchAnswer}]`] };
       }
 
-      while (isRunningRef.current) {
+      while (isRunningRef.current && !signal.aborted) {
         try {
-          // Execute current stage
-          await executeStage(cycle, cycle.currentStage, campaign);
+          // Execute current stage — pass the shared signal
+          await executeStage(cycle, cycle.currentStage, campaign, signal);
           // State already updated in executeStage, but refresh again to be sure
           setCurrentCycle(refreshCycleReference(cycle));
 
@@ -611,11 +692,7 @@ Output your evaluation as ONLY a valid JSON object with this exact structure (no
           }
 
           // Delay before next stage (abortable)
-          if (!isRunningRef.current) break;
-          await new Promise((resolve) => {
-            timeoutRef.current = setTimeout(resolve, STAGE_DELAY);
-          });
-          if (!isRunningRef.current) break;
+          await abortableDelay(STAGE_DELAY, signal);
 
           // Advance to next stage
           const { cycle: updatedCycle, done } = advanceToNextStage(cycle);
@@ -632,41 +709,48 @@ Output your evaluation as ONLY a valid JSON object with this exact structure (no
 
           setCurrentCycle(refreshCycleReference(cycle));
         } catch (err) {
-          const msg = err instanceof Error ? err.message : 'Cycle error';
-          const isAbort = msg.includes('aborted') || msg.includes('Abort') || (err instanceof DOMException && err.name === 'AbortError');
-          if (!isAbort) {
-            setError(msg);
-          }
-          // On abort: stop() already set isRunningRef=false, just break out
-          if (isAbort) {
+          if (isAbortError(err)) {
+            // User-initiated stop — mark cycle as stopped and exit loop cleanly
+            cycle.status = 'stopped';
+            setCurrentCycle(refreshCycleReference(cycle));
             break;
           }
-          // On real errors: stop the loop
+
+          // Real error — set error and stop
+          const msg = err instanceof Error ? err.message : 'Cycle error';
+          setError(msg);
           isRunningRef.current = false;
-          setIsRunning(false);
           break;
         }
       }
 
-      // Ensure cleanup on exit
+      // ── Final cleanup ──
       isRunningRef.current = false;
       setIsRunning(false);
+      stopSoundLoop('thinking');
+
+      // Flush any pending throttled update
+      if (pendingUpdateRef.current) {
+        clearTimeout(pendingUpdateRef.current);
+        pendingUpdateRef.current = null;
+      }
+
+      // Final state push
+      setCurrentCycle(refreshCycleReference(cycle));
     },
-    [executeStage, advanceToNextStage, updateCycle, saveCycle, askCheckpointQuestion]
+    [executeStage, advanceToNextStage, updateCycle, saveCycle, askCheckpointQuestion, abortableDelay]
   );
 
   const start = useCallback(
     async (campaign: Campaign, cycleNumber: number = 1, mode: CycleMode = 'full') => {
-      if (isRunning) return;
+      if (isRunningRef.current) return; // prevent double-start (use ref, not state — state lags)
       await runCycle(campaign, cycleNumber, mode);
     },
-    [isRunning, runCycle]
+    [runCycle]
   );
 
   const stop = useCallback(() => {
     isRunningRef.current = false;
-    setIsRunning(false);
-    setError(null);
 
     // Stop thinking sound
     stopSoundLoop('thinking');
@@ -677,21 +761,21 @@ Output your evaluation as ONLY a valid JSON object with this exact structure (no
       timeoutRef.current = null;
     }
 
-    // Abort any in-progress request
+    // Abort all in-progress requests (single controller for entire run)
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
 
-    // Reset current stage status from 'in-progress' back to 'pending'
-    // so the UI doesn't show "Running" / "Processing" after stop
+    // Mark current stage as 'stopped' so UI shows clear state
     const cycle = cycleRef.current;
     if (cycle) {
       const stage = cycle.stages[cycle.currentStage];
       if (stage && stage.status === 'in-progress') {
-        stage.status = 'pending';
-        // Keep any partial output for resume
+        stage.status = 'stopped';
+        stage.completedAt = Date.now();
       }
+      cycle.status = 'stopped';
       setCurrentCycle(refreshCycleReference(cycle));
     }
 
@@ -700,6 +784,10 @@ Output your evaluation as ONLY a valid JSON object with this exact structure (no
       clearTimeout(pendingUpdateRef.current);
       pendingUpdateRef.current = null;
     }
+
+    // Set state last — triggers re-render with all the above mutations visible
+    setIsRunning(false);
+    setError(null);
   }, []);
 
   useEffect(() => {

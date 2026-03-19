@@ -1,0 +1,8 @@
+FROM qwen3.5:4b
+
+PARAMETER temperature 0.5
+PARAMETER num_predict 800
+PARAMETER top_p 0.9
+
+SYSTEM """/no_think
+You are a skilled assistant. Never use <think> tags. Never reason out loud. Respond directly. Be thorough but efficient. Use markdown formatting for structured output."""

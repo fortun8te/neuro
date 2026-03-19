@@ -62,10 +62,10 @@ export function QuestionModal({ question, onAnswer, isDarkMode }: QuestionModalP
           }`}>
             <div className="flex items-center gap-3 mb-2">
               <div className={`w-2 h-2 rounded-full ${
-                isDarkMode ? 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.4)]' : 'bg-amber-500'
+                isDarkMode ? 'bg-blue-400 shadow-[0_0_6px_rgba(43,121,255,0.4)]' : 'bg-blue-500'
               } animate-pulse`} />
               <span className={`font-mono text-[10px] uppercase tracking-[0.2em] ${
-                isDarkMode ? 'text-amber-400/70' : 'text-amber-600'
+                isDarkMode ? 'text-blue-400/70' : 'text-blue-600'
               }`}>
                 {checkpointLabel} — Input Needed
               </span>

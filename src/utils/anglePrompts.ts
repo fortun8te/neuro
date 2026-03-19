@@ -20,13 +20,13 @@ export interface AngleCategory {
 
 export const ANGLE_CATEGORIES: AngleCategory[] = [
   { key: 'rotation',    label: 'Rotation',     color: 'blue' },
-  { key: 'elevation',   label: 'Elevation',    color: 'amber' },
+  { key: 'elevation',   label: 'Elevation',    color: 'sky' },
   { key: 'closeup',     label: 'Close-Up',     color: 'rose' },
-  { key: 'lighting',    label: 'Lighting',     color: 'violet' },
-  { key: 'surface',     label: 'Surface',      color: 'orange' },
+  { key: 'lighting',    label: 'Lighting',     color: 'blue' },
+  { key: 'surface',     label: 'Surface',      color: 'slate' },
   { key: 'lifestyle',   label: 'Lifestyle',    color: 'cyan' },
   { key: 'creative',    label: 'Creative',     color: 'emerald' },
-  { key: 'composition', label: 'Composition',  color: 'fuchsia' },
+  { key: 'composition', label: 'Composition',  color: 'teal' },
 ];
 
 export const ANGLE_SHOTS: AngleShot[] = [

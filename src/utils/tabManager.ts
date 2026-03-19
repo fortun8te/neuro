@@ -1,3 +1,7 @@
+/**
+ * Tab Manager — manages browser tabs across sandbox machines.
+ */
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 // ---------------------------------------------------------------------------
@@ -55,8 +59,6 @@ export class TabManager {
   private activeMachineId: string | null = null;
   private listeners: Map<TabManagerEvent, Set<TabManagerCallback>> = new Map();
 
-  // ---- Event system -------------------------------------------------------
-
   on(event: TabManagerEvent, callback: TabManagerCallback): void {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set());
@@ -70,58 +72,42 @@ export class TabManager {
 
   private emit(event: TabManagerEvent, payload?: unknown): void {
     this.listeners.get(event)?.forEach((cb) => {
-      try {
-        cb(payload);
-      } catch (err) {
+      try { cb(payload); } catch (err) {
         console.error(`[TabManager] listener error on "${event}":`, err);
       }
     });
-    // Every mutation also fires a generic stateChanged so the React hook
-    // can re-render with a single listener.
     if (event !== 'stateChanged') {
       this.listeners.get('stateChanged')?.forEach((cb) => {
-        try {
-          cb(this.getState());
-        } catch (err) {
+        try { cb(this.getState()); } catch (err) {
           console.error('[TabManager] stateChanged listener error:', err);
         }
       });
     }
   }
 
-  // ---- Machine management -------------------------------------------------
-
   addMachine(machine: Machine): Machine {
     if (this.machines.has(machine.id)) {
       throw new Error(`Machine "${machine.id}" already registered`);
     }
     this.machines.set(machine.id, { ...machine });
-
     if (this.activeMachineId === null) {
       this.activeMachineId = machine.id;
     }
-
     this.emit('machineAdded', machine);
     return machine;
   }
 
   removeMachine(machineId: string): void {
     if (!this.machines.has(machineId)) return;
-
-    // Close every tab belonging to this machine
     const tabsToClose = this.getTabsByMachine(machineId);
     for (const tab of tabsToClose) {
       this.closeTab(tab.id);
     }
-
     this.machines.delete(machineId);
-
-    // If the removed machine was active, switch to the first remaining one
     if (this.activeMachineId === machineId) {
       const remaining = Array.from(this.machines.keys());
       this.activeMachineId = remaining.length > 0 ? remaining[0] : null;
     }
-
     this.emit('machineRemoved', { machineId });
   }
 
@@ -141,19 +127,13 @@ export class TabManager {
     this.emit('stateChanged', this.getState());
   }
 
-  // ---- Tab management -----------------------------------------------------
-
   createTab(machineId: string, url = 'about:blank'): BrowserTab {
     const machine = this.machines.get(machineId);
-    if (!machine) {
-      throw new Error(`Machine "${machineId}" not found`);
-    }
+    if (!machine) throw new Error(`Machine "${machineId}" not found`);
 
     const machineTabs = this.getTabsByMachine(machineId);
     if (machineTabs.length >= machine.maxTabs) {
-      throw new Error(
-        `Machine "${machineId}" has reached its tab limit (${machine.maxTabs})`
-      );
+      throw new Error(`Machine "${machineId}" has reached its tab limit (${machine.maxTabs})`);
     }
 
     const now = Date.now();
@@ -169,11 +149,8 @@ export class TabManager {
     };
 
     this.tabs.set(tab.id, tab);
-
-    // Auto-switch to the newly created tab
     this.activeTabId = tab.id;
     this.activeMachineId = machineId;
-
     this.emit('tabCreated', { ...tab });
     return { ...tab };
   }
@@ -181,11 +158,8 @@ export class TabManager {
   closeTab(tabId: string): void {
     const tab = this.tabs.get(tabId);
     if (!tab) return;
-
     tab.status = 'closed';
     this.tabs.delete(tabId);
-
-    // If the closed tab was active, pick the most-recently-active sibling
     if (this.activeTabId === tabId) {
       const siblings = this.getTabsByMachine(tab.machineId);
       if (siblings.length > 0) {
@@ -195,29 +169,18 @@ export class TabManager {
         this.activeTabId = null;
       }
     }
-
     this.emit('tabClosed', { tabId, machineId: tab.machineId });
   }
 
   switchTab(tabId: string): void {
     const tab = this.tabs.get(tabId);
-    if (!tab) {
-      throw new Error(`Tab "${tabId}" not found`);
-    }
-    if (tab.status === 'closed') {
-      throw new Error(`Tab "${tabId}" is closed`);
-    }
-
+    if (!tab) throw new Error(`Tab "${tabId}" not found`);
+    if (tab.status === 'closed') throw new Error(`Tab "${tabId}" is closed`);
     const previousTabId = this.activeTabId;
     this.activeTabId = tabId;
     this.activeMachineId = tab.machineId;
     tab.lastActiveAt = Date.now();
-
-    this.emit('tabSwitched', {
-      previousTabId,
-      newTabId: tabId,
-      machineId: tab.machineId,
-    });
+    this.emit('tabSwitched', { previousTabId, newTabId: tabId, machineId: tab.machineId });
   }
 
   updateTab(
@@ -225,18 +188,13 @@ export class TabManager {
     updates: Partial<Pick<BrowserTab, 'url' | 'title' | 'status' | 'screenshotB64' | 'sessionId'>>
   ): void {
     const tab = this.tabs.get(tabId);
-    if (!tab) {
-      throw new Error(`Tab "${tabId}" not found`);
-    }
-
+    if (!tab) throw new Error(`Tab "${tabId}" not found`);
     if (updates.url !== undefined) tab.url = updates.url;
     if (updates.title !== undefined) tab.title = updates.title;
     if (updates.status !== undefined) tab.status = updates.status;
     if (updates.screenshotB64 !== undefined) tab.screenshotB64 = updates.screenshotB64;
     if (updates.sessionId !== undefined) tab.sessionId = updates.sessionId;
-
     tab.lastActiveAt = Date.now();
-
     this.emit('tabUpdated', { tabId, updates });
   }
 
@@ -261,8 +219,6 @@ export class TabManager {
     return Array.from(this.tabs.values()).map((t) => ({ ...t }));
   }
 
-  // ---- State snapshot ------------------------------------------------------
-
   getState(): TabManagerState {
     return {
       machines: this.getMachines(),
@@ -281,7 +237,6 @@ function generateId(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
-  // Fallback for environments without crypto.randomUUID
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
@@ -347,7 +302,6 @@ export interface UseTabManagerReturn {
 export function useTabManager(): UseTabManagerReturn {
   const managerRef = useRef<TabManager>(getTabManager());
   const mgr = managerRef.current;
-
   const [state, setState] = useState<TabManagerState>(() => mgr.getState());
 
   useEffect(() => {
@@ -355,34 +309,20 @@ export function useTabManager(): UseTabManagerReturn {
       setState(newState as TabManagerState);
     };
     mgr.on('stateChanged', onChange);
-    // Sync in case state changed between render and effect
     setState(mgr.getState());
-    return () => {
-      mgr.off('stateChanged', onChange);
-    };
+    return () => { mgr.off('stateChanged', onChange); };
   }, [mgr]);
 
-  const createTab = useCallback(
-    (machineId: string, url?: string) => mgr.createTab(machineId, url),
-    [mgr]
-  );
+  const createTab = useCallback((machineId: string, url?: string) => mgr.createTab(machineId, url), [mgr]);
   const closeTab = useCallback((tabId: string) => mgr.closeTab(tabId), [mgr]);
   const switchTab = useCallback((tabId: string) => mgr.switchTab(tabId), [mgr]);
   const updateTab = useCallback(
-    (
-      tabId: string,
-      updates: Partial<Pick<BrowserTab, 'url' | 'title' | 'status' | 'screenshotB64' | 'sessionId'>>
-    ) => mgr.updateTab(tabId, updates),
+    (tabId: string, updates: Partial<Pick<BrowserTab, 'url' | 'title' | 'status' | 'screenshotB64' | 'sessionId'>>) =>
+      mgr.updateTab(tabId, updates),
     [mgr]
   );
-  const addMachine = useCallback(
-    (machine: Machine) => mgr.addMachine(machine),
-    [mgr]
-  );
-  const removeMachine = useCallback(
-    (machineId: string) => mgr.removeMachine(machineId),
-    [mgr]
-  );
+  const addMachine = useCallback((machine: Machine) => mgr.addMachine(machine), [mgr]);
+  const removeMachine = useCallback((machineId: string) => mgr.removeMachine(machineId), [mgr]);
 
   return {
     state,

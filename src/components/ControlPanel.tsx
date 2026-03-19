@@ -6,7 +6,7 @@ import { PresetDetailsModal } from './PresetDetailsModal';
 import { MakeTestPanel } from './MakeTestPanel';
 
 export function ControlPanel() {
-  const { systemStatus, currentCycle, campaign, clearCampaign } = useCampaign();
+  const { systemStatus, currentCycle, campaign, clearCampaign, stopCycle } = useCampaign();
   const { isDarkMode } = useTheme();
   const [showSettings, setShowSettings] = useState(false);
   const [showTestMake, setShowTestMake] = useState(false);
@@ -69,6 +69,19 @@ export function ControlPanel() {
 
         {/* Buttons */}
         <div className="flex gap-2">
+          {campaign && isRunning && (
+            <button
+              onClick={() => stopCycle()}
+              className={`border px-4 py-1.5 text-[10px] font-mono font-semibold uppercase tracking-[0.15em] transition-all duration-150 ${
+                isDarkMode
+                  ? 'border-red-700/60 text-red-400/80 hover:border-red-500 hover:text-red-300 hover:bg-red-950/30'
+                  : 'border-red-300 text-red-600 hover:border-red-500'
+              }`}
+              title="Stop research pipeline"
+            >
+              Stop
+            </button>
+          )}
           {campaign && (
             <button
               onClick={() => clearCampaign()}
@@ -105,8 +118,8 @@ export function ControlPanel() {
               onClick={() => setShowPresetDetails(true)}
               className={`border px-3 py-1.5 text-[10px] font-mono font-semibold uppercase tracking-[0.15em] transition-all duration-150 ${
                 isDarkMode
-                  ? 'border-purple-800 text-purple-400 hover:border-purple-600 hover:text-purple-300 hover:bg-purple-950/30'
-                  : 'border-purple-300 text-purple-600 hover:border-purple-500'
+                  ? 'border-blue-800 text-blue-400 hover:border-blue-600 hover:text-blue-300 hover:bg-blue-950/30'
+                  : 'border-blue-300 text-blue-600 hover:border-blue-500'
               }`}
               title="View all preset details"
             >
