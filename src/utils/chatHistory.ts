@@ -79,7 +79,7 @@ const CONVERSATION_PREFIX = 'nomad-conv-';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function deriveTitle(messages: StoredMessageBlock[]): string {
+function _deriveTitle(messages: StoredMessageBlock[]): string {
   const firstUser = messages.find(m => m.type === 'user');
   if (!firstUser) return 'New conversation';
   const text = firstUser.content.trim();

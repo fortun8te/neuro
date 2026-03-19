@@ -182,7 +182,7 @@ function buildTools(workspaceId?: string): ToolDef[] {
     },
     {
       name: 'browse',
-      description: 'Navigate to a URL and interact with it (click, fill, scroll). Lightweight single-page automation. For multi-page sessions, use use_computer instead.',
+      description: 'Navigate to a URL and interact with it (click, fill, scroll). Falls back to page scraping if browser sandbox is unavailable.',
       parameters: {
         url: { type: 'string', description: 'URL to navigate to', required: true },
         goal: { type: 'string', description: 'What to do on the page (e.g., "click Add to Cart", "fill in the form")' },
@@ -191,16 +191,28 @@ function buildTools(workspaceId?: string): ToolDef[] {
         try {
           const url = String(params.url || '');
           const goal = String(params.goal || 'Explore this page and summarize what you find.');
-          const navResult = await sandboxService.navigate(url);
-          if (navResult.error) return { success: false, output: `Navigation failed: ${navResult.error}` };
 
-          let summary = '';
-          await runPlanAct(goal, getPlannerModel(), getExecutorModel(), {
-            onDone: (s) => { summary = s; },
-            onError: (e) => { summary = `Error: ${e}`; },
-          }, 20, signal);
+          // Try sandbox first
+          try {
+            const navResult = await sandboxService.navigate(url);
+            if (navResult.error) throw new Error(navResult.error);
 
-          return { success: true, output: summary || `Browsed ${url}`, data: { url, title: navResult.title } };
+            let summary = '';
+            await runPlanAct(goal, getPlannerModel(), getExecutorModel(), {
+              onDone: (s) => { summary = s; },
+              onError: (e) => { summary = `Error: ${e}`; },
+            }, 20, signal);
+
+            return { success: true, output: summary || `Browsed ${url}`, data: { url, title: navResult.title } };
+          } catch {
+            // Sandbox unavailable — fall back to Wayfarer scrape + analysis
+            const result = await screenshotService.analyzePage(url);
+            const text = typeof result.page_text === 'object'
+              ? Object.values(result.page_text).join('\n').slice(0, 6000)
+              : String(result.page_text || '').slice(0, 6000);
+            const fallbackNote = `[Browser sandbox unavailable — used page scraping fallback]\n\n`;
+            return { success: true, output: fallbackNote + (text || 'No content extracted.'), data: result };
+          }
         } catch (err) {
           return { success: false, output: `Browse failed: ${err instanceof Error ? err.message : err}` };
         }
@@ -487,16 +499,21 @@ function buildTools(workspaceId?: string): ToolDef[] {
         seconds: { type: 'number', description: 'Seconds to wait (1-60)', required: true },
         reason: { type: 'string', description: 'Brief reason for waiting (shown in UI)' },
       },
-      execute: async (params) => {
+      execute: async (params, signal) => {
         const secs = Math.min(Math.max(Number(params.seconds) || 5, 1), 60);
         const reason = String(params.reason || '');
-        await new Promise(r => setTimeout(r, secs * 1000));
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(resolve, secs * 1000);
+          if (signal) {
+            signal.addEventListener('abort', () => { clearTimeout(timer); reject(new Error('Aborted')); }, { once: true });
+          }
+        });
         return { success: true, output: `Waited ${secs}s${reason ? `: ${reason}` : ''}` };
       },
     },
     {
       name: 'use_computer',
-      description: 'Spawn a browser automation session to accomplish a goal. The computer agent navigates pages, clicks buttons, fills forms, and reports back. Use when you need interactive web browsing (not just scraping). Returns: pages visited, actions taken, key findings. Screenshots and results are auto-saved to workspace.',
+      description: 'Spawn a browser automation session to accomplish a goal. The computer agent navigates pages, clicks buttons, fills forms, and reports back. Falls back to web scraping + analysis if the browser sandbox is not running. Returns: pages visited, actions taken, key findings.',
       parameters: {
         goal: { type: 'string', description: 'What to accomplish in the browser (e.g. "Go to simpletics.com and find all product prices")', required: true },
         start_url: { type: 'string', description: 'URL to start at (optional — agent can navigate itself)' },
@@ -508,6 +525,36 @@ function buildTools(workspaceId?: string): ToolDef[] {
           if (!goal) return { success: false, output: 'No goal provided.' };
           const startUrl = String(params.start_url || '');
           const maxActions = Math.min(Number(params.max_actions) || 20, 50);
+
+          // Check if sandbox is reachable before committing to a full session
+          let sandboxAvailable = false;
+          try {
+            const healthCheck = await fetch('http://localhost:8080/health', { signal: AbortSignal.timeout(3000) });
+            sandboxAvailable = healthCheck.ok;
+          } catch { sandboxAvailable = false; }
+
+          if (!sandboxAvailable) {
+            // Fallback: use Wayfarer to scrape + screenshot the target URL
+            const targetUrl = startUrl || '';
+            if (!targetUrl) {
+              return { success: false, output: 'Browser sandbox is not running (localhost:8080). Start it with Docker, or provide a start_url so I can fall back to web scraping.' };
+            }
+
+            try {
+              const result = await screenshotService.analyzePage(targetUrl);
+              const text = typeof result.page_text === 'object'
+                ? Object.values(result.page_text).join('\n').slice(0, 6000)
+                : String(result.page_text || '').slice(0, 6000);
+              const dims = result.width && result.height ? `Screenshot: ${result.width}x${result.height}` : '';
+              return {
+                success: true,
+                output: `[Browser sandbox unavailable — used Wayfarer scraping fallback]\n\nGoal: ${goal}\nURL: ${targetUrl}\n${dims}\n\n${text || 'No content extracted.'}`,
+                data: result,
+              };
+            } catch (fallbackErr) {
+              return { success: false, output: `Browser sandbox is not running and Wayfarer fallback also failed: ${fallbackErr instanceof Error ? fallbackErr.message : fallbackErr}` };
+            }
+          }
 
           // Navigate to start URL if provided
           if (startUrl) {
@@ -527,7 +574,7 @@ function buildTools(workspaceId?: string): ToolDef[] {
           let summary = '';
 
           await runPlanAct(goal, getPlannerModel(), getExecutorModel(), {
-            onAction: (action, result) => {
+            onAction: (action, _result) => {
               sessionData.actionsCount++;
               if (action.action === 'navigate' && action.url) {
                 sessionData.pagesVisited.push(action.url);
@@ -544,7 +591,6 @@ function buildTools(workspaceId?: string): ToolDef[] {
               const screenshotResult = await sandboxService.screenshot(70);
               if (screenshotResult.image_base64) {
                 const fname = `computer-session-${Date.now()}.jpg`;
-                // Save base64 image via shell
                 const shellPath = `${getWorkspacePath(workspaceId).replace('~', '$HOME')}/${fname}`;
                 await fetch('/api/shell', {
                   method: 'POST',
@@ -556,7 +602,6 @@ function buildTools(workspaceId?: string): ToolDef[] {
                 });
                 sessionData.filesSaved.push(fname);
               }
-              // Save findings summary
               if (summary) {
                 const summaryFname = `computer-session-${Date.now()}-summary.md`;
                 await workspaceSave(workspaceId, summaryFname, `# Computer Session\n\n**Goal:** ${goal}\n**Pages visited:** ${sessionData.pagesVisited.length}\n**Actions taken:** ${sessionData.actionsCount}\n**Duration:** ${Math.round((Date.now() - sessionData.startTime) / 1000)}s\n\n## Findings\n\n${summary}`);
@@ -1298,9 +1343,19 @@ ${toCompress}`,
     } else {
       try {
         result = await tool.execute(toolCallParsed.args, signal);
-        toolCall.status = result.success ? 'done' : 'error';
+        // Check abort after tool completes (tool might not throw on abort)
+        if (signal?.aborted) {
+          result = { success: false, output: 'Aborted by user' };
+          toolCall.status = 'error';
+        } else {
+          toolCall.status = result.success ? 'done' : 'error';
+        }
       } catch (err) {
-        result = { success: false, output: `Tool error: ${err instanceof Error ? err.message : err}` };
+        if (signal?.aborted) {
+          result = { success: false, output: 'Aborted by user' };
+        } else {
+          result = { success: false, output: `Tool error: ${err instanceof Error ? err.message : err}` };
+        }
         toolCall.status = 'error';
       }
     }

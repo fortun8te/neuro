@@ -397,15 +397,17 @@ function AnimatedAgentText({ text, animate }: { text: string; animate: boolean }
   // For long text, use typewriter with fast speed; for short, use fade
   const isLong = text.length > 600;
   return (
-    <ResponseStream
-      textStream={text}
-      mode={isLong ? "typewriter" : "fade"}
-      speed={isLong ? 95 : 60}
-      fadeDuration={400}
-      segmentDelay={15}
-      characterChunkSize={isLong ? 8 : undefined}
-      className="whitespace-pre-wrap text-[13px] leading-[1.7]"
-    />
+    <div style={{ color: 'rgba(255,255,255,0.6)' }}>
+      <ResponseStream
+        textStream={text}
+        mode={isLong ? "typewriter" : "fade"}
+        speed={isLong ? 95 : 60}
+        fadeDuration={400}
+        segmentDelay={15}
+        characterChunkSize={isLong ? 8 : undefined}
+        className="whitespace-pre-wrap text-[13px] leading-[1.7]"
+      />
+    </div>
   );
 }
 
@@ -536,7 +538,7 @@ function BlurredThinkingBox({ content }: { content: string }) {
   }, [content]);
   return (
     <div className="relative overflow-hidden" style={{ maxHeight: 150 }}>
-      <div ref={scrollRef} className="max-h-[150px] overflow-y-auto">
+      <div ref={scrollRef} className="max-h-[150px] overflow-y-auto" style={{ color: 'rgba(255,255,255,0.4)' }}>
         <ResponseStream
           textStream={content}
           mode="typewriter"
@@ -1327,8 +1329,34 @@ export function AgentPanel() {
   };
 
   const handleStop = () => {
-    abortRef.current?.abort(); abortRef.current = null;
+    // Abort the controller — this propagates to all running tools via signal
+    abortRef.current?.abort('User stopped the agent');
+    abortRef.current = null;
     setStatus('idle'); setTaskProgress(null);
+    setCurrentToolName(undefined);
+    // Mark any in-progress steps as done and set error pills
+    const blockId = activeBlockIdRef.current;
+    const stepId = activeStepIdRef.current;
+    if (blockId && stepId) {
+      setBlocks(prev => prev.map(b => {
+        if (b.id !== blockId) return b;
+        return {
+          ...b,
+          completedAt: Date.now(),
+          steps: (b.steps || []).map(s => {
+            if (s.id !== stepId) return s;
+            return {
+              ...s,
+              status: 'done' as const,
+              isThinking: false,
+              activityLabel: 'Stopped',
+              actions: s.actions.map(a => a.status === 'running' ? { ...a, status: 'error' as const, result: 'Aborted by user' } : a),
+              entries: s.entries.map(e => e.type === 'action' && e.pill.status === 'running' ? { type: 'action' as const, pill: { ...e.pill, status: 'error' as const, result: 'Aborted by user' } } : e),
+            };
+          }),
+        };
+      }));
+    }
     activeBlockIdRef.current = null; activeStepIdRef.current = null;
   };
 
@@ -1410,8 +1438,8 @@ export function AgentPanel() {
                             <span className="text-[8px] font-medium px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.2)' }}>v0.1</span>
                             <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.15)' }}>{formatTime(block.timestamp)}</span>
                             {block.completedAt && block.startedAt && (
-                              <span className="text-[10px] font-sans" style={{ color: 'rgba(255,255,255,0.12)' }}>
-                                {Math.round((block.completedAt - block.startedAt) / 1000)}s{block.tokenCount ? ` · ↓${block.tokenCount}t` : ''}
+                              <span className="text-[10px] font-sans" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                                {Math.round((block.completedAt - block.startedAt) / 1000)}s{block.tokenCount ? <span style={{ color: 'rgba(43,121,255,0.5)' }}> · {block.tokenCount}tk</span> : ''}
                               </span>
                             )}
                             {!block.completedAt && block.startedAt && (
