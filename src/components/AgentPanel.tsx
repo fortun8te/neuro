@@ -330,7 +330,7 @@ function deriveStepTitle(thinking: string): string {
 function RoutingIndicator() {
   return (
     <div className="flex gap-3">
-      <NomadLogo />
+      <img src="/neuro-icon-192.png" width={20} height={20} alt="" className="shrink-0 mt-0.5" style={{ borderRadius: '50%', objectFit: 'cover', opacity: 0.55 }} />
       <div className="flex-1 min-w-0 pt-0.5">
         <div className="flex items-center gap-2">
           <ThinkingMorph size={14} />
@@ -1966,13 +1966,8 @@ export function AgentPanel() {
                   case 'agent':
                     return (
                       <div key={block.id} className="flex gap-3">
-                        {/* Manus agent identity: small globe icon */}
-                        <div
-                          className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5"
-                          style={{ color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
-                        >
-                          <GlobeIcon />
-                        </div>
+                        {/* Neuro agent icon */}
+                        <img src="/neuro-icon-192.png" width={20} height={20} alt="" className="shrink-0 mt-0.5" style={{ borderRadius: '50%', objectFit: 'cover', opacity: 0.55 }} />
                         <div className="flex-1 min-w-0 pt-0">
                           {/* Identity line: "neuro" —  */}
                           <div className="flex items-center gap-1.5 mb-2">

@@ -130,8 +130,8 @@ ASK TOOL RULES:
 
 Always pick the LIGHTEST tool that can do the job. Don't use computer for a simple lookup. Don't use research for a quick fact.
 
-Keep responses short and direct. Match the user tone naturally. Never use roleplay actions. Never force slang. Just be helpful. Use Celsius and metric. Never make up data.
-Always say "I'm Neuro" if asked who you are.`;
+TONE: Be natural and chill but not try-hard. Short responses. No exclamation spam. No "yo!!" or "let's get this rolling!!" energy. No roleplay actions like *sighs* or *searches*. No forced slang. If the user is casual, be casual back. If they're direct, be direct. Just be helpful without performing enthusiasm. Like a smart friend who helps without making it weird.
+Use Celsius and metric. Never make up data. Say "I'm Neuro" if asked who you are.`;
 
 function parseToolDecision(response: string): { tool: string; param: string; message: string; question?: string; options?: string[] } {
   const match = response.match(/^\[TOOL:(\w+)(?:\|(.+?))?\]\n?([\s\S]*)/);
@@ -172,11 +172,11 @@ function isGreeting(msg: string): boolean {
 }
 
 const GREETING_REPLIES = [
-  'Hey! What can I help with?',
-  'Hey there. What do you need?',
-  'Yo! What are we working on?',
-  'Hey. Fire away.',
-  'What\'s up? Ready when you are.',
+  'hey, what do you need?',
+  'what\'s up',
+  'hey. what can I help with?',
+  'sup, what do you need?',
+  'hey, go ahead',
 ];
 
 const ROUTE_COLORS: Record<string, string> = {
@@ -254,7 +254,7 @@ function AgentText({ text }: { text: string }) {
   return (
     <div style={{ padding: '4px 0' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-        <img src="/neuro-icon-192.png" width={18} height={18} style={{ borderRadius: 5, objectFit: 'cover', opacity: 0.7 }} alt="" />
+        <img src="/neuro-icon-192.png" width={18} height={18} style={{ borderRadius: '50%', objectFit: 'cover', opacity: 0.55, flexShrink: 0 }} alt="" />
         <span style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.50)' }}>neuro</span>
         <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.20)' }}>
           {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
