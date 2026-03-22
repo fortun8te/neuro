@@ -66,9 +66,14 @@ export class MachineClient {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(60000), // 60s — browser actions can be slow
     });
     if (!res.ok) throw new Error(`Sandbox API ${path}: ${res.status}`);
-    return res.json();
+    try {
+      return await res.json();
+    } catch {
+      throw new Error(`Sandbox API ${path}: non-JSON response`);
+    }
   }
 
   // ── Core browser methods ──

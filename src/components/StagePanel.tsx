@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { motion } from 'framer-motion';
 import type { Cycle, StageName } from '../types';
+import type { ResearchPauseEvent } from '../utils/researchAgents';
 import { useTheme } from '../context/ThemeContext';
 import { useCampaign } from '../context/CampaignContext';
 import { ResearchOutput } from './ResearchOutput';
@@ -91,7 +92,7 @@ interface StagePanelProps {
   isDarkMode?: boolean;
   viewStage?: StageName | null;
   onUpdateOutput?: (stageName: StageName, output: string) => void;
-  onPauseForInput?: (event: any) => Promise<string>;
+  onPauseForInput?: (event: ResearchPauseEvent) => Promise<string>;
 }
 
 export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewStage }: StagePanelProps) {
@@ -272,11 +273,15 @@ export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewSta
             title="Click to expand thinking tokens"
           >
             {/* Thinking animation dot — clickable to open full modal */}
-            <button
+            {/* Using div instead of button here to avoid invalid nested <button> HTML */}
+            <div
+              role="button"
+              tabIndex={0}
               onClick={(e) => {
                 e.stopPropagation();
                 setThinkingModalOpen(true);
               }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); setThinkingModalOpen(true); } }}
               className="w-3 h-3 flex items-center justify-center flex-shrink-0 cursor-pointer group relative hover:opacity-80"
               title="Click to view full thinking"
             >
@@ -310,7 +315,7 @@ export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewSta
               {!tokenInfo.isThinking && (
                 <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: isDark ? '#3f3f46' : '#d4d4d8' }} />
               )}
-            </button>
+            </div>
 
             <span className="text-[11px] font-semibold flex-1 truncate" style={{
               color: tokenInfo.isThinking ? '#2B79FF' : isDark ? '#71717a' : '#9ca3af'

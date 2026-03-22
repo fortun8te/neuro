@@ -103,11 +103,12 @@ export interface BrowserViewProps {
 
 // ── Inject CSS once ───────────────────────────────────────────
 
-let _cssInjected = false;
 function injectCSS() {
-  if (_cssInjected) return;
-  _cssInjected = true;
+  if (typeof document === 'undefined') return;
+  const id = 'nomad-bv-keyframes';
+  if (document.getElementById(id)) return;
   const s = document.createElement('style');
+  s.id = id;
   s.textContent = `
 @keyframes _bv_pulse {
   0%, 100% { opacity: 0.45; }

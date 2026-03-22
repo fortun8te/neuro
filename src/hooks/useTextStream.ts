@@ -100,10 +100,16 @@ export function useTextStream(options: UseTextStreamOptions): UseTextStreamResul
         setFullText(accumulated);
       }
       if (!cancelled) {
+        // Mark streaming complete only after the iterable is fully consumed.
+        // Do NOT set this synchronously — the animation must not start until
+        // there is text to display and the stream is done.
         setIsStarted(true);
       }
     })();
-    setIsStarted(true);
+    // NOTE: intentionally NOT calling setIsStarted(true) here synchronously.
+    // Doing so would start the typewriter with an empty fullText and then the
+    // animation effect would fire onComplete immediately (infinite-poll branch
+    // for async streams) before any content has arrived.
 
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -126,8 +132,16 @@ export function useTextStream(options: UseTextStreamOptions): UseTextStreamResul
             setIsComplete(true);
             onCompleteRef.current?.();
           } else {
-            // For async, keep polling until the text stops growing
-            timerRef.current = setTimeout(tick, intervalMs * 2);
+            // For async iterables: isStarted becomes true only after the iterable
+            // is fully consumed (see the resolve effect above). Until then, poll
+            // so the typewriter can keep up as new chunks arrive. Once isStarted
+            // is true the stream is done — mark complete instead of looping forever.
+            if (isStarted) {
+              setIsComplete(true);
+              onCompleteRef.current?.();
+            } else {
+              timerRef.current = setTimeout(tick, intervalMs * 2);
+            }
           }
           return;
         }
@@ -148,10 +162,15 @@ export function useTextStream(options: UseTextStreamOptions): UseTextStreamResul
 
       const addNext = () => {
         if (segIdxRef.current >= words.length) {
-          if (typeof textStream === 'string') {
+          // For strings the stream is complete when segments are exhausted.
+          // For async iterables, isStarted is set true only after the iterable
+          // is fully consumed, so we can use it as the completion signal here too.
+          if (typeof textStream === 'string' || isStarted) {
             setIsComplete(true);
             onCompleteRef.current?.();
           }
+          // If isStarted is still false, new chunks may arrive and re-trigger
+          // this effect with a larger fullText — do nothing for now.
           return;
         }
         segIdxRef.current += 1;

@@ -5,10 +5,11 @@
  *   createPlan()  -- generate an initial plan from a user goal + screen state
  *   checkPlan()   -- after each step, decide whether to continue, replan, or stop
  *
- * Dedicated model: gpt-oss-20b (resident GPU model).
+ * Uses getModelForStage('planner') from modelConfig.
  */
 
 import { ollamaService } from '../ollama';
+import { getModelForStage } from '../modelConfig';
 
 // ── Types ──
 
@@ -40,7 +41,7 @@ export interface PlanRevision {
 
 // ── Constants ──
 
-const PLANNER_MODEL = 'gpt-oss-20b';
+function getPlannerModel() { return getModelForStage('planner'); }
 
 // ── Helpers ──
 
@@ -136,7 +137,7 @@ export async function createPlan(
 
   let raw = '';
   await ollamaService.generateStream(prompt, CREATE_PLAN_SYSTEM, {
-    model: PLANNER_MODEL,
+    model: getPlannerModel(),
     temperature: 0.4,
     num_predict: 800,
     think: true,
@@ -203,7 +204,7 @@ export async function checkPlan(
 
   let raw = '';
   await ollamaService.generateStream(prompt, CHECK_PLAN_SYSTEM, {
-    model: PLANNER_MODEL,
+    model: getPlannerModel(),
     temperature: 0.3,
     num_predict: 600,
     think: true,

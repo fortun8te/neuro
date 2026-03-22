@@ -13,7 +13,7 @@ export type RouteClassification = 'DIRECT' | 'QUICK' | 'MEDIUM' | 'COMPLEX' | 'I
 
 export interface RouteResult {
   classification: RouteClassification;
-  handler: 'middle-agent' | 'direct-executor' | 'orchestrator-medium' | 'orchestrator-complex';
+  handler: 'agent-engine' | 'direct-executor' | 'orchestrator-medium' | 'orchestrator-complex';
   model: string;
 }
 
@@ -113,12 +113,12 @@ export function classify(msg: string, activeTasks: ActiveTask[]): RouteClassific
 // ─────────────────────────────────────────────────────────────
 
 const ROUTE_TABLE: Record<RouteClassification, RouteResult> = {
-  CHAT:      { classification: 'CHAT',      handler: 'middle-agent',        model: 'qwen3.5:9b' },
+  CHAT:      { classification: 'CHAT',      handler: 'agent-engine',        model: 'qwen3.5:9b' },
   DIRECT:    { classification: 'DIRECT',    handler: 'direct-executor',     model: 'qwen3.5:9b' },
-  QUICK:     { classification: 'QUICK',     handler: 'middle-agent',        model: 'qwen3.5:9b' },
+  QUICK:     { classification: 'QUICK',     handler: 'agent-engine',        model: 'qwen3.5:9b' },
   MEDIUM:    { classification: 'MEDIUM',    handler: 'orchestrator-medium', model: 'qwen3.5:4b'  },
   COMPLEX:   { classification: 'COMPLEX',   handler: 'orchestrator-complex', model: 'qwen3.5:9b' },
-  INTERRUPT: { classification: 'INTERRUPT', handler: 'middle-agent',        model: 'qwen3.5:9b' },
+  INTERRUPT: { classification: 'INTERRUPT', handler: 'agent-engine',        model: 'qwen3.5:9b' },
 };
 
 export function route(classification: RouteClassification): RouteResult {

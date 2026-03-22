@@ -53,8 +53,7 @@ interface ActionPill {
 const springTransition = { type: 'spring' as const, bounce: 0, duration: 0.3 };
 
 // ── CSS ──
-let cssInjected = false;
-const CSS = `
+const WF_CSS = `
 @keyframes wf-cursor-glow {
   0%, 100% { filter: drop-shadow(0 0 4px rgba(43,121,255,0.35)); }
   50% { filter: drop-shadow(0 0 8px rgba(43,121,255,0.55)); }
@@ -69,11 +68,13 @@ const CSS = `
 }
 `;
 function injectCSS() {
-  if (cssInjected) return;
+  if (typeof document === 'undefined') return;
+  const id = 'nomad-wf-plus-keyframes';
+  if (document.getElementById(id)) return;
   const s = document.createElement('style');
-  s.textContent = CSS;
+  s.id = id;
+  s.textContent = WF_CSS;
   document.head.appendChild(s);
-  cssInjected = true;
 }
 
 // ── Action icon map ──
@@ -709,7 +710,7 @@ export const WayfayerPlusPanel = forwardRef<WayfayerPlusPanelHandle, { standalon
                       <circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" />
                       <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
                     </svg>
-                    <p className="text-[11px] font-medium" style={{ color: 'rgba(255,255,255,0.35)' }}>Nomad Agent</p>
+                    <p className="text-[11px] font-medium" style={{ color: 'rgba(255,255,255,0.35)' }}>Glance Agent</p>
                     <p className="text-[9px] mt-1" style={{ color: 'rgba(255,255,255,0.15)' }}>Give an instruction to get started</p>
                   </>
                 )}

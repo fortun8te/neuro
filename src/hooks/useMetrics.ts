@@ -225,6 +225,10 @@ export function useMetrics(
       return;
     }
 
+    // Seed state from rawMetrics on first run (state starts as [] so animation
+    // would otherwise operate on an empty list and never show any researchers).
+    setActiveResearchers(rawMetrics.activeResearchers ?? []);
+
     // For now, animate existing researchers' progress
     const interval = setInterval(() => {
       setActiveResearchers((prev) =>
@@ -237,7 +241,10 @@ export function useMetrics(
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isRunning, activeResearcherCount]);
+  }, [isRunning, activeResearcherCount]); // eslint-disable-line react-hooks/exhaustive-deps
+  // rawMetrics.activeResearchers intentionally excluded: we only re-seed when the
+  // count changes (a new batch of researchers arrives), not on every metrics update.
+  // Including it would reset progress on every render tick.
 
   // Build normalized input
   const metricsInput: LiveMetricsInput = useMemo(

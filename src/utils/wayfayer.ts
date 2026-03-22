@@ -42,6 +42,26 @@ function getHost(): string {
   return DEFAULT_HOST;
 }
 
+/**
+ * Check if Wayfarer is reachable. Convenience export for other modules.
+ */
+export async function isWayfarerHealthy(): Promise<boolean> {
+  try {
+    const resp = await fetch(`${getHost()}/health`, { signal: AbortSignal.timeout(3000) });
+    return resp.ok;
+  } catch { return false; }
+}
+
+/**
+ * Check if SearXNG is reachable.
+ */
+export async function isSearxngHealthy(): Promise<boolean> {
+  try {
+    const resp = await fetch(`${INFRASTRUCTURE.searxngUrl}/healthz`, { signal: AbortSignal.timeout(3000) });
+    return resp.ok;
+  } catch { return false; }
+}
+
 export const wayfayerService = {
   getHost,
 
@@ -73,7 +93,12 @@ export const wayfayerService = {
         return emptyResult(query);
       }
 
-      return await resp.json();
+      try {
+        return await resp.json();
+      } catch {
+        console.error('Wayfayer: non-JSON response from /research');
+        return emptyResult(query);
+      }
     } catch (error) {
       if (signal?.aborted) throw error;
       console.error('Wayfayer fetch error:', error);
@@ -95,7 +120,12 @@ export const wayfayerService = {
         return { results: [], total: urls.length, success: 0 };
       }
 
-      return await resp.json();
+      try {
+        return await resp.json();
+      } catch {
+        console.error('Wayfayer: non-JSON response from /crawl/batch');
+        return { results: [], total: urls.length, success: 0 };
+      }
     } catch (error) {
       if (signal?.aborted) throw error;
       console.error('Batch crawl error:', error);
@@ -213,22 +243,41 @@ export const screenshotService = {
     viewportHeight?: number;
     quality?: number;
     concurrency?: number;
+    signal?: AbortSignal;
+    timeoutMs?: number;
   }): Promise<ScreenshotResult[]> {
+    const controller = new AbortController();
+    const timeout = options?.timeoutMs ?? 180000; // 3 min for batch Playwright
+    const timer = setTimeout(() => controller.abort(), timeout);
+    if (options?.signal) {
+      if (options.signal.aborted) { clearTimeout(timer); return urls.map(u => ({ url: u, image_base64: '', width: 0, height: 0, error: 'Cancelled' })); }
+      options.signal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
     try {
-      const resp = await fetch(`${getHost()}/screenshot/batch`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          urls,
-          viewport_width: options?.viewportWidth ?? 1280,
-          viewport_height: options?.viewportHeight ?? 720,
-          quality: options?.quality ?? 60,
-          concurrency: options?.concurrency ?? 3,
-        }),
-      });
+      let resp: Response;
+      try {
+        resp = await fetch(`${getHost()}/screenshot/batch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            urls,
+            viewport_width: options?.viewportWidth ?? 1280,
+            viewport_height: options?.viewportHeight ?? 720,
+            quality: options?.quality ?? 60,
+            concurrency: options?.concurrency ?? 3,
+          }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
       if (!resp.ok) return urls.map(u => ({ url: u, image_base64: '', width: 0, height: 0, error: `HTTP ${resp.status}` }));
-      const data = await resp.json();
-      return data.screenshots;
+      try {
+        const data = await resp.json();
+        return data.screenshots;
+      } catch {
+        return urls.map(u => ({ url: u, image_base64: '', width: 0, height: 0, error: 'Non-JSON response from /screenshot/batch' }));
+      }
     } catch (error) {
       return urls.map(u => ({ url: u, image_base64: '', width: 0, height: 0, error: String(error) }));
     }
@@ -265,25 +314,40 @@ export const screenshotService = {
   async sessionAction(sessionId: string, action: string, opts?: {
     selector?: string; js?: string; scrollY?: number; clickX?: number; clickY?: number;
     quality?: number; signal?: AbortSignal;
-  }): Promise<{ error: string | null; result: any; image_base64: string; title?: string; current_url?: string }> {
+  }): Promise<{ error: string | null; result: unknown; image_base64: string; title?: string; current_url?: string }> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60000); // 60s per action
+    if (opts?.signal) {
+      if (opts.signal.aborted) { clearTimeout(timer); return { error: 'Cancelled', result: null, image_base64: '' }; }
+      opts.signal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
     try {
-      const resp = await fetch(`${getHost()}/session/action`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          session_id: sessionId,
-          action,
-          selector: opts?.selector ?? '',
-          js: opts?.js ?? '',
-          scroll_y: opts?.scrollY ?? 0,
-          click_x: opts?.clickX ?? -1,
-          click_y: opts?.clickY ?? -1,
-          quality: opts?.quality ?? 60,
-        }),
-        signal: opts?.signal,
-      });
+      let resp: Response;
+      try {
+        resp = await fetch(`${getHost()}/session/action`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: sessionId,
+            action,
+            selector: opts?.selector ?? '',
+            js: opts?.js ?? '',
+            scroll_y: opts?.scrollY ?? 0,
+            click_x: opts?.clickX ?? -1,
+            click_y: opts?.clickY ?? -1,
+            quality: opts?.quality ?? 60,
+          }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
       if (!resp.ok) return { error: `HTTP ${resp.status}`, result: null, image_base64: '' };
-      return await resp.json();
+      try {
+        return await resp.json();
+      } catch {
+        return { error: 'Non-JSON response from /session/action', result: null, image_base64: '' };
+      }
     } catch (error) {
       return { error: String(error), result: null, image_base64: '' };
     }
@@ -291,7 +355,7 @@ export const screenshotService = {
 
   /** Close an active session */
   async sessionClose(sessionId: string): Promise<void> {
-    try { await fetch(`${getHost()}/session/close?session_id=${sessionId}`, { method: 'POST' }); } catch {}
+    try { await fetch(`${getHost()}/session/close`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: sessionId }) }); } catch {}
   },
 
   /**
@@ -302,27 +366,46 @@ export const screenshotService = {
     viewportWidth?: number;
     viewportHeight?: number;
     quality?: number;
+    signal?: AbortSignal;
+    timeoutMs?: number;
   }): Promise<PageAnalysisResult> {
+    const controller = new AbortController();
+    const timeout = options?.timeoutMs ?? 120000; // 2 min for Playwright analyze
+    const timer = setTimeout(() => controller.abort(), timeout);
+    if (options?.signal) {
+      if (options.signal.aborted) { clearTimeout(timer); return { url, image_base64: '', width: 0, height: 0, page_text: {}, error: 'Cancelled' }; }
+      options.signal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
     try {
-      const resp = await fetch(`${getHost()}/analyze-page`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url,
-          viewport_width: options?.viewportWidth ?? 1280,
-          viewport_height: options?.viewportHeight ?? 1080,
-          quality: options?.quality ?? 70,
-        }),
-      });
+      let resp: Response;
+      try {
+        resp = await fetch(`${getHost()}/analyze-page`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url,
+            viewport_width: options?.viewportWidth ?? 1280,
+            viewport_height: options?.viewportHeight ?? 1080,
+            quality: options?.quality ?? 70,
+          }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
       if (!resp.ok) return { url, image_base64: '', width: 0, height: 0, page_text: {}, error: `HTTP ${resp.status}` };
-      return await resp.json();
+      try {
+        return await resp.json();
+      } catch {
+        return { url, image_base64: '', width: 0, height: 0, page_text: {}, error: 'Non-JSON response from /analyze-page' };
+      }
     } catch (error) {
       return { url, image_base64: '', width: 0, height: 0, page_text: {}, error: String(error) };
     }
   },
 };
 
-// ── Product page analyzer (screenshot + vision + GLM) ──
+// ── Product page analyzer (screenshot + vision + LLM) ──
 
 import type { ProductPageAnalysis } from '../types';
 import { ollamaService } from './ollama';
@@ -367,7 +450,7 @@ Return ONLY valid JSON, no markdown, no code blocks.`;
       return JSON.parse(jsonMatch[0]);
     }
   } catch (error) {
-    console.error('GLM extraction failed:', error);
+    console.error('LLM extraction failed:', error);
   }
 
   return {};
@@ -432,9 +515,9 @@ Format output with clear labels. Be thorough — combine what you see in the ima
     );
 
     result.visionRawOutput = visionResponse;
-    onProgress?.(`[Product Analysis] Parsing with GLM...`);
+    onProgress?.(`[Product Analysis] Parsing with LLM...`);
 
-    // Step 4: Parse vision output with GLM (include structured data if available)
+    // Step 4: Parse vision output with LLM (include structured data if available)
     const structuredHint = pageData.page_text.structuredData?.length
       ? `\n\nJSON-LD structured data from page:\n${JSON.stringify(pageData.page_text.structuredData, null, 2).slice(0, 2000)}`
       : '';
@@ -506,14 +589,24 @@ interface CrawlLink {
  */
 async function crawlLinks(url: string, linkPattern?: string): Promise<CrawlLink[]> {
   try {
-    const resp = await fetch(`${getHost()}/crawl`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, link_pattern: linkPattern || '' }),
-    });
+    let resp: Response;
+    try {
+      resp = await fetch(`${getHost()}/crawl`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, link_pattern: linkPattern || '' }),
+        signal: AbortSignal.timeout(30000), // 30s — Playwright page load
+      });
+    } catch {
+      return [];
+    }
     if (!resp.ok) return [];
-    const data = await resp.json();
-    return data.links || [];
+    try {
+      const data = await resp.json();
+      return data.links || [];
+    } catch {
+      return [];
+    }
   } catch {
     return [];
   }

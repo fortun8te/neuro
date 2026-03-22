@@ -101,7 +101,7 @@ async function scrapeCompetitorAds(
 }
 
 // ───────────────────────────────────────────────────────────────────
-// Step 3: GLM extraction of ad patterns from scraped text
+// Step 3: LLM extraction of ad patterns from scraped text
 // ───────────────────────────────────────────────────────────────────
 
 async function extractAdPatternsFromText(
@@ -223,7 +223,7 @@ async function buildCompetitorProfile(
     3
   );
 
-  // Get positioning via GLM
+  // Get positioning via LLM
   let positioning = '';
   try {
     const sampleAds = adExamples

@@ -12,6 +12,7 @@
  */
 
 import { get, set } from 'idb-keyval';
+import type { Memory } from './memoryStore';
 
 // ─────────────────────────────────────────────────────────────
 // Budget + threshold constants
@@ -112,8 +113,15 @@ export async function compressContext(
   compressionFn: (text: string, maxWords: number) => Promise<string>,
 ): Promise<Message[]> {
   // 1. Persist full history to IndexedDB
-  const existing: Message[] = (await get<Message[]>(historyKey(taskId))) ?? [];
-  await set(historyKey(taskId), [...existing, ...messages]);
+  // Bug fix #9: wrap in try-catch so a quota or serialization error is
+  // surfaced and doesn't silently drop the history without warning.
+  try {
+    const existing: Message[] = (await get<Message[]>(historyKey(taskId))) ?? [];
+    await set(historyKey(taskId), [...existing, ...messages]);
+  } catch (err) {
+    console.warn('[contextManager] compressContext: failed to persist history to IDB:', err);
+    // Non-fatal — continue; compression still returns a valid fresh context.
+  }
 
   // 2. Split: keep last 10 messages as-is, compress the rest
   const recent = messages.slice(-10);
@@ -232,4 +240,59 @@ export async function recoverState(taskId: string): Promise<RecoveredState> {
   }
 
   return state;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Memory Injection (for cycle feedback loop)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Build a system message that injects prior cycle memories into the current context.
+ * This closes the feedback loop — agents can reference what worked before.
+ *
+ * Memories are formatted as structured context blocks for easy scanning.
+ */
+export function buildMemoryContext(memories: Memory[]): string {
+  if (memories.length === 0) return '';
+
+  // Group memories by type and tag for clear readability
+  const byType: Record<string, Memory[]> = {
+    research: [],
+    campaign: [],
+    user: [],
+    general: [],
+  };
+
+  for (const mem of memories) {
+    if (byType[mem.type]) {
+      byType[mem.type].push(mem);
+    }
+  }
+
+  let context = '\n[PREVIOUS CYCLE LEARNING]\n';
+
+  if (byType.research.length > 0) {
+    context += '\nResearch Findings from Prior Cycles:\n';
+    byType.research.slice(0, 5).forEach(m => {
+      context += `  — ${m.content} [${m.tags.join(', ')}]\n`;
+    });
+  }
+
+  if (byType.campaign.length > 0) {
+    context += '\nCampaign Results from Prior Cycles:\n';
+    byType.campaign.slice(0, 5).forEach(m => {
+      context += `  — ${m.content} [${m.tags.join(', ')}]\n`;
+    });
+  }
+
+  if (byType.user.length > 0) {
+    context += '\nUser Context:\n';
+    byType.user.slice(0, 3).forEach(m => {
+      context += `  — ${m.content}\n`;
+    });
+  }
+
+  context += '\nUse these learnings to avoid repeating past mistakes and build on what worked.\n';
+
+  return context;
 }

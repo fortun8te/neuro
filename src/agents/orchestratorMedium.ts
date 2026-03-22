@@ -10,7 +10,16 @@
 
 import { ollamaService } from '../utils/ollama';
 import { loadPromptBody } from '../utils/promptLoader';
-import { fillTemplate } from './middleAgent';
+
+/**
+ * Fill a prompt template by replacing {variable} placeholders.
+ * All values are coerced to string. Unknown keys are left as-is.
+ */
+export function fillTemplate(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (match, key: string) => {
+    return Object.prototype.hasOwnProperty.call(vars, key) ? vars[key] : match;
+  });
+}
 
 // ─────────────────────────────────────────────────────────────
 // Model constant
@@ -64,7 +73,7 @@ interface RawPlan {
 // Prompt loading
 // ─────────────────────────────────────────────────────────────
 
-const IDENTITY_FALLBACK = `You are Nomad, an autonomous AI agent for creative marketing intelligence.
+const IDENTITY_FALLBACK = `You are Glance, an autonomous AI agent for creative marketing intelligence.
 Be direct, concise. No filler. No "Sure!" or "Of course!".`;
 
 const MEDIUM_ORCH_FALLBACK = `{identity_block}
@@ -79,11 +88,11 @@ Agents: wayfayer, wayfayer-plus, file-agent, code-agent, deploy-agent, vision-ag
 After all steps complete, write a concise final result summary.`;
 
 function getIdentityBlock(): string {
-  return loadPromptBody('core/identity.md') || IDENTITY_FALLBACK;
+  return loadPromptBody('core/identity.txt') || IDENTITY_FALLBACK;
 }
 
 function getMediumOrchPrompt(): string {
-  return loadPromptBody('orchestration/orchestrator-medium.md') || MEDIUM_ORCH_FALLBACK;
+  return loadPromptBody('orchestration/orchestrator-medium.txt') || MEDIUM_ORCH_FALLBACK;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -139,14 +148,14 @@ function parsePlan(raw: string): OrchestrationStep[] | null {
  */
 async function dispatchStep(
   step: OrchestrationStep,
-  taskId: string,
+  _taskId: string,
   onStep?: (step: OrchestrationStep) => void,
   signal?: AbortSignal
 ): Promise<string> {
   const running: OrchestrationStep = { ...step, status: 'running' };
   onStep?.(running);
 
-  console.log(`[orchestrator-medium][${taskId}] Dispatching step ${step.id} → agent:${step.agent} — ${step.do}`);
+  // Dispatching step
 
   // TODO: Wire to agentCoordinator dispatch when available
   // For now: return a stub output so the orchestrator loop can proceed
@@ -223,7 +232,7 @@ export async function runOrchestratorMedium(options: OrchestratorOptions): Promi
 
   // ── Step 1: Generate plan ──────────────────────────────────
   onStatusEvent?.('Planning task...');
-  console.log(`[orchestrator-medium][${taskId}] Generating plan for: ${taskDescription}`);
+  // Generating plan
 
   let planText = '';
   await ollamaService.generateStream(
@@ -247,7 +256,7 @@ export async function runOrchestratorMedium(options: OrchestratorOptions): Promi
   }
 
   onStatusEvent?.(`Plan ready: ${steps.length} steps`);
-  console.log(`[orchestrator-medium][${taskId}] Plan: ${steps.length} steps`);
+  // Plan parsed
 
   // ── Step 2: Execute steps sequentially ────────────────────
   const completedOutputs: string[] = [];

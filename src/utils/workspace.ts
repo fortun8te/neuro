@@ -1,12 +1,12 @@
 /**
- * Workspace — per-chat folder management for the Nomad Agent.
+ * Workspace — per-chat folder management for the Glance Agent.
  *
- * Each chat session gets its own folder under ~/Documents/Nomad Agent/{chat-id}/
+ * Each chat session gets its own folder under ~/Documents/Glance/{chat-id}/
  * where files can be saved, read, and listed. The agent uses these as its
  * working directory for a given conversation.
  */
 
-const BASE_DIR = '~/Documents/Nomad Agent';
+const BASE_DIR = '~/Documents/Glance';
 
 export interface WorkspaceFile {
   name: string;
@@ -17,6 +17,33 @@ export interface WorkspaceFile {
   modifiedAt?: string;
   /** Human-readable relative time like "2m ago" */
   modifiedStr?: string;
+  /** True if this entry is a directory */
+  isFolder?: boolean;
+}
+
+/** Create a folder (and any missing parents) inside the workspace */
+export async function workspaceMkdir(
+  workspaceId: string,
+  folderName: string,
+): Promise<{ success: boolean; error?: string }> {
+  const shellPath = getWorkspacePath(workspaceId).replace('~', '$HOME');
+  // Sanitize: strip leading slashes and disallow path traversal
+  const safe = folderName.replace(/\.\./g, '').replace(/^\/+/, '').trim();
+  if (!safe) return { success: false, error: 'Invalid folder name' };
+  const target = `${shellPath}/${safe}`;
+  try {
+    const resp = await fetch('/api/shell', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: `mkdir -p "${target}"`, timeout: 5000 }),
+    });
+    if (!resp.ok) return { success: false, error: 'Shell API not available' };
+    const result = await resp.json();
+    if (result.exitCode !== 0) return { success: false, error: result.stderr || 'mkdir failed' };
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 /** Format bytes into a human-readable string */
@@ -248,15 +275,15 @@ function formatRelativeTime(isoDate: string): string {
   return new Date(isoDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-/** List files in the workspace with detailed info (size + last modified). Recursive. */
+/** List files in the workspace with detailed info (size + last modified). Recursive. Includes top-level folders. */
 export async function workspaceListDetailed(
   workspaceId: string,
 ): Promise<{ success: boolean; files: WorkspaceFile[]; error?: string }> {
   const shellPath = getWorkspacePath(workspaceId).replace('~', '$HOME');
 
   try {
-    // find + stat to get recursive files with modification time
-    const cmd = `find "${shellPath}" -type f -exec stat -f '%m %z %N' {} + 2>/dev/null | sort -rn`;
+    // find + stat to get recursive files AND top-level dirs with modification time
+    const cmd = `{ find "${shellPath}" -type f -exec stat -f '%m %z %N' {} + 2>/dev/null; find "${shellPath}" -mindepth 1 -maxdepth 1 -type d -exec stat -f '%m 0 %N' {} + 2>/dev/null; } | sort -rn`;
     const resp = await fetch('/api/shell', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -282,12 +309,15 @@ export async function workspaceListDetailed(
           ? fullPath.substring(fullPath.indexOf(workspaceId) + workspaceId.length + 1)
           : fullPath;
         const modifiedAt = new Date(epoch).toISOString();
+        // A top-level directory has no slash in its relative name
+        const isFolder = size === 0 && !resolvedBase.includes('/');
         files.push({
           name: resolvedBase,
           size,
-          sizeStr: formatBytes(size),
+          sizeStr: isFolder ? '' : formatBytes(size),
           modifiedAt,
           modifiedStr: formatRelativeTime(modifiedAt),
+          isFolder,
         });
       }
     }
@@ -371,5 +401,97 @@ export async function workspacePullFile(
     return { success: true, filename, sizeStr: formatBytes(size) };
   } catch (err) {
     return { success: false, filename, sizeStr: '', error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** Initialize a workspace with default folder structure and README */
+export async function seedWorkspace(workspaceId: string): Promise<{ success: boolean; error?: string }> {
+  // Ensure base workspace directory exists
+  const result = await ensureWorkspace(workspaceId);
+  if (!result.success) return { success: false, error: result.error };
+
+  // Create default folders
+  const folders = ['notes', 'code', 'assets', 'output'];
+  const shellPath = getWorkspacePath(workspaceId).replace('~', '$HOME');
+
+  try {
+    for (const folder of folders) {
+      const folderPath = `${shellPath}/${folder}`;
+      await fetch('/api/shell', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: `mkdir -p "${folderPath}"`, timeout: 5000 }),
+      });
+    }
+
+    // Create README.md
+    const readmeContent = `# Workspace: ${workspaceId}
+
+This workspace contains the working files for this chat session.
+
+## Folders
+
+- **notes/** - Text notes, research findings, and documentation
+- **code/** - Code snippets, scripts, and generated source files
+- **assets/** - Images, PDFs, and other resource files
+- **output/** - Final deliverables and results
+
+## About
+
+Files in this workspace are automatically synced to your local storage and can be accessed across chat sessions.
+`;
+
+    const readmePath = `${shellPath}/README.md`;
+    await fetch('/api/file/write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: readmePath, content: readmeContent }),
+    }).catch(async () => {
+      // Fallback to shell if file write API fails
+      const escaped = readmeContent.replace(/'/g, "'\\''");
+      const cmd = `cat > "${readmePath}" << 'WORKSPACE_EOF'\n${escaped}\nWORKSPACE_EOF`;
+      await fetch('/api/shell', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: cmd, timeout: 10000 }),
+      });
+    });
+
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** Delete a file from the workspace */
+export async function workspaceDelete(
+  workspaceId: string,
+  filename: string,
+): Promise<{ success: boolean; error?: string }> {
+  const fullPath = `${getWorkspacePath(workspaceId)}/${filename}`;
+  const shellPath = expandPath(workspaceId, filename);
+
+  try {
+    const resp = await fetch('/api/file/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: fullPath }),
+    });
+
+    if (!resp.ok) {
+      // Fallback: use shell to delete
+      const cmd = `rm -f "${shellPath}"`;
+      const shellResp = await fetch('/api/shell', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: cmd, timeout: 5000 }),
+      });
+      if (!shellResp.ok) return { success: false, error: 'File delete API not available' };
+      const result = await shellResp.json();
+      if (result.exitCode !== 0) return { success: false, error: result.stderr || 'Delete failed' };
+    }
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 }

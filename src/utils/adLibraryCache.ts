@@ -10,7 +10,7 @@
  *      filtered by category relevance to the brand/product
  */
 
-import { get, set } from 'idb-keyval';
+import { get, set, del } from 'idb-keyval';
 import { loadAdLibraryManifest, loadAdImageBase64 } from './adLibraryLoader';
 import { ollamaService } from './ollama';
 import { getVisionModel } from './modelConfig';
@@ -60,8 +60,15 @@ export async function getCache(): Promise<AdLibraryCache | null> {
 }
 
 // ── Save cache to IndexedDB ──
+// Bug fix #5: wrap in try-catch so a quota error during incremental batch
+// analysis is reported instead of crashing the entire analyzeAll() loop.
 async function saveCache(cache: AdLibraryCache): Promise<void> {
-  await set(CACHE_KEY, cache);
+  try {
+    await set(CACHE_KEY, cache);
+  } catch (err) {
+    console.error('[adLibraryCache] saveCache failed (quota?):', err);
+    throw err;
+  }
 }
 
 // ── Batch analyze all ad library images ──
@@ -243,6 +250,13 @@ In your HTML output, include <!-- Inspired by: Reference #N --> to note which re
 }
 
 // ── Clear cache ──
+// Bug fix #6: use del() instead of set(key, null) so the IDB key is
+// actually removed rather than persisted as a null entry.
 export async function clearCache(): Promise<void> {
-  await set(CACHE_KEY, null);
+  try {
+    await del(CACHE_KEY);
+  } catch (err) {
+    console.error('[adLibraryCache] clearCache failed:', err);
+    throw err;
+  }
 }

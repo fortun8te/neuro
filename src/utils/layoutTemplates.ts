@@ -2,7 +2,7 @@
  * HTML Layout Templates for Ad Concepts
  *
  * Direct HTML generation (no MJML compilation needed).
- * GLM selects and customizes these based on ad format + hook angle + aspect ratio.
+ * LLM selects and customizes these based on ad format + hook angle + aspect ratio.
  *
  * Aspect Ratios:
  * - "1:1" = 400x400px (square, social media feed)

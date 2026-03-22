@@ -1,5 +1,7 @@
+import { useCallback } from 'react';
+import { ollamaService } from '../utils/ollama';
 import { orchestrator } from '../utils/researchAgents';
-import type { OrchestratorState } from '../utils/researchAgents';
+import type { OrchestratorState, ResearchPauseEvent } from '../utils/researchAgents';
 import { useResearchAgent } from './useResearchAgent';
 import { runCouncil, extractFindingsFromVerdict } from '../utils/council';
 import type { CouncilVerdict } from '../utils/council';
@@ -27,15 +29,26 @@ interface OrchestratedResearchResult {
  *
  * The council verdict feeds ALL downstream stages.
  */
+function isConnectionError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message.toLowerCase();
+  return msg.includes('failed to fetch') || msg.includes('econnrefused') || msg.includes('network') || msg.includes('cannot reach');
+}
+
 export function useOrchestratedResearch() {
   const { executeResearch: executeDesireResearch } = useResearchAgent();
 
-  const executeOrchestratedResearch = async (
+  // useCallback with [executeDesireResearch] so the function reference is
+  // stable across renders.  Without this the reference changes every render,
+  // which invalidates the executeStage useCallback in useCycleLoop and causes
+  // unnecessary re-creations of the entire stage execution closure.
+  const executeOrchestratedResearch = useCallback(async (
     campaign: Campaign,
     onProgress?: (msg: string) => void,
     enableWebSearch: boolean = true,
-    onPauseForInput?: (event: any) => Promise<string>,
-    signal?: AbortSignal
+    onPauseForInput?: (event: ResearchPauseEvent) => Promise<string>,
+    signal?: AbortSignal,
+    priorMemories?: { id: string; content: string; tags: string[] }[]
   ): Promise<OrchestratedResearchResult> => {
     const startTime = Date.now();
     const limits = getResearchLimits();
@@ -53,6 +66,30 @@ export function useOrchestratedResearch() {
     onProgress?.(`Models: orch=${researchConfig.orchestratorModel} comp=${researchConfig.compressionModel} synth=${researchConfig.researcherSynthesisModel}\n`);
     onProgress?.(`Limits: ${limits.maxIterations} iters, ${limits.minSources} sources, ${limits.maxVisualBatches} visual batches\n`);
     onProgress?.('════════════════════════════════════════════════════════════════════\n\n');
+
+    // Verify Ollama is reachable before starting LLM-heavy phases
+    const ollamaReachable = await ollamaService.checkConnection().catch(() => false);
+    if (!ollamaReachable) {
+      onProgress?.('════════════════════════════════════════════════════════════════════\n');
+      onProgress?.('OLLAMA OFFLINE\n');
+      onProgress?.('════════════════════════════════════════════════════════════════════\n');
+      onProgress?.("Can't reach Ollama. Research requires the LLM to be running.\n\n");
+      onProgress?.('To fix:\n');
+      onProgress?.('  1. Check that Ollama is running on your machine\n');
+      onProgress?.('  2. Verify the URL in Settings matches your Ollama address\n');
+      onProgress?.(`  3. Current URL: ${(await import('../config/infrastructure')).INFRASTRUCTURE.ollamaUrl}\n\n`);
+      onProgress?.('Web scraping (Wayfarer) does not require Ollama — only the analysis phases do.\n');
+      throw new Error("Can't reach Ollama — check Settings > Connection");
+    }
+
+    // Display prior cycle memories for context
+    if (priorMemories && priorMemories.length > 0) {
+      onProgress?.('[MEMORY INPUT] Learnings from previous cycles:\n');
+      priorMemories.forEach(m => {
+        onProgress?.(`  • ${m.content} [${m.tags.join(', ')}]\n`);
+      });
+      onProgress?.('\n');
+    }
 
     // Initialize findings
     let researchFindings: ResearchFindings = {
@@ -250,10 +287,13 @@ export function useOrchestratedResearch() {
       } catch (err) {
         if (signal?.aborted) throw err;
         const errMsg = err instanceof Error ? err.message : String(err);
-        const isIdleTimeout = errMsg.includes('No response from model');
-        onProgress?.(`\n[PHASE 2 ERROR] Desire analysis failed: ${errMsg}\n`);
-        if (isIdleTimeout) {
-          onProgress?.('  → Model is not responding. Check Ollama connection and model status.\n');
+        onProgress?.('\n[PHASE 2 ERROR] Desire analysis failed\n');
+        if (isConnectionError(err)) {
+          onProgress?.("  → Ollama went offline mid-research. Check your connection in Settings.\n");
+        } else if (errMsg.includes('No response from model')) {
+          onProgress?.('  → Model stopped responding (timeout). Ollama may be overloaded.\n');
+        } else {
+          onProgress?.(`  → ${errMsg}\n`);
         }
         onProgress?.('  → Continuing with web findings only.\n\n');
         console.error('Desire research error:', err);
@@ -310,12 +350,13 @@ export function useOrchestratedResearch() {
       } catch (err) {
         if (signal?.aborted) throw err;
         const errMsg = err instanceof Error ? err.message : String(err);
-        const isIdleTimeout = errMsg.includes('No response from model');
-        onProgress?.(`\n[COUNCIL ERROR] Council failed: ${errMsg}\n`);
-        if (isIdleTimeout) {
-          onProgress?.('  -> Model is not responding for 30+ seconds. Check Ollama status.\n');
+        onProgress?.('\n[COUNCIL ERROR] Council failed\n');
+        if (isConnectionError(err)) {
+          onProgress?.("  -> Ollama went offline during council. Check your connection in Settings.\n");
+        } else if (errMsg.includes('No response from model')) {
+          onProgress?.('  -> Model stopped responding (30s+ timeout). Ollama may be overloaded.\n');
         } else {
-          onProgress?.('  -> Is Ollama running? Check the connection at Settings -> Ollama URL\n');
+          onProgress?.(`  -> ${errMsg}\n`);
         }
         onProgress?.('  -> Using web + desire findings only.\n\n');
         console.error('Council error:', err);
@@ -341,7 +382,7 @@ export function useOrchestratedResearch() {
           signal
         );
         researchFindings.competitorAds = competitorAds;
-        const totalAds = competitorAds.competitors.reduce((s: number, c: any) => s + c.adExamples.length, 0);
+        const totalAds = competitorAds.competitors.reduce((s, c) => s + c.adExamples.length, 0);
         onProgress?.(`\n[PHASE 4 COMPLETE] ${totalAds} ad examples across ${competitorAds.competitors.length} competitors | ${competitorAds.visionAnalyzed} vision-analyzed\n\n`);
       } catch (err) {
         onProgress?.('[PHASE 4] Competitor ad intelligence skipped\n\n');
@@ -422,7 +463,7 @@ Ready for: Brand DNA → Persona DNA → Angles`;
       processingTime: Date.now() - startTime,
       researchFindings,
     };
-  };
+  }, [executeDesireResearch]);
 
   return {
     executeOrchestratedResearch,

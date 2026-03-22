@@ -524,7 +524,7 @@ export async function runPlanAct(
         if (preViewReadiness.score < 50) {
           await waitForReady({ timeout: 3000, minScore: 50, signal });
         }
-      } catch {}
+      } catch (e) { console.warn('[planAct] readiness check failed:', e); }
 
       // Refresh page state
       try {
@@ -610,7 +610,7 @@ export async function runPlanAct(
             result = `Verification failed: ${verification.observation}`;
             actionLog.push(`[verify] FAILED -- ${verification.observation}${verification.suggestion ? ' | Suggestion: ' + verification.suggestion : ''}`);
           }
-        } catch {}
+        } catch (e) { console.warn('[planAct] verification error:', e); }
       }
 
       // ── Error Recovery ──
@@ -713,7 +713,7 @@ export async function runPlanAct(
         }
         callbacks.onPlan?.(plan);
         emit({ type: 'replan', plan, progress: { completedSteps: plan.steps.filter(s => s.status === 'done').length, totalSteps: plan.steps.length, totalActions } });
-      } catch {}
+      } catch (e) { console.warn('[planAct] replan failed:', e); }
     }
   }
 

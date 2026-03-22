@@ -39,9 +39,10 @@ export const MODEL_CONFIG: Record<string, string> = {
   production: 'qwen3.5:9b',
   test: 'qwen3.5:9b',
   vision: 'qwen3.5:2b',
+  'verify-state': 'qwen3.5:2b',
   thinking: 'qwen3.5:4b',
-  planner: 'qwen3.5:4b',
-  executor: 'qwen3.5:2b',
+  planner: 'qwen3.5:9b',
+  executor: 'qwen3.5:4b',
 };
 
 /** Get model for a pipeline stage — reads from localStorage with fallback */

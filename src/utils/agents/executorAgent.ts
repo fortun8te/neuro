@@ -20,7 +20,7 @@ import { MachineClient, machinePool } from '../sandboxService';
 const MAX_ITERATIONS = 10;
 const EXECUTOR_MODEL = 'qwen3.5:4b';
 const EXECUTOR_TEMPERATURE = 0.2;
-const EXECUTOR_MAX_TOKENS = 200;
+const EXECUTOR_MAX_TOKENS = 2000;
 const ACTION_TIMEOUT_MS = 15000;
 
 /** Actions that need a vision pass before executing */
@@ -130,6 +130,22 @@ export async function executeStep(
   const actionsTaken: ActionRecord[] = [];
   let consecutiveFailures = 0;
   let lastScreenDescription = '';
+
+  /** Abort-aware timeout wrapper — hoisted outside the iteration loop to avoid recreating it each iteration. */
+  function withTimeout<T>(promise: Promise<T>): Promise<T> {
+    let timerId: ReturnType<typeof setTimeout>;
+    return Promise.race([
+      promise.then(
+        (v) => { clearTimeout(timerId); return v; },
+        (e) => { clearTimeout(timerId); throw e; },
+      ),
+      new Promise<never>((_, reject) => {
+        timerId = setTimeout(() => reject(new Error(`Action timed out after ${ACTION_TIMEOUT_MS}ms`)), ACTION_TIMEOUT_MS);
+        // Cancel the timeout immediately if abort fires
+        signal?.addEventListener('abort', () => { clearTimeout(timerId); reject(new DOMException('Aborted', 'AbortError')); }, { once: true });
+      }),
+    ]);
+  }
 
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
     if (signal?.aborted) {
@@ -265,22 +281,6 @@ export async function executeStep(
 
     // ── 7. Execute the action via sandbox (with per-action timeout) ──
     const record: ActionRecord = { action, succeeded: false };
-
-    /** Abort-aware timeout wrapper for a single sandbox call */
-    function withTimeout<T>(promise: Promise<T>): Promise<T> {
-      let timerId: ReturnType<typeof setTimeout>;
-      return Promise.race([
-        promise.then(
-          (v) => { clearTimeout(timerId); return v; },
-          (e) => { clearTimeout(timerId); throw e; },
-        ),
-        new Promise<never>((_, reject) => {
-          timerId = setTimeout(() => reject(new Error(`Action timed out after ${ACTION_TIMEOUT_MS}ms`)), ACTION_TIMEOUT_MS);
-          // Cancel the timeout immediately if abort fires
-          signal?.addEventListener('abort', () => { clearTimeout(timerId); reject(new DOMException('Aborted', 'AbortError')); }, { once: true });
-        }),
-      ]);
-    }
 
     try {
       switch (action.type) {

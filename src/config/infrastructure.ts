@@ -7,8 +7,6 @@ export const INFRASTRUCTURE = {
   ollamaUrl: import.meta.env.VITE_OLLAMA_URL || 'http://100.74.135.83:11440',
   wayfarerUrl: import.meta.env.VITE_WAYFARER_URL || 'http://localhost:8889',
   searxngUrl: import.meta.env.VITE_SEARXNG_URL || 'http://localhost:8888',
-  telegramBotToken: import.meta.env.VITE_TELEGRAM_BOT_TOKEN || '',
-  telegramChatId: import.meta.env.VITE_TELEGRAM_CHAT_ID || '',
 };
 
 /**
@@ -47,3 +45,32 @@ export const AGENT_CONFIG = {
   /** Whether to log subagent lifecycle events to the browser console in dev */
   devLogging: import.meta.env.DEV === true,
 } as const;
+
+// ─────────────────────────────────────────────────────────────
+// Infrastructure health check
+// ─────────────────────────────────────────────────────────────
+
+export interface InfrastructureHealth {
+  ollama: boolean;
+  wayfarer: boolean;
+  searxng: boolean;
+}
+
+/**
+ * Probe all three infrastructure services concurrently.
+ * Each check has a 3-second timeout — a non-responsive service counts as down.
+ */
+export async function checkInfrastructure(): Promise<InfrastructureHealth> {
+  const [ollama, wayfarer, searxng] = await Promise.all([
+    fetch(`${INFRASTRUCTURE.ollamaUrl}/api/tags`, { signal: AbortSignal.timeout(3000) })
+      .then(r => r.ok)
+      .catch(() => false),
+    fetch(`${INFRASTRUCTURE.wayfarerUrl}/health`, { signal: AbortSignal.timeout(3000) })
+      .then(r => r.ok)
+      .catch(() => false),
+    fetch(`${INFRASTRUCTURE.searxngUrl}/healthz`, { signal: AbortSignal.timeout(3000) })
+      .then(r => r.ok)
+      .catch(() => false),
+  ]);
+  return { ollama, wayfarer, searxng };
+}

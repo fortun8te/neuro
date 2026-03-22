@@ -59,6 +59,27 @@ h1, h2, h3, .font-display {
   font-family: 'Inter Tight', 'Inter', system-ui, sans-serif;
 }
 
+/* ── AI Cursor overlay animations ── */
+@keyframes ai-cursor-pulse {
+  0%, 100% { opacity: 0.9; transform: scale(1); }
+  50%       { opacity: 0.45; transform: scale(1.15); }
+}
+
+@keyframes ai-cursor-ripple {
+  0%   { transform: scale(0);  opacity: 0.8; }
+  100% { transform: scale(3);  opacity: 0; }
+}
+
+@keyframes ai-cursor-trail {
+  0%   { opacity: 0.6; transform: scale(1); }
+  100% { opacity: 0;   transform: scale(0); }
+}
+
+@keyframes ai-cursor-idle {
+  0%, 100% { opacity: 0.9; }
+  50%       { opacity: 0.55; }
+}
+
 /* JetBrains Mono for all monospace text */
 .font-mono {
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
@@ -112,15 +133,11 @@ h1, h2, h3, .font-display {
 
 /* ── ResponseStream fade-in animation ── */
 @keyframes nomad-fadeIn {
-  from { opacity: 0; transform: translateY(2px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
-.nomad-fade-segment {
-  display: inline;
-}
-
-.nomad-fade-segment-space {
+.nomad-fade-seg-space {
   white-space: pre;
 }
 
@@ -140,6 +157,50 @@ h1, h2, h3, .font-display {
 @keyframes nomad-dot-pulse {
   0%, 100% { transform: scale(1.0); }
   50% { transform: scale(1.02); }
+}
+
+/* ── ActionSidebarCompact spinner / dot animations ── */
+@keyframes _nomad_spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes _nomad_pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+@keyframes _nomad_dot1 {
+  0%, 80%, 100% { opacity: 0.18; transform: scale(0.7); }
+  40%           { opacity: 1;    transform: scale(1);   }
+}
+@keyframes _nomad_dot2 {
+  0%, 80%, 100% { opacity: 0.18; transform: scale(0.7); }
+  55%           { opacity: 1;    transform: scale(1);   }
+}
+@keyframes _nomad_dot3 {
+  0%, 80%, 100% { opacity: 0.18; transform: scale(0.7); }
+  70%           { opacity: 1;    transform: scale(1);   }
+}
+
+/* ── AgentPanel progress slide ── */
+@keyframes agentProgressSlide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
+/* ── ComputerDesktop heatmap pulse ── */
+@keyframes _nomad_heatmap_pulse {
+  0% { transform: translate(-50%, -50%) scale(0.4); opacity: 0.9; }
+  40% { transform: translate(-50%, -50%) scale(1.6); opacity: 0.7; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 0.3; }
+}
+
+/* ── BrandHubDrawer DNA spin ── */
+@keyframes dna-spin {
+  0% { transform: rotateY(0deg) rotateX(5deg); }
+  25% { transform: rotateY(90deg) rotateX(-3deg); }
+  50% { transform: rotateY(180deg) rotateX(5deg); }
+  75% { transform: rotateY(270deg) rotateX(-3deg); }
+  100% { transform: rotateY(360deg) rotateX(5deg); }
 }
 
 /* ── Liquid / Frosted Glass ── */

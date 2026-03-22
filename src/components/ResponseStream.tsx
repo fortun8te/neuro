@@ -210,10 +210,9 @@ function ResponseStream({
     if (animationEndRef.current && isComplete) animationEndRef.current()
   }, [isComplete])
 
+  // nomad-fadeIn keyframe + .nomad-fade-seg-space are in index.css
   const fadeStyle = `
-    @keyframes nomad-fadeIn { from { opacity: 0; } to { opacity: 1; } }
     .nomad-fade-seg { display: inline-block; opacity: 0; animation: nomad-fadeIn ${getFadeDuration()}ms ease-out forwards; }
-    .nomad-fade-seg-space { white-space: pre; }
   `
 
   const renderContent = () => {

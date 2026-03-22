@@ -34,7 +34,7 @@ function defaultProfile(): UserProfile {
       'Fast iteration — skip preamble, get to the point',
       'Prefers markdown formatting for structured output',
     ],
-    workingStyle: 'Intense hyperfocus sessions (12-16h). Solo freelancer. Mixes Dutch/English casually. Self-taught across all tools.',
+    workingStyle: 'Extended focused sessions. Solo operator. Technical across the stack. Iterates rapidly.',
     domainExpertise: [
       'Motion design and 3D visualization (Blender, After Effects)',
       'DTC e-commerce and Meta advertising',

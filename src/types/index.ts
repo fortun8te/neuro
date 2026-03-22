@@ -30,7 +30,7 @@ export interface AdLibraryImage {
   base64?: string;  // loaded on demand
 }
 
-// ─ Product page analysis (screenshot + vision + GLM) ─
+// ─ Product page analysis (screenshot + vision + LLM) ─
 export interface ProductPageAnalysis {
   url: string;
   productName: string;
@@ -627,6 +627,8 @@ export interface Cycle {
   currentStage: StageName;
   status: CycleStatus;
   mode: CycleMode;
+  // Memory feedback loop — previous cycle learnings at cycle start
+  priorMemories?: { id: string; content: string; tags: string[] }[];
   // Research output
   researchFindings?: ResearchFindings;
   pendingResearchQuestion?: ResearchQuestion;

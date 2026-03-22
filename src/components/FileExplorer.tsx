@@ -193,7 +193,7 @@ export function FileExplorer({
     const result = await renameFile(oldPath, newPath);
     if (result.success) {
       setTree(prev => prev ? treeRenameNode(prev, oldPath, renaming.newName) : prev);
-      console.log(`[FileExplorer] Renamed: ${oldPath} -> ${newPath}`);
+      // Renamed successfully
       loadTree();
     }
     setRenaming(null);
@@ -206,7 +206,7 @@ export function FileExplorer({
       if (result.success) {
         setTree(prev => prev ? (treeRemoveNode(prev, node.path) ?? prev) : prev);
         onFileDelete?.(node.path);
-        console.log(`[FileExplorer] Deleted file: ${node.path}`);
+        // File deleted
         loadTree();
       }
     } else {
@@ -214,7 +214,7 @@ export function FileExplorer({
       if (result.success) {
         setTree(prev => prev ? (treeRemoveNode(prev, node.path) ?? prev) : prev);
         onFileDelete?.(node.path);
-        console.log(`[FileExplorer] Deleted folder: ${node.path}`);
+        // Folder deleted
         loadTree();
       }
     }
@@ -233,7 +233,7 @@ export function FileExplorer({
         const targetParent = parentPath === rootPath ? (tree?.path ?? rootPath) : parentPath;
         setTree(prev => prev ? treeAddNode(prev, targetParent, result.file!) : prev);
         onFileCreate?.(path);
-        console.log(`[FileExplorer] Created file: ${path}`);
+        // File created
         loadTree();
       }
     } else {
@@ -248,7 +248,7 @@ export function FileExplorer({
           return next;
         });
         onFileCreate?.(path);
-        console.log(`[FileExplorer] Created folder: ${path}`);
+        // Folder created
         loadTree();
       }
     }
@@ -305,7 +305,7 @@ export function FileExplorer({
         const movedNode: FileTreeNode = { ...draggedNode, path: newPath, id: newPath };
         return treeAddNode(removed, targetNode.path, movedNode);
       });
-      console.log(`[FileExplorer] Moved: ${draggedNode.path} -> ${newPath}`);
+      // File moved
       loadTree();
     }
 

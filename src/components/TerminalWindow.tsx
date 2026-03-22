@@ -6,10 +6,12 @@
  * the AI decides what to do and streams its response back as terminal output.
  */
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { motion } from 'framer-motion';
 import { ollamaService } from '../utils/ollama';
 import { getChatModel } from '../utils/modelConfig';
+import { useWindowDrag } from '../hooks/useWindowDrag';
+import { desktopBus } from '../utils/desktopBus';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -23,7 +25,7 @@ interface TerminalLine {
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-const PROMPT = 'nomad@agent:~$ ';
+const PROMPT = 'glance@agent:~$ ';
 
 const SYSTEM_PROMPT = `You are an AI agent terminal. The user types commands that you execute intelligently.
 Available commands: search <query>, remember <text>, analyze <url>, plan <task>, write <doc>, clear, history, help
@@ -49,7 +51,7 @@ const HELP_TEXT: TerminalLine[] = [
 ];
 
 const WELCOME: TerminalLine[] = [
-  { id: 'w1', type: 'system', text: 'nomad AI Terminal  v1.0.0' },
+  { id: 'w1', type: 'system', text: 'Glance AI Terminal  v1.0.0' },
   { id: 'w2', type: 'system', text: `Model: ${getChatModel()}` },
   { id: 'w3', type: 'system', text: 'Type "help" to see available commands.' },
   { id: 'w4', type: 'system', text: '' },
@@ -72,77 +74,41 @@ function lineColor(type: LineType): string {
 // ── Traffic Lights ─────────────────────────────────────────────────────────
 
 function TrafficLights({ onClose }: { onClose: () => void }) {
-  const [hovered, setHovered] = useState(false);
   return (
-    <div
-      className="flex items-center gap-[6px]"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <button
-        onClick={onClose}
-        className="w-3 h-3 rounded-full flex items-center justify-center"
-        style={{ background: '#FF5F57', border: '0.5px solid rgba(0,0,0,0.25)', cursor: 'pointer' }}
-      >
-        {hovered && (
-          <svg width="6" height="6" viewBox="0 0 10 10" fill="none">
-            <line x1="2" y1="2" x2="8" y2="8" stroke="#7a1a16" strokeWidth="1.5" strokeLinecap="round" />
-            <line x1="8" y1="2" x2="2" y2="8" stroke="#7a1a16" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-        )}
-      </button>
-      <button
-        className="w-3 h-3 rounded-full flex items-center justify-center"
-        style={{ background: '#FEBC2E', border: '0.5px solid rgba(0,0,0,0.25)', cursor: 'pointer' }}
-      >
-        {hovered && (
-          <svg width="6" height="6" viewBox="0 0 10 10" fill="none">
-            <line x1="2" y1="5" x2="8" y2="5" stroke="#7a5200" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-        )}
-      </button>
-      <button
-        className="w-3 h-3 rounded-full flex items-center justify-center"
-        style={{ background: '#28C840', border: '0.5px solid rgba(0,0,0,0.25)', cursor: 'pointer' }}
-      >
-        {hovered && (
-          <svg width="6" height="6" viewBox="0 0 10 10" fill="none">
-            <line x1="5" y1="2" x2="5" y2="8" stroke="#0c4a1c" strokeWidth="1.3" strokeLinecap="round" />
-            <line x1="2" y1="5" x2="8" y2="5" stroke="#0c4a1c" strokeWidth="1.3" strokeLinecap="round" />
-          </svg>
-        )}
-      </button>
+    <div className="flex items-center">
+      <button onClick={onClose} style={{ width: 12, height: 12, borderRadius: '50%', background: 'rgba(255,255,255,0.12)', border: 'none', cursor: 'pointer', padding: 0 }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,95,87,0.7)'; }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; }}
+        title="Close"
+      />
     </div>
   );
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
 
-export function TerminalWindow({ onClose, zIndex, onFocus }: { onClose: () => void; zIndex?: number; onFocus?: () => void }) {
+export interface TerminalWindowHandle {
+  runCommand: (cmd: string) => void;
+}
+
+export const TerminalWindow = forwardRef<TerminalWindowHandle, { onClose: () => void; zIndex?: number; onFocus?: () => void }>(function TerminalWindow({ onClose, zIndex, onFocus }, ref) {
   const [lines, setLines] = useState<TerminalLine[]>(WELCOME);
   const [input, setInput] = useState('');
   const [isRunning, setIsRunning] = useState(false);
   const [cmdHistory, setCmdHistory] = useState<string[]>([]);
   const [_historyIdx, setHistoryIdx] = useState(-1);
 
-  const windowRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const streamingIdRef = useRef<string | null>(null);
 
-  const dragOffset = useRef({ x: 0, y: 0 });
-  const isDragging = useRef(false);
-  const containerRectRef = useRef<DOMRect | null>(null);
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
-
-  // Center on mount
-  useEffect(() => {
-    const parent = windowRef.current?.parentElement;
-    if (!parent) return;
-    const pr = parent.getBoundingClientRect();
-    setPos({ x: (pr.width - 640) / 2, y: Math.max(20, (pr.height - 380) / 2) });
-  }, []);
+  const {
+    windowRef,
+    pos,
+    isDragging: isDraggingWindow,
+    onTitleBarMouseDown,
+  } = useWindowDrag({ windowWidth: 640, windowHeight: 380 });
 
   // Auto-scroll to bottom on new lines
   useEffect(() => {
@@ -170,37 +136,6 @@ export function TerminalWindow({ onClose, zIndex, onFocus }: { onClose: () => vo
     setLines(prev => prev.map(l => l.id === id ? { ...l, text } : l));
   }, []);
   void _updateLine;
-
-  // ── Drag ─────────────────────────────────────────────────────────────────
-
-  const onTitleBarMouseDown = useCallback((e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('button')) return;
-    e.preventDefault();
-    isDragging.current = true;
-    const rect = windowRef.current?.getBoundingClientRect();
-    const parentRect = windowRef.current?.parentElement?.getBoundingClientRect();
-    if (rect && parentRect) {
-      containerRectRef.current = parentRect;
-      dragOffset.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-      if (pos === null) {
-        setPos({ x: rect.left - parentRect.left, y: rect.top - parentRect.top });
-      }
-    }
-    const onMove = (ev: MouseEvent) => {
-      if (!isDragging.current || !containerRectRef.current) return;
-      setPos({
-        x: ev.clientX - containerRectRef.current.left - dragOffset.current.x,
-        y: ev.clientY - containerRectRef.current.top - dragOffset.current.y,
-      });
-    };
-    const onUp = () => {
-      isDragging.current = false;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  }, [pos]);
 
   // ── Built-in commands ─────────────────────────────────────────────────────
 
@@ -333,6 +268,50 @@ export function TerminalWindow({ onClose, zIndex, onFocus }: { onClose: () => vo
     runAI(raw);
   }, [input, appendLine, runBuiltin, isRunning, runAI]);
 
+  // ── Imperative handle for external control ──────────────────────────────
+
+  useImperativeHandle(ref, () => ({
+    runCommand: (cmd: string) => {
+      setInput(cmd);
+      // Use a microtask so setInput flushes before handleSubmit reads `input`
+      setTimeout(() => {
+        appendLine('prompt', `${PROMPT}${cmd}`);
+        setCmdHistory(prev => [cmd, ...prev.filter(c => c !== cmd)].slice(0, 100));
+        setHistoryIdx(-1);
+        setInput('');
+        const [command, ...rest] = cmd.split(/\s+/);
+        const args = rest.join(' ');
+        if (runBuiltin(command.toLowerCase(), args)) return;
+        setIsRunning(true);
+        runAI(cmd);
+      }, 0);
+    },
+  }), [appendLine, runBuiltin, runAI]);
+
+  // ── Desktop bus subscription (agent-driven commands) ───────────────────────
+
+  const runCommandRef = useRef<(cmd: string) => void>();
+  runCommandRef.current = (cmd: string) => {
+    appendLine('prompt', `${PROMPT}${cmd}`);
+    setCmdHistory(prev => [cmd, ...prev.filter(c => c !== cmd)].slice(0, 100));
+    setHistoryIdx(-1);
+    setInput('');
+    const [command, ...rest] = cmd.split(/\s+/);
+    const args = rest.join(' ');
+    if (runBuiltin(command.toLowerCase(), args)) return;
+    setIsRunning(true);
+    runAI(cmd);
+  };
+
+  useEffect(() => {
+    const unsub = desktopBus.subscribe(event => {
+      if (event.type === 'terminal_run' && event.command) {
+        setTimeout(() => runCommandRef.current?.(event.command), 80);
+      }
+    });
+    return unsub;
+  }, []);
+
   // ── Key handler ───────────────────────────────────────────────────────────
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -402,6 +381,8 @@ export function TerminalWindow({ onClose, zIndex, onFocus }: { onClose: () => vo
         ),
         width: 640,
         height: 380,
+        maxWidth: 'calc(100% - 8px)',
+        maxHeight: 'calc(100% - 8px)',
         borderRadius: 12,
         overflow: 'hidden',
         display: 'flex',
@@ -409,12 +390,18 @@ export function TerminalWindow({ onClose, zIndex, onFocus }: { onClose: () => vo
         zIndex: zIndex ?? 220,
         pointerEvents: 'auto',
         background: '#0a0a0c',
-        boxShadow: '0 40px 100px rgba(0,0,0,0.92), 0 0 0 1px rgba(255,255,255,0.08)',
-        border: '1px solid rgba(255,255,255,0.08)',
+        boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+        backdropFilter: 'blur(40px) saturate(160%)',
+        WebkitBackdropFilter: 'blur(40px) saturate(160%)',
+        border: 'none',
         fontFamily: 'ui-monospace,"SF Mono","Fira Mono","Cascadia Code","JetBrains Mono",monospace',
         userSelect: 'none',
       }}
     >
+      {/* Drag overlay — prevents content from stealing mousemove during drag */}
+      {isDraggingWindow && (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 9999, cursor: 'grabbing' }} />
+      )}
       {/* Title bar */}
       <div
         onMouseDown={onTitleBarMouseDown}
@@ -424,8 +411,8 @@ export function TerminalWindow({ onClose, zIndex, onFocus }: { onClose: () => vo
           alignItems: 'center',
           paddingLeft: 14,
           paddingRight: 14,
-          background: '#111114',
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          background: '#1c1c1e',
+          borderBottom: '1px solid rgba(255,255,255,0.04)',
           flexShrink: 0,
           cursor: 'default',
           position: 'relative',
@@ -442,7 +429,7 @@ export function TerminalWindow({ onClose, zIndex, onFocus }: { onClose: () => vo
           letterSpacing: 0.2,
           fontFamily: 'ui-monospace,"SF Mono",monospace',
         }}>
-          nomad — zsh
+          glance — zsh
         </div>
         {isRunning && (
           <div style={{
@@ -499,7 +486,7 @@ export function TerminalWindow({ onClose, zIndex, onFocus }: { onClose: () => vo
       {/* Input row */}
       <div style={{
         height: 38,
-        borderTop: '1px solid rgba(255,255,255,0.08)',
+        borderTop: '1px solid rgba(255,255,255,0.04)',
         background: '#0d0d10',
         display: 'flex',
         alignItems: 'center',
@@ -557,4 +544,4 @@ export function TerminalWindow({ onClose, zIndex, onFocus }: { onClose: () => vo
       </div>
     </motion.div>
   );
-}
+});

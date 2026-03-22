@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { MorphingSquare } from './ui/morphing-square';
 import { loadAdLibraryManifest, loadAdImageBase64, downloadImage } from '../utils/adLibraryLoader';
 import { getCache } from '../utils/adLibraryCache';
 import { ollamaService } from '../utils/ollama';
@@ -98,10 +99,17 @@ export function AdLibraryBrowser({ onClose, theme, onReferenceLayout, onCopyTarg
       }
 
       // Load saved ads for this brand from localStorage
+      // Bug fix #11: guard JSON.parse — corrupted localStorage crashes the component
       if (campaign) {
         const saved = localStorage.getItem(`saved-ads-${campaign.id}`);
         if (saved) {
-          setSavedAds(JSON.parse(saved));
+          try {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) setSavedAds(parsed);
+          } catch {
+            console.warn('[AdLibraryBrowser] Corrupted saved-ads data, resetting');
+            localStorage.removeItem(`saved-ads-${campaign.id}`);
+          }
         }
       }
 
@@ -193,7 +201,8 @@ Be specific enough that this description alone could be used as a prompt to gene
         const updated = [...savedAds, newAd];
         setSavedAds(updated);
         if (campaign) {
-          localStorage.setItem(`saved-ads-${campaign.id}`, JSON.stringify(updated));
+          try { localStorage.setItem(`saved-ads-${campaign.id}`, JSON.stringify(updated)); }
+          catch { console.warn('[AdLibraryBrowser] localStorage quota exceeded saving ad'); }
         }
 
         setUploadingFile(null);
@@ -222,7 +231,8 @@ Be specific enough that this description alone could be used as a prompt to gene
     };
     const updated = [...savedAds, newAd];
     setSavedAds(updated);
-    localStorage.setItem(`saved-ads-${campaign.id}`, JSON.stringify(updated));
+    try { localStorage.setItem(`saved-ads-${campaign.id}`, JSON.stringify(updated)); }
+    catch { console.warn('[AdLibraryBrowser] localStorage quota exceeded saving ad'); }
   };
 
   return (
@@ -478,7 +488,7 @@ Be specific enough that this description alone could be used as a prompt to gene
               <div className={`flex items-center justify-center h-full ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
                 {uploadProgress ? (
                   <div className="text-center">
-                    <div className="mb-2 animate-spin"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg></div>
+                    <div className="mb-2 flex items-center justify-center"><MorphingSquare size={16} color="#2B79FF" /></div>
                     <p>{uploadProgress}</p>
                   </div>
                 ) : (
@@ -686,7 +696,8 @@ Be specific enough that this description alone could be used as a prompt to gene
                     const updated = savedAds.filter(ad => ad.id !== selectedImage.id);
                     setSavedAds(updated);
                     if (campaign) {
-                      localStorage.setItem(`saved-ads-${campaign.id}`, JSON.stringify(updated));
+                      try { localStorage.setItem(`saved-ads-${campaign.id}`, JSON.stringify(updated)); }
+                      catch { console.warn('[AdLibraryBrowser] localStorage quota exceeded'); }
                     }
                     setSelectedImage(null);
                   }}

@@ -11,7 +11,7 @@
  * States:
  *   idle           → nothing running
  *   isModelLoading → startCall() fired, waiting for first token (cold start / VRAM loading)
- *   isThinking     → thinking tokens arriving (GLM-4.7, Qwen3 internal reasoning)
+ *   isThinking     → thinking tokens arriving (Qwen3 internal reasoning)
  *   isGenerating   → response tokens arriving (actual output)
  */
 

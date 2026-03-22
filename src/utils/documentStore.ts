@@ -36,11 +36,38 @@ function notify() {
   }
 }
 
+/** Validate that a parsed object has the minimum required AgentDocument fields. */
+function isValidDocument(d: unknown): d is AgentDocument {
+  if (!d || typeof d !== 'object') return false;
+  const doc = d as Record<string, unknown>;
+  return (
+    typeof doc.id === 'string' &&
+    typeof doc.title === 'string' &&
+    typeof doc.content === 'string' &&
+    typeof doc.createdAt === 'number' &&
+    // Bug fix #12: 'type' field was added later — coerce missing/invalid values
+    // to 'doc' so old records don't produce undefined types in consumers.
+    (doc.type === 'doc' || doc.type === 'plan' || doc.type === 'research' || doc.type == null)
+  );
+}
+
 function loadAll(): AgentDocument[] {
   if (_cache !== null) return _cache;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    _cache = raw ? (JSON.parse(raw) as AgentDocument[]) : [];
+    if (!raw) {
+      _cache = [];
+    } else {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        _cache = [];
+      } else {
+        // Bug fix #12: filter out malformed entries and coerce missing 'type' to 'doc'
+        _cache = parsed
+          .filter(isValidDocument)
+          .map(d => ({ ...d, type: d.type ?? 'doc' } as AgentDocument));
+      }
+    }
   } catch {
     _cache = [];
   }

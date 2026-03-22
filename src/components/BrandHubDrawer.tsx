@@ -303,17 +303,7 @@ export function DNAIcon({ size = 20, animated = false, isDark = false }: { size?
           )}
         </svg>
       </div>
-      {animated && (
-        <style>{`
-          @keyframes dna-spin {
-            0% { transform: rotateY(0deg) rotateX(5deg); }
-            25% { transform: rotateY(90deg) rotateX(-3deg); }
-            50% { transform: rotateY(180deg) rotateX(5deg); }
-            75% { transform: rotateY(270deg) rotateX(-3deg); }
-            100% { transform: rotateY(360deg) rotateX(5deg); }
-          }
-        `}</style>
-      )}
+      {/* dna-spin keyframe is in index.css */}
     </div>
   );
 }

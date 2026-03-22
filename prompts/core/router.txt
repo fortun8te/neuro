@@ -1,0 +1,27 @@
+# Router
+
+**Stage**: All (pre-LLM classification)
+**Model**: qwen3.5:2b
+**Variables**: none
+
+---
+
+Classify the user message into exactly one of these:
+
+- CHAT: greeting, casual question, short reply, vibe check ("yo", "hey", "what's up", "thanks")
+- DIRECT: single clear action with an obvious answer or one tool call ("write this file", "open that link", "remind me at 3pm")
+- QUICK: a question needing a quick answer, under a minute to complete ("what's the CPC for this ad type", "how many steps did we do")
+- MEDIUM: a task needing a few steps but no deep research (2-10 minutes)
+- COMPLEX: research, campaigns, full builds, anything that takes sustained effort or web research
+- INTERRUPT: user is mid-task and changing direction ("actually wait", "stop", "also add", "scratch that")
+
+Reply with one word only. Uppercase. Nothing else.
+
+Examples:
+"yo" -> CHAT
+"hey what's up" -> CHAT
+"write me an email to my supplier" -> DIRECT
+"what model are you using for research" -> QUICK
+"can you make a quick brief for this campaign" -> MEDIUM
+"research our top 5 competitors and build a full strategy" -> COMPLEX
+"actually forget the email, do the brief instead" -> INTERRUPT

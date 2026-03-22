@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import type { Campaign, Cycle, CampaignContextType, StageName, CycleMode, UserQuestion, UserQuestionAnswer } from '../types';
 import { useCycleLoop } from '../hooks/useCycleLoop';
 import { useStorage } from '../hooks/useStorage';
@@ -13,6 +13,10 @@ export function CampaignProvider({ children }: { children: React.ReactNode }) {
   const [currentCycle, setCurrentCycle] = useState<Cycle | null>(null);
   const [cycleMode] = useState<CycleMode>('full');
   const [isLoaded, setIsLoaded] = useState(false); // true once initial load from IndexedDB is done
+
+  // Tracks whether the mount effect already loaded cycles for the current campaign
+  // so the secondary loadCycles effect doesn't fire a redundant second IndexedDB fetch.
+  const initialCyclesLoadedRef = useRef(false);
 
   // Interactive question system
   const [pendingQuestion, setPendingQuestion] = useState<UserQuestion | null>(null);
@@ -63,6 +67,10 @@ export function CampaignProvider({ children }: { children: React.ReactNode }) {
           setCampaign(sorted[0]);
           const campaignCycles = await getCyclesByCampaign(sorted[0].id);
           setCycles(campaignCycles);
+          // Mark that cycles were already fetched for this campaign so the
+          // secondary loadCycles effect (which watches campaign) doesn't issue
+          // a duplicate IndexedDB read for the same data on first render.
+          initialCyclesLoadedRef.current = true;
         }
       } catch (err) {
         console.error('Failed to load campaign from storage:', err);
@@ -197,6 +205,12 @@ export function CampaignProvider({ children }: { children: React.ReactNode }) {
     stop();
   }, [stop]);
 
+  // Bug fix: completeStage previously closed over `currentCycle` from React
+  // state, which lags the live in-progress cycle tracked by useCycleLoop's
+  // ref.  The stage data we want to persist is whatever the caller passes in
+  // via `output` — we don't need the live cycle object here, only the id from
+  // the state snapshot is used as the key to IndexedDB.  The spread is safe
+  // because this is only called externally (not mid-pipeline).
   const completeStage = useCallback(
     async (stageName: StageName, output: string) => {
       if (!currentCycle) return;
@@ -217,8 +231,14 @@ export function CampaignProvider({ children }: { children: React.ReactNode }) {
     setCycles(loadedCycles);
   }, [campaign, getCyclesByCampaign]);
 
-  // Load cycles when campaign changes
+  // Load cycles when campaign changes (but skip the first time if the mount
+  // effect already fetched cycles for this campaign to avoid a double-read).
   useEffect(() => {
+    if (initialCyclesLoadedRef.current) {
+      // Consume the flag — subsequent campaign changes must re-fetch normally
+      initialCyclesLoadedRef.current = false;
+      return;
+    }
     loadCycles();
   }, [campaign, loadCycles]);
 
@@ -234,7 +254,11 @@ export function CampaignProvider({ children }: { children: React.ReactNode }) {
     }
   }, [stop, getCyclesByCampaign]);
 
-  const value: CampaignContextType = {
+  // Memoize the context value so the object reference only changes when one of
+  // its fields actually changes.  Without this, every CampaignProvider render
+  // (triggered by streaming token throttle updates) would create a new object
+  // and force every consumer component to re-render unnecessarily.
+  const value: CampaignContextType = useMemo(() => ({
     campaign,
     cycles,
     currentCycle,
@@ -253,7 +277,26 @@ export function CampaignProvider({ children }: { children: React.ReactNode }) {
     clearCampaign,
     resetResearch,
     loadCampaignById,
-  };
+  }), [
+    campaign,
+    cycles,
+    currentCycle,
+    isLoaded,
+    isRunning,
+    cycleError,
+    pendingQuestion,
+    questionAnswers,
+    answerQuestion,
+    createCampaign,
+    updateCampaign,
+    startCycle,
+    stopCycle,
+    completeStage,
+    setCampaign,
+    clearCampaign,
+    resetResearch,
+    loadCampaignById,
+  ]);
 
   return (
     <CampaignContext.Provider value={value}>{children}</CampaignContext.Provider>

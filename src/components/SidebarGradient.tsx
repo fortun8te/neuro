@@ -21,10 +21,12 @@ function CSSFallbackGradient() {
   const d = delays.current;
 
   useEffect(() => {
-    if (injected.current || typeof document === 'undefined') return;
+    if (typeof document === 'undefined') return;
+    const id = 'nomad-sidebar-css-fallback';
+    if (document.getElementById(id)) return;
     injected.current = true;
     const s = document.createElement('style');
-    s.id = 'nomad-sidebar-css-fallback';
+    s.id = id;
     s.textContent = `
       @keyframes nsg-css-drift1 {
         0%   { background-position: 20% 50%, 80% 20%, 0 0; }

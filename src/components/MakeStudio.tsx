@@ -1575,12 +1575,12 @@ Give 3-6 concrete CSS/HTML fixes. No vague advice — CSS properties only.`;
     } catch (err) {
       if (signal?.aborted) throw err;
       console.error('[VisionQA] Vision audit failed:', err);
-      setGenerationProgress('Vision QA: MiniCPM failed — check console');
+      setGenerationProgress('Vision QA: vision model failed — check console');
       return '';
     }
 
     if (!audit.trim()) {
-      console.warn('[VisionQA] MiniCPM returned empty response');
+      console.warn('[VisionQA] Vision model returned empty response');
       return '';
     }
 
@@ -1957,8 +1957,8 @@ Create a complete, production-ready HTML ad. This screenshot IS the final delive
 
               const feedback = await getVisionFeedback(currentScreenshot, refBase64, brandCtx, signal);
               if (!feedback || signal?.aborted) {
-                console.warn(`[VisionQA] No feedback returned for ad ${i + 1} round ${round + 1} — MiniCPM may have failed`);
-                setGenerationProgress(`Vision QA: no feedback (MiniCPM may be unavailable)`);
+                console.warn(`[VisionQA] No feedback returned for ad ${i + 1} round ${round + 1} — vision model may have failed`);
+                setGenerationProgress(`Vision QA: no feedback (vision model may be unavailable)`);
                 await new Promise(r => setTimeout(r, 1500));
                 break;
               }
@@ -2942,7 +2942,7 @@ INSTRUCTIONS:
           strategyLabel,
           htmlSource: cleanHtml,
           htmlScreenshot: screenshotBase64,
-          sourceHtmlId: (selectedImage as any).sourceHtmlId,
+          sourceHtmlId: selectedImage.sourceHtmlId,
         };
         await persistImage(refined);
         setSelectedImage(refined);
@@ -2984,7 +2984,7 @@ INSTRUCTIONS:
             campaignId: campaign?.id,
             campaignBrand: campaign?.brand,
             strategyLabel: selectedImage.strategyLabel,
-            sourceHtmlId: (selectedImage as any).sourceHtmlId,
+            sourceHtmlId: selectedImage.sourceHtmlId,
           };
           await persistImage(refined);
           setSelectedImage(refined);
@@ -5527,9 +5527,8 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                                       setImageStyle('');
                                       setCustomStyleImage(cs.base64);
                                       setCustomStyleName(cs.name);
-                                      localStorage.setItem('make_image_style', '');
-                                      localStorage.setItem('make_custom_style_image', cs.base64);
-                                      localStorage.setItem('make_custom_style_name', cs.name);
+                                      try { localStorage.setItem('make_image_style', ''); localStorage.setItem('make_custom_style_image', cs.base64); localStorage.setItem('make_custom_style_name', cs.name); }
+                                      catch { console.warn('[MakeStudio] localStorage quota exceeded saving custom style'); }
                                     }}
                                     className={`group relative px-2 py-0.5 rounded text-[10px] font-medium transition-all border ${
                                       customStyleImage === cs.base64
@@ -5543,7 +5542,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                                         e.stopPropagation();
                                         const updated = savedCustomStyles.filter((_, i) => i !== csIdx);
                                         setSavedCustomStyles(updated);
-                                        localStorage.setItem('make_saved_custom_styles', JSON.stringify(updated));
+                                        try { localStorage.setItem('make_saved_custom_styles', JSON.stringify(updated)); } catch { /* quota */ }
                                         if (customStyleImage === cs.base64) {
                                           setCustomStyleImage('');
                                           localStorage.removeItem('make_custom_style_image');
@@ -5572,14 +5571,14 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                                       const newStyle = { name, base64: b64 };
                                       const updated = [...savedCustomStyles, newStyle];
                                       setSavedCustomStyles(updated);
-                                      localStorage.setItem('make_saved_custom_styles', JSON.stringify(updated));
+                                      try { localStorage.setItem('make_saved_custom_styles', JSON.stringify(updated)); }
+                                      catch { console.warn('[MakeStudio] localStorage quota exceeded saving custom styles'); }
                                       // Auto-select it
                                       setImageStyle('');
                                       setCustomStyleImage(b64);
                                       setCustomStyleName(name);
-                                      localStorage.setItem('make_image_style', '');
-                                      localStorage.setItem('make_custom_style_image', b64);
-                                      localStorage.setItem('make_custom_style_name', name);
+                                      try { localStorage.setItem('make_image_style', ''); localStorage.setItem('make_custom_style_image', b64); localStorage.setItem('make_custom_style_name', name); }
+                                      catch { console.warn('[MakeStudio] localStorage quota exceeded saving style image'); }
                                     };
                                     reader.readAsDataURL(file);
                                     e.target.value = ''; // Reset input
@@ -6699,7 +6698,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
           onCopyTarget={referenceCopyEnabled ? (imageBase64, description, category, filename, path) => {
             const target = { base64: imageBase64, description, category, filename, path };
             setReferenceCopyTarget(target);
-            localStorage.setItem('make_reference_copy_target', JSON.stringify(target));
+            try { localStorage.setItem('make_reference_copy_target', JSON.stringify(target)); } catch { /* quota */ }
           } : undefined}
         />
       )}

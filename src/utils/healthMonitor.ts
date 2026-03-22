@@ -114,7 +114,7 @@ class HealthMonitor {
         svc.lastError = `HTTP ${resp.status}`;
         svc.status = svc.consecutiveFailures >= DOWN_THRESHOLD ? 'down'
           : svc.consecutiveFailures >= DEGRADED_THRESHOLD ? 'degraded'
-          : 'healthy';
+          : 'degraded'; // any non-2xx is at least degraded on first failure
       }
     } catch (err) {
       svc.consecutiveFailures++;

@@ -19,6 +19,11 @@ const DIRECT_OLLAMA = INFRASTRUCTURE.ollamaUrl;
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;
 
+/** Connection timeout — how long to wait for the HTTP connection itself */
+const CONNECT_TIMEOUT_MS = 15_000;
+/** Connection timeout for vision calls (larger payloads) */
+const CONNECT_TIMEOUT_VISION_MS = 30_000;
+
 // ─────────────────────────────────────────────────────────────
 // Connection state — shared across the app
 // ─────────────────────────────────────────────────────────────
@@ -37,15 +42,24 @@ export interface OllamaHealthResult {
 let _connectionStatus: OllamaConnectionStatus = 'unknown';
 let _lastHealthResult: OllamaHealthResult | null = null;
 
+/** Global health flag — true when Ollama was reachable on last check */
+let _ollamaHealthy = true;
+
 type ConnectionListener = (status: OllamaConnectionStatus, result: OllamaHealthResult) => void;
 const _listeners = new Set<ConnectionListener>();
 
 function notifyListeners(status: OllamaConnectionStatus, result: OllamaHealthResult) {
   _connectionStatus = status;
   _lastHealthResult = result;
+  _ollamaHealthy = status === 'connected';
   for (const cb of _listeners) {
     try { cb(status, result); } catch { /* ignore */ }
   }
+}
+
+/** Check whether Ollama is currently considered healthy (last probe succeeded). */
+export function isOllamaHealthy(): boolean {
+  return _ollamaHealthy;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -94,6 +108,12 @@ export function getOllamaHost(): string {
 // Types
 // ─────────────────────────────────────────────────────────────
 
+export interface ChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+  images?: string[];  // base64-encoded images for vision models (attached to user messages)
+}
+
 export interface OllamaOptions {
   model?: string;
   temperature?: number;
@@ -101,6 +121,7 @@ export interface OllamaOptions {
   num_predict?: number;  // max tokens to generate (caps output length)
   images?: string[];     // base64-encoded images (no data: prefix), for vision models
   think?: boolean;       // Enable/disable thinking (default: model's default)
+  messages?: ChatMessage[]; // When provided, uses /api/chat for proper conversation turns
   onChunk?: (chunk: string) => void;
   onThink?: (chunk: string) => void;  // thinking/reasoning tokens (Qwen3.5 27b+)
   onComplete?: () => void;
@@ -172,7 +193,7 @@ export const ollamaService = {
   async startupCheck(): Promise<void> {
     const result = await this.healthCheck();
     if (result.status === 'connected') {
-      console.log(`[ollama] Connected to ${result.endpoint} (${result.latencyMs}ms, ${result.modelCount ?? '?'} models)`);
+      console.info(`[ollama] Connected to ${result.endpoint} (${result.latencyMs}ms, ${result.modelCount ?? '?'} models)`);
     } else {
       console.warn(`[ollama] Cannot reach Ollama at ${result.endpoint}: ${result.error}`);
     }
@@ -183,49 +204,86 @@ export const ollamaService = {
     systemPrompt: string,
     options: OllamaOptions = {}
   ): Promise<string> {
-    const { model = 'qwen3.5:9b', temperature = 0.7, top_p = 0.9, num_predict, images, think = false, onChunk, onThink, onComplete, onError, signal, keep_alive } = options;
+    const { model = 'qwen3.5:9b', temperature = 0.7, top_p = 0.9, num_predict, images, think = false, messages, onChunk, onThink, onComplete, onError, signal, keep_alive } = options;
     const [cleanModel, apiBase] = resolveModel(model);
 
-    const fullPrompt = `${systemPrompt}\n\n${prompt}`;
+    const useChat = !!messages;
+    const fullPrompt = useChat ? '' : `${systemPrompt}\n\n${prompt}`;
 
     // Retry wrapper for transient failures
     let lastError: Error | null = null;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       let fullResponse = '';
+      let trackingEnded = false;
       tokenTracker.startCall(cleanModel);
 
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
       try {
-        // Create a timeout signal that aborts after 300s (5 min) if no signal provided
-        let fetchSignal = signal;
-        if (!signal) {
-          const controller = new AbortController();
-          fetchSignal = controller.signal;
-          timeoutId = setTimeout(() => controller.abort(), 300000);
+        // Connection timeout: shorter for text, longer for vision (large base64 payloads)
+        const hasImages = images && images.length > 0;
+        const connectTimeoutMs = hasImages ? CONNECT_TIMEOUT_VISION_MS : CONNECT_TIMEOUT_MS;
+
+        // Combine user abort signal + connection timeout into one
+        const connectController = new AbortController();
+        const onUserAbort = () => connectController.abort(signal?.reason);
+        signal?.addEventListener('abort', onUserAbort, { once: true });
+        timeoutId = setTimeout(() => connectController.abort(new Error(
+          `Connection timeout after ${connectTimeoutMs / 1000}s — Ollama at ${apiBase} did not respond. Is the server running?`
+        )), connectTimeoutMs);
+
+        const endpoint = useChat ? `${apiBase}/api/chat` : `${apiBase}/api/generate`;
+
+        // For /api/chat, images must be attached to the last user message, not top-level
+        let chatMessages = messages;
+        if (useChat && hasImages && messages) {
+          chatMessages = messages.map((msg, idx) =>
+            idx === messages.length - 1 && msg.role === 'user'
+              ? { ...msg, images }
+              : msg
+          );
         }
 
-        const response = await fetch(`${apiBase}/api/generate`, {
+        // Ollama's /api/chat accepts temperature/num_predict at top level,
+        // but /api/generate requires them inside "options". We use "options"
+        // for both to be safe — Ollama accepts it either way for /api/chat.
+        const modelOptions: Record<string, unknown> = {
+          temperature,
+          top_p,
+          ...(num_predict ? { num_predict } : {}),
+        };
+
+        const body = useChat
+          ? {
+              model: cleanModel,
+              messages: chatMessages,
+              stream: true,
+              options: modelOptions,
+              ...(keep_alive ? { keep_alive } : {}),
+              ...(think !== undefined ? { think } : {}),
+            }
+          : {
+              model: cleanModel,
+              prompt: fullPrompt,
+              stream: true,
+              options: modelOptions,
+              ...(keep_alive ? { keep_alive } : {}),
+              ...(hasImages ? { images } : {}),
+              ...(think !== undefined ? { think } : {}),
+            };
+
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
           },
-          body: JSON.stringify({
-            model: cleanModel,
-            prompt: fullPrompt,
-            stream: true,
-            temperature,
-            top_p,
-            ...(num_predict ? { num_predict } : {}),
-            ...(keep_alive ? { keep_alive } : {}),
-            ...(images && images.length > 0 ? { images } : {}),
-            ...(think !== undefined ? { think } : {}),
-          }),
-          signal: fetchSignal,
+          body: JSON.stringify(body),
+          signal: connectController.signal,
         });
 
-        // Clear timeout once fetch connection is established
+        // Connection established — clear the connection timeout, remove listener
         if (timeoutId) { clearTimeout(timeoutId); timeoutId = undefined; }
+        signal?.removeEventListener('abort', onUserAbort);
 
         if (!response.ok) {
           const errorText = await response.text();
@@ -237,7 +295,7 @@ export const ollamaService = {
           );
           // 404 (model not found) is not retryable
           if (response.status === 404) {
-            tokenTracker.endCall();
+            if (!trackingEnded) { tokenTracker.endCall(); trackingEnded = true; }
             onError?.(httpErr);
             throw httpErr;
           }
@@ -255,12 +313,12 @@ export const ollamaService = {
         // Idle timeout: abort if no data received for 30 seconds
         const STREAM_IDLE_TIMEOUT_MS = 30_000;
         let idleTimer: ReturnType<typeof setTimeout> | undefined;
-        const idleController = new AbortController();
+        let idleTimedOut = false;
 
         const resetIdleTimer = () => {
           if (idleTimer) clearTimeout(idleTimer);
           idleTimer = setTimeout(() => {
-            idleController.abort();
+            idleTimedOut = true;
             reader.cancel().catch(() => {});
           }, STREAM_IDLE_TIMEOUT_MS);
         };
@@ -277,12 +335,15 @@ export const ollamaService = {
 
         try {
         while (true) {
-          if (idleController.signal.aborted) {
-            throw new Error('No response from model — no data received for 30 seconds. Check Ollama connection and model status.');
-          }
-
           const { done, value } = await reader.read();
-          if (done) break;
+
+          // reader.cancel() from idle timeout or external abort resolves with done=true
+          if (done) {
+            if (idleTimedOut) {
+              throw new Error('No response from model — no data received for 30 seconds. Check Ollama connection and model status.');
+            }
+            break;
+          }
 
           // Data received — reset the idle timer
           resetIdleTimer();
@@ -296,21 +357,24 @@ export const ollamaService = {
               try {
                 const json = JSON.parse(line);
 
-                // Response tokens
-                if (json.response) {
-                  fullResponse += json.response;
-                  onChunk?.(json.response);
-                  tokenTracker.tick(json.response);
+                // Response tokens — /api/generate uses json.response, /api/chat uses json.message.content
+                const token = useChat ? json.message?.content : json.response;
+                if (token) {
+                  fullResponse += token;
+                  onChunk?.(token);
+                  tokenTracker.tick(token);
                 }
 
-                // Thinking tokens
-                if (json.thinking) {
-                  tokenTracker.tickThinking(json.thinking);
-                  onThink?.(json.thinking);
+                // Thinking tokens — /api/generate uses json.thinking, /api/chat uses json.message.thinking
+                const thinkToken = useChat ? json.message?.thinking : json.thinking;
+                if (thinkToken) {
+                  tokenTracker.tickThinking(thinkToken);
+                  onThink?.(thinkToken);
                 }
 
                 if (json.done) {
                   tokenTracker.endCall(json.eval_count, json.eval_duration);
+                  // tracking ended
                 }
               } catch {
                 // Ignore JSON parse errors
@@ -327,28 +391,32 @@ export const ollamaService = {
         if (buffer.trim()) {
           try {
             const json = JSON.parse(buffer);
-            if (json.response) {
-              fullResponse += json.response;
-              onChunk?.(json.response);
-              tokenTracker.tick(json.response);
+            const token = useChat ? json.message?.content : json.response;
+            if (token) {
+              fullResponse += token;
+              onChunk?.(token);
+              tokenTracker.tick(token);
             }
-            if (json.thinking) {
-              tokenTracker.tickThinking(json.thinking);
-              onThink?.(json.thinking);
+            const thinkToken = useChat ? json.message?.thinking : json.thinking;
+            if (thinkToken) {
+              tokenTracker.tickThinking(thinkToken);
+              onThink?.(thinkToken);
             }
             if (json.done) {
               tokenTracker.endCall(json.eval_count, json.eval_duration);
+              trackingEnded = true;
             }
           } catch {
             // Ignore
           }
         }
 
+        if (!trackingEnded) { tokenTracker.endCall(); trackingEnded = true; }
         onComplete?.();
         return fullResponse;
       } catch (error) {
         if (timeoutId) clearTimeout(timeoutId);
-        tokenTracker.endCall(); // mark as done even on error
+        if (!trackingEnded) { tokenTracker.endCall(); trackingEnded = true; }
         lastError = error instanceof Error ? error : new Error(String(error));
 
         // Don't retry on user abort
@@ -364,7 +432,15 @@ export const ollamaService = {
           continue;
         }
 
-        // Final attempt or non-retryable: enhance error message
+        // Final attempt or non-retryable: mark unhealthy and enhance error message
+        const isConnectionFailure = lastError.message.includes('Failed to fetch')
+          || lastError.message.includes('econnrefused')
+          || lastError.message.includes('network')
+          || lastError.message.includes('Connection timeout');
+        if (isConnectionFailure) {
+          _ollamaHealthy = false;
+          _connectionStatus = 'disconnected';
+        }
         const finalError = new Error(
           lastError.message.includes('Failed to fetch')
             ? `Cannot reach Ollama at ${apiBase}. Is the server running? Check Settings > Connection.`
@@ -407,7 +483,12 @@ async function probeEndpoint(endpoint: string): Promise<OllamaHealthResult> {
       return { status: 'disconnected', endpoint, latencyMs: latency, error: `HTTP ${tagsResp.status}` };
     }
 
-    const data = await tagsResp.json();
+    let data: { models?: unknown[] };
+    try {
+      data = await tagsResp.json();
+    } catch {
+      return { status: 'disconnected', endpoint, latencyMs: latency, error: 'Invalid JSON from /api/tags' };
+    }
     const modelCount = data.models?.length ?? 0;
 
     // Try to get loaded models
@@ -418,7 +499,8 @@ async function probeEndpoint(endpoint: string): Promise<OllamaHealthResult> {
         signal: AbortSignal.timeout(5000),
       });
       if (psResp.ok) {
-        const psData = await psResp.json();
+        let psData: { models?: Array<{ name: string }> };
+        try { psData = await psResp.json(); } catch { psData = {}; }
         loadedModels = (psData.models || []).map((m: { name: string }) => m.name);
       }
     } catch { /* non-critical */ }

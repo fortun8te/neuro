@@ -19,15 +19,32 @@ export function ThinkingModal({ isOpen, onClose }: ThinkingModalProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const tokenInfo = useSyncExternalStore(tokenTracker.subscribe, tokenTracker.getSnapshot);
 
+  // Close on Escape key
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [isOpen, onClose]);
+
   // Auto-scroll to bottom when thinking arrives
   useEffect(() => {
     if (!isOpen || !contentRef.current) return;
     contentRef.current.scrollTop = contentRef.current.scrollHeight;
   }, [tokenInfo.fullThinkingText, isOpen]);
 
-  const thinkingText = tokenInfo.fullThinkingText || '';
+  const rawThinkingText = tokenInfo.fullThinkingText || '';
   const thinkingCount = tokenInfo.thinkingTokenCount || 0;
   const isActive = tokenInfo.isThinking || tokenInfo.isGenerating;
+
+  // Cap display to latest 2000 chars to prevent layout overflow
+  const DISPLAY_CAP = 2000;
+  const isTruncated = rawThinkingText.length > DISPLAY_CAP;
+  const thinkingText = isTruncated
+    ? rawThinkingText.slice(rawThinkingText.length - DISPLAY_CAP)
+    : rawThinkingText;
 
   return (
     <AnimatePresence>
@@ -48,7 +65,7 @@ export function ThinkingModal({ isOpen, onClose }: ThinkingModalProps) {
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className={`fixed bottom-0 left-0 right-0 max-h-[85vh] z-[1000] rounded-t-2xl shadow-2xl ${
+            className={`fixed bottom-0 left-0 right-0 max-h-[85vh] z-[1000] rounded-t-2xl shadow-2xl flex flex-col ${
               isDarkMode ? 'bg-zinc-900 border-t border-zinc-800' : 'bg-white border-t border-zinc-200'
             }`}
           >
@@ -70,13 +87,13 @@ export function ThinkingModal({ isOpen, onClose }: ThinkingModalProps) {
                     Model Thinking
                   </h2>
                 </div>
-                {thinkingCount > 0 && (
+                {rawThinkingText.length > 0 && (
                   <span className={`text-sm px-2 py-1 rounded-full ${
                     isDarkMode
                       ? 'bg-blue-500/10 text-blue-300'
                       : 'bg-blue-100 text-blue-700'
                   }`}>
-                    {thinkingCount} token{thinkingCount !== 1 ? 's' : ''}
+                    {rawThinkingText.length.toLocaleString()} chars thinking...
                   </span>
                 )}
               </div>
@@ -99,45 +116,67 @@ export function ThinkingModal({ isOpen, onClose }: ThinkingModalProps) {
 
             {/* Content */}
             <div
-              ref={contentRef}
-              className={`flex-1 overflow-y-auto p-6 min-h-[200px] max-h-[calc(85vh-80px)] ${
+              className={`flex-1 relative overflow-hidden min-h-[200px] max-h-[calc(85vh-80px)] flex flex-col ${
                 isDarkMode ? 'bg-zinc-950' : 'bg-zinc-50'
               }`}
             >
-              {thinkingText ? (
-                isActive ? (
-                  <ResponseStream
-                    textStream={thinkingText}
-                    mode="fade"
-                    speed={60}
-                    as="pre"
-                    className={`text-sm font-mono whitespace-pre-wrap break-words leading-relaxed ${
-                      isDarkMode ? 'text-zinc-400' : 'text-zinc-600'
-                    }`}
-                  />
-                ) : (
-                  <pre
-                    className={`text-sm font-mono whitespace-pre-wrap break-words leading-relaxed ${
-                      isDarkMode ? 'text-zinc-400' : 'text-zinc-600'
-                    }`}
-                  >
-                    {thinkingText}
-                  </pre>
-                )
-              ) : (
-                <div className={`text-sm ${isDarkMode ? 'text-zinc-600' : 'text-zinc-400'}`}>
-                  {isActive ? 'Waiting for thinking tokens...' : 'No thinking tokens captured yet'}
+              {/* Top fade — visible when content is truncated */}
+              {isTruncated && (
+                <div
+                  className="absolute top-0 left-0 right-0 z-10 pointer-events-none"
+                  style={{
+                    height: 48,
+                    background: isDarkMode
+                      ? 'linear-gradient(to bottom, rgba(9,9,11,1) 0%, transparent 100%)'
+                      : 'linear-gradient(to bottom, rgba(249,250,251,1) 0%, transparent 100%)',
+                  }}
+                >
+                  <div className={`absolute top-3 left-6 text-xs font-mono ${isDarkMode ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                    ...earlier thinking hidden
+                  </div>
                 </div>
               )}
+
+              <div
+                ref={contentRef}
+                className="flex-1 overflow-y-auto p-6"
+              >
+                {rawThinkingText ? (
+                  isActive ? (
+                    <ResponseStream
+                      textStream={thinkingText}
+                      mode="fade"
+                      speed={60}
+                      as="pre"
+                      className={`text-sm font-mono whitespace-pre-wrap break-words leading-relaxed ${
+                        isDarkMode ? 'text-zinc-400' : 'text-zinc-600'
+                      }`}
+                    />
+                  ) : (
+                    <pre
+                      className={`text-sm font-mono whitespace-pre-wrap break-words leading-relaxed ${
+                        isDarkMode ? 'text-zinc-400' : 'text-zinc-600'
+                      }`}
+                    >
+                      {thinkingText}
+                    </pre>
+                  )
+                ) : (
+                  <div className={`text-sm ${isDarkMode ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                    {isActive ? 'Waiting for thinking tokens...' : 'No thinking tokens captured yet'}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Footer — Stats */}
-            {thinkingText && (
+            {rawThinkingText && (
               <div className={`flex-shrink-0 px-6 py-3 border-t ${
                 isDarkMode ? 'border-zinc-800/60 bg-zinc-900/50' : 'border-zinc-200 bg-zinc-50'
               }`}>
                 <div className={`text-xs ${isDarkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>
-                  {thinkingText.length.toLocaleString()} characters · {thinkingCount} thinking token{thinkingCount !== 1 ? 's' : ''}
+                  {rawThinkingText.length.toLocaleString()} characters · {thinkingCount} thinking token{thinkingCount !== 1 ? 's' : ''}
+                  {isTruncated && ` · showing latest ${DISPLAY_CAP.toLocaleString()} chars`}
                   {isActive && ' · Active'}
                 </div>
               </div>

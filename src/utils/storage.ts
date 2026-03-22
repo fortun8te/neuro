@@ -5,6 +5,10 @@ const CAMPAIGNS_KEY = 'campaigns';
 const CYCLES_KEY = 'cycles';
 const GENERATED_IMAGES_KEY = 'generated_images';
 
+// Bug fix #4: cap per-campaign cycle count to prevent unbounded IDB growth.
+// Each completed cycle can hold megabytes of researchFindings + base64 visuals.
+const MAX_CYCLES_PER_CAMPAIGN = 20;
+
 // ── Generated Image (persisted to IndexedDB) ──
 export interface StoredImage {
   id: string;
@@ -43,112 +47,245 @@ export interface VisionRound {
   status: 'original' | 'candidate' | 'revised' | 'passed'; // What happened
 }
 
+// Bug fix #2: serialize write operations on the cycles key so concurrent
+// saveCycle() calls (e.g. from parallel stage completions) cannot interleave
+// their read-modify-write and silently drop each other's updates.
+let _cycleWriteQueue: Promise<void> = Promise.resolve();
+let _imageWriteQueue: Promise<void> = Promise.resolve();
+
+function enqueueImageWrite(fn: () => Promise<void>): Promise<void> {
+  _imageWriteQueue = _imageWriteQueue.catch(() => {/* previous failure — proceed */}).then(fn);
+  return _imageWriteQueue;
+}
+
+function enqueueCycleWrite(fn: () => Promise<void>): Promise<void> {
+  // Bug fix: previous .catch(fn) re-executed fn on failure, causing double-writes
+  // and swallowing errors.  Now we chain correctly: if the previous write failed,
+  // still attempt the current one, but let the current one's errors propagate.
+  _cycleWriteQueue = _cycleWriteQueue.catch(() => {/* previous failure — proceed */}).then(fn);
+  return _cycleWriteQueue;
+}
+
 export const storage = {
-  // Campaign operations
+  // ── Campaign operations ──
+
+  // Bug fix #1: wrap every IDB operation in try-catch so quota/corruption
+  // errors surface as thrown exceptions the caller can handle, instead of
+  // crashing silently inside an unhandled promise rejection.
   async saveCampaign(campaign: Campaign): Promise<void> {
-    const campaigns = (await get(CAMPAIGNS_KEY)) || {};
-    campaigns[campaign.id] = campaign;
-    await set(CAMPAIGNS_KEY, campaigns);
+    try {
+      const campaigns = (await get(CAMPAIGNS_KEY)) || {};
+      campaigns[campaign.id] = campaign;
+      await set(CAMPAIGNS_KEY, campaigns);
+    } catch (err) {
+      console.error('[storage] saveCampaign failed:', err);
+      throw err;
+    }
   },
 
   async getCampaign(id: string): Promise<Campaign | null> {
-    const campaigns = (await get(CAMPAIGNS_KEY)) || {};
-    return campaigns[id] || null;
+    try {
+      const campaigns = (await get(CAMPAIGNS_KEY)) || {};
+      return campaigns[id] ?? null;
+    } catch (err) {
+      console.error('[storage] getCampaign failed:', err);
+      throw err;
+    }
   },
 
   async getAllCampaigns(): Promise<Campaign[]> {
-    const campaigns = (await get(CAMPAIGNS_KEY)) || {};
-    return Object.values(campaigns);
+    try {
+      const campaigns = (await get(CAMPAIGNS_KEY)) || {};
+      return Object.values(campaigns);
+    } catch (err) {
+      console.error('[storage] getAllCampaigns failed:', err);
+      throw err;
+    }
   },
 
   async deleteCampaign(id: string): Promise<void> {
-    const campaigns = (await get(CAMPAIGNS_KEY)) || {};
-    delete campaigns[id];
-    await set(CAMPAIGNS_KEY, campaigns);
+    try {
+      const campaigns = (await get(CAMPAIGNS_KEY)) || {};
+      delete campaigns[id];
+      await set(CAMPAIGNS_KEY, campaigns);
+    } catch (err) {
+      console.error('[storage] deleteCampaign failed:', err);
+      throw err;
+    }
   },
 
-  // Cycle operations
+  // ── Cycle operations ──
+
+  // Bug fix #2 (continued) + Bug fix #1 + Bug fix #4:
+  // - Serialised via _cycleWriteQueue (no concurrent read-modify-write races)
+  // - Wrapped in try-catch (quota errors surface)
+  // - Old cycles pruned to MAX_CYCLES_PER_CAMPAIGN (unbounded growth fixed)
   async saveCycle(cycle: Cycle): Promise<void> {
-    // Ensure we only save serializable data (strip researchFindings if it contains non-serializable objects)
-    const serializableCycle = {
-      ...cycle,
-      // Ensure researchFindings is plain JSON
-      researchFindings: cycle.researchFindings ? JSON.parse(JSON.stringify(cycle.researchFindings)) : undefined,
-    };
-    const cycles = (await get(CYCLES_KEY)) || {};
-    cycles[cycle.id] = serializableCycle;
-    await set(CYCLES_KEY, cycles);
+    return enqueueCycleWrite(async () => {
+      try {
+        // Ensure we only save serializable data
+        const serializableCycle = {
+          ...cycle,
+          researchFindings: cycle.researchFindings
+            ? JSON.parse(JSON.stringify(cycle.researchFindings))
+            : undefined,
+        };
+
+        const cycles = (await get(CYCLES_KEY)) || {};
+        cycles[cycle.id] = serializableCycle;
+
+        // Bug fix #4: Prune oldest cycles for this campaign so the blob
+        // doesn't grow without bound.  Keep the newest MAX_CYCLES_PER_CAMPAIGN.
+        const campaignCycleEntries = Object.entries(cycles)
+          .filter(([, c]) => (c as Cycle).campaignId === cycle.campaignId)
+          .sort(([, a], [, b]) => ((b as Cycle).startedAt ?? 0) - ((a as Cycle).startedAt ?? 0));
+
+        if (campaignCycleEntries.length > MAX_CYCLES_PER_CAMPAIGN) {
+          const toRemove = campaignCycleEntries.slice(MAX_CYCLES_PER_CAMPAIGN);
+          for (const [id] of toRemove) {
+            delete cycles[id];
+          }
+        }
+
+        await set(CYCLES_KEY, cycles);
+      } catch (err) {
+        console.error('[storage] saveCycle failed:', err);
+        throw err;
+      }
+    });
   },
 
   async getCycle(id: string): Promise<Cycle | null> {
-    const cycles = (await get(CYCLES_KEY)) || {};
-    return cycles[id] || null;
+    try {
+      const cycles = (await get(CYCLES_KEY)) || {};
+      return cycles[id] ?? null;
+    } catch (err) {
+      console.error('[storage] getCycle failed:', err);
+      throw err;
+    }
   },
 
   async getCyclesByCampaign(campaignId: string): Promise<Cycle[]> {
-    const cycles = (await get(CYCLES_KEY)) || {};
-    return (Object.values(cycles) as Cycle[]).filter(
-      (c) => c.campaignId === campaignId
-    );
+    try {
+      const cycles = (await get(CYCLES_KEY)) || {};
+      return (Object.values(cycles) as Cycle[]).filter(
+        (c) => c.campaignId === campaignId
+      );
+    } catch (err) {
+      console.error('[storage] getCyclesByCampaign failed:', err);
+      throw err;
+    }
   },
 
   async updateCycle(cycle: Cycle): Promise<void> {
-    await this.saveCycle(cycle);
+    return this.saveCycle(cycle);
   },
 
   // ── Generated Image operations ──
+
   async saveImage(image: StoredImage): Promise<void> {
-    const images = (await get(GENERATED_IMAGES_KEY)) || {};
-    images[image.id] = image;
-    await set(GENERATED_IMAGES_KEY, images);
+    return enqueueImageWrite(async () => {
+      try {
+        const images = (await get(GENERATED_IMAGES_KEY)) || {};
+        images[image.id] = image;
+        await set(GENERATED_IMAGES_KEY, images);
+      } catch (err) {
+        console.error('[storage] saveImage failed:', err);
+        throw err;
+      }
+    });
   },
 
   async getImage(id: string): Promise<StoredImage | null> {
-    const images = (await get(GENERATED_IMAGES_KEY)) || {};
-    return images[id] || null;
+    try {
+      const images = (await get(GENERATED_IMAGES_KEY)) || {};
+      return images[id] ?? null;
+    } catch (err) {
+      console.error('[storage] getImage failed:', err);
+      throw err;
+    }
   },
 
   async getAllImages(): Promise<StoredImage[]> {
-    const images = (await get(GENERATED_IMAGES_KEY)) || {};
-    return (Object.values(images) as StoredImage[]).sort(
-      (a, b) => b.timestamp - a.timestamp
-    );
+    try {
+      const images = (await get(GENERATED_IMAGES_KEY)) || {};
+      return (Object.values(images) as StoredImage[]).sort(
+        (a, b) => b.timestamp - a.timestamp
+      );
+    } catch (err) {
+      console.error('[storage] getAllImages failed:', err);
+      throw err;
+    }
   },
 
   async toggleFavorite(id: string): Promise<StoredImage | null> {
-    const images = (await get(GENERATED_IMAGES_KEY)) || {};
-    const img = images[id];
-    if (!img) return null;
-    img.favorite = !img.favorite;
-    images[id] = img;
-    await set(GENERATED_IMAGES_KEY, images);
-    return img as StoredImage;
+    let result: StoredImage | null = null;
+    await enqueueImageWrite(async () => {
+      try {
+        const images = (await get(GENERATED_IMAGES_KEY)) || {};
+        const img = images[id];
+        if (!img) { result = null; return; }
+        img.favorite = !img.favorite;
+        images[id] = img;
+        await set(GENERATED_IMAGES_KEY, images);
+        result = img as StoredImage;
+      } catch (err) {
+        console.error('[storage] toggleFavorite failed:', err);
+        throw err;
+      }
+    });
+    return result;
   },
 
   async deleteImage(id: string): Promise<void> {
-    const images = (await get(GENERATED_IMAGES_KEY)) || {};
-    delete images[id];
-    await set(GENERATED_IMAGES_KEY, images);
+    return enqueueImageWrite(async () => {
+      try {
+        const images = (await get(GENERATED_IMAGES_KEY)) || {};
+        delete images[id];
+        await set(GENERATED_IMAGES_KEY, images);
+      } catch (err) {
+        console.error('[storage] deleteImage failed:', err);
+        throw err;
+      }
+    });
   },
 
   async getImageCount(): Promise<number> {
-    const images = (await get(GENERATED_IMAGES_KEY)) || {};
-    return Object.keys(images).length;
+    try {
+      const images = (await get(GENERATED_IMAGES_KEY)) || {};
+      return Object.keys(images).length;
+    } catch (err) {
+      console.error('[storage] getImageCount failed:', err);
+      return 0;
+    }
   },
 
   // Delete all cycles for a specific campaign (reset research)
   async deleteCyclesForCampaign(campaignId: string): Promise<void> {
-    const cycles = (await get(CYCLES_KEY)) || {};
-    const toDelete = Object.keys(cycles).filter(
-      (id) => (cycles[id] as Cycle).campaignId === campaignId
-    );
-    for (const id of toDelete) delete cycles[id];
-    await set(CYCLES_KEY, cycles);
+    return enqueueCycleWrite(async () => {
+      try {
+        const cycles = (await get(CYCLES_KEY)) || {};
+        const toDelete = Object.keys(cycles).filter(
+          (id) => (cycles[id] as Cycle).campaignId === campaignId
+        );
+        for (const id of toDelete) delete cycles[id];
+        await set(CYCLES_KEY, cycles);
+      } catch (err) {
+        console.error('[storage] deleteCyclesForCampaign failed:', err);
+        throw err;
+      }
+    });
   },
 
-  // Clear all data
+  // Bug fix #3: clear() now also deletes images so "clear all" is truly complete.
   async clear(): Promise<void> {
-    await del(CAMPAIGNS_KEY);
-    await del(CYCLES_KEY);
+    try {
+      await del(CAMPAIGNS_KEY);
+      await del(CYCLES_KEY);
+      await del(GENERATED_IMAGES_KEY);
+    } catch (err) {
+      console.error('[storage] clear failed:', err);
+      throw err;
+    }
   },
 };

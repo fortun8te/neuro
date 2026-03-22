@@ -5,7 +5,7 @@
  * and metadata. Supports CRUD + listing grouped by date.
  */
 
-import { get, set } from 'idb-keyval';
+import { get, set, del } from 'idb-keyval';
 import { ollamaService } from './ollama';
 import { getThinkMode } from './modelConfig';
 
@@ -79,6 +79,18 @@ export interface GroupedConversations {
 const CONVERSATIONS_KEY = 'nomad-agent-conversations';
 const CONVERSATION_PREFIX = 'nomad-conv-';
 
+// Bug fix #8: serialize all writes to the ID-index key so two parallel
+// saveConversation() calls don't interleave their read-modify-write and
+// silently drop one conversation from the index.
+let _convIndexQueue: Promise<void> = Promise.resolve();
+function enqueueConvIndexWrite(fn: () => Promise<void>): Promise<void> {
+  // Use .then(fn, () => {}) — on error, swallow and don't re-run fn.
+  // Previously used .catch(fn) which re-executed fn as error recovery,
+  // potentially running a write twice (once normally, once on failure).
+  _convIndexQueue = _convIndexQueue.then(fn, () => {});
+  return _convIndexQueue;
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 
@@ -109,14 +121,17 @@ async function setConversationIds(ids: string[]): Promise<void> {
 
 /** Save a conversation (creates or updates) */
 export async function saveConversation(conv: Conversation): Promise<void> {
-  // Update the conversation record
+  // Write the conversation record first (idempotent, no race risk on its own key)
   await set(CONVERSATION_PREFIX + conv.id, conv);
 
-  // Update the ID index (move to front if exists, add if new)
-  const ids = await getConversationIds();
-  const filtered = ids.filter(id => id !== conv.id);
-  filtered.unshift(conv.id);
-  await setConversationIds(filtered);
+  // Bug fix #8: update the shared ID-index inside the serial queue so
+  // two concurrent saveConversation() calls cannot interleave and lose an entry.
+  return enqueueConvIndexWrite(async () => {
+    const ids = await getConversationIds();
+    const filtered = ids.filter(id => id !== conv.id);
+    filtered.unshift(conv.id);
+    await setConversationIds(filtered);
+  });
 }
 
 /** Load a full conversation by ID */
@@ -126,12 +141,14 @@ export async function loadConversation(id: string): Promise<Conversation | null>
 
 /** Delete a conversation */
 export async function deleteConversation(id: string): Promise<void> {
-  const ids = await getConversationIds();
-  await setConversationIds(ids.filter(i => i !== id));
-  // idb-keyval doesn't have a "del" that we import here, so overwrite with undefined
-  // Actually we do have del — let's use set with undefined as a workaround
-  // The key will remain but be undefined, which is fine for our purposes
-  await set(CONVERSATION_PREFIX + id, undefined);
+  // Bug fix #7: use del() to actually remove the key from IDB instead of
+  // set(key, undefined) which leaves a permanent zombie entry in the store.
+  // Also serialised so concurrent deletes don't race on the index.
+  return enqueueConvIndexWrite(async () => {
+    const ids = await getConversationIds();
+    await setConversationIds(ids.filter(i => i !== id));
+    await del(CONVERSATION_PREFIX + id);
+  });
 }
 
 /** List all conversations as summaries, grouped by date */

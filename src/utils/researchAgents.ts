@@ -8,7 +8,7 @@ import type { Campaign } from '../types';
 
 // Orchestrator system message — loaded from /prompts/research/orchestrator.md if available
 // Falls back to the inline string if the prompt file is not found (e.g. during tests).
-const ORCHESTRATOR_SYSTEM_MSG = loadPromptBody('research/orchestrator.md')
+const ORCHESTRATOR_SYSTEM_MSG = loadPromptBody('research/orchestrator.txt')
   || 'Output RESEARCH: [query] lines or COMPLETE: true. No filler.';
 
 // ─────────────────────────────────────────────────────────────
@@ -421,6 +421,8 @@ COVERAGE: market_size, competitors, objections, trends, regional, pricing, chann
         coverage_graph,
       };
     } catch (error) {
+      // Re-throw abort errors immediately — don't fall back
+      if (signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) throw error;
       console.error('Research agent error:', error);
       // Fallback to LLM-only research
       try {

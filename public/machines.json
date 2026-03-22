@@ -1,7 +1,0 @@
-{
-  "machines": [
-    { "id": "sandbox-1", "baseUrl": "http://localhost:8080", "vncWsUrl": "ws://localhost:5901", "label": "Computer 1" },
-    { "id": "sandbox-2", "baseUrl": "http://localhost:8081", "vncWsUrl": "ws://localhost:5902", "label": "Computer 2" },
-    { "id": "sandbox-3", "baseUrl": "http://localhost:8082", "vncWsUrl": "ws://localhost:5903", "label": "Computer 3" }
-  ]
-}

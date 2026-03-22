@@ -69,6 +69,13 @@ export function useConsolidation(): UseConsolidationReturn {
   const isRunningRef = useRef(false);
   isRunningRef.current = consolidationState.isRunning;
 
+  // Guard against setState calls after the component unmounts (async work in-flight).
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   // Check if consolidation should auto-trigger
   useEffect(() => {
     const { should, reason } = ConsolidationService.shouldTriggerConsolidation(allMemories);
@@ -76,7 +83,7 @@ export function useConsolidation(): UseConsolidationReturn {
 
     // Optional: Auto-trigger at threshold
     if (should && reason === 'threshold' && !isRunningRef.current) {
-      console.log(`[useConsolidation] Auto-triggering consolidation (${reason})`);
+      // Auto-triggering consolidation at threshold
       // Uncommenting the next line enables auto-trigger:
       // triggerConsolidation(false);
     }
@@ -97,7 +104,7 @@ export function useConsolidation(): UseConsolidationReturn {
         const triggeringMode = manual ? 'manual' : 'threshold';
         const cycleId = currentCycle?.id || 'unknown-cycle';
 
-        console.log(`[useConsolidation] Starting consolidation (${triggeringMode})`);
+        // Starting consolidation
 
         // Run consolidation
         const result = await ConsolidationService.consolidateWeekly(
@@ -106,6 +113,9 @@ export function useConsolidation(): UseConsolidationReturn {
           cycleId
         );
 
+        // Guard: component may have unmounted while consolidation was running.
+        if (!mountedRef.current) return;
+
         setConsolidationState(prev => ({
           ...prev,
           isRunning: false,
@@ -113,12 +123,9 @@ export function useConsolidation(): UseConsolidationReturn {
           error: result.error || null,
         }));
 
-        console.log(`[useConsolidation] Consolidation complete:`, {
-          successfulCompressions: result.successfulCompressions,
-          contextReduction: `${result.contextReductionPercent}%`,
-          archivedCount: result.totalEpisodicArchived,
-        });
+        // Consolidation complete
       } catch (err) {
+        if (!mountedRef.current) return;
         const errorMsg = err instanceof Error ? err.message : String(err);
         setConsolidationState(prev => ({
           ...prev,

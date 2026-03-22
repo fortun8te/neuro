@@ -213,6 +213,8 @@ Return ONLY valid JSON array, no other text.`;
         }
         return [];
       } catch (err) {
+        // Re-throw abort errors immediately — don't retry or swallow them
+        if (signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) throw err;
         console.error(`Error mapping deep desires (attempt ${attempt}):`, err);
         if (attempt < maxRetries) continue;
         return [];
@@ -283,6 +285,7 @@ Return ONLY valid JSON.`;
       if (parsed.rootCause) return parsed as RootCauseMechanism;
       return { rootCause: '', mechanism: '', chainOfYes: [], ahaInsight: '' };
     } catch (err) {
+      if (signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) throw err;
       console.error('Error analyzing root cause:', err);
       return { rootCause: '', mechanism: '', chainOfYes: [], ahaInsight: '' };
     }
@@ -363,6 +366,7 @@ Example: [{"objection":"It is too expensive","frequency":"common","impact":"high
 
       return parsed;
     } catch (err) {
+      if (signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) throw err;
       console.error('Error identifying objections:', err);
       // Even on error, return fallback objections rather than empty
       return desires.slice(0, 3).map(d => ({
@@ -447,6 +451,7 @@ Return ONLY valid JSON.`;
       onProgress?.('\n');
       return await extractJSON(result, 'object', null, brainModel, signal);
     } catch (err) {
+      if (signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) throw err;
       console.error('Error researching avatar and market:', err);
       return {
         avatarLanguage: [], whereAudienceCongregates: [],
@@ -487,6 +492,7 @@ Return ONLY valid JSON array.`;
       onProgress?.('\n');
       return await extractJSON(result, 'array', null, brainModel, signal);
     } catch (err) {
+      if (signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) throw err;
       console.error('Error mapping competitor landscape:', err);
       return [];
     }
@@ -551,6 +557,7 @@ Return ONLY valid JSON.`;
       if (parsed.searchTerms) return parsed as PurchaseJourneyMap;
       return { searchTerms: [], reviewSites: [], comparisonCriteria: [], decisionInfluencers: [], abandonmentReasons: [], typicalTimeline: '', firstTouchpoint: '', finalTrigger: '' };
     } catch (err) {
+      if (signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) throw err;
       console.error('Error mapping purchase journey:', err);
       return { searchTerms: [], reviewSites: [], comparisonCriteria: [], decisionInfluencers: [], abandonmentReasons: [], typicalTimeline: '', firstTouchpoint: '', finalTrigger: '' };
     }
@@ -612,6 +619,7 @@ Return ONLY valid JSON.`;
       if (parsed.primaryEmotion) return parsed as EmotionalLandscape;
       return { primaryEmotion: '', secondaryEmotions: [], identitySignal: '', socialPressure: '', shameTriggers: [], hopeTriggers: [], emotionalArc: '' };
     } catch (err) {
+      if (signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) throw err;
       console.error('Error mapping emotional landscape:', err);
       return { primaryEmotion: '', secondaryEmotions: [], identitySignal: '', socialPressure: '', shameTriggers: [], hopeTriggers: [], emotionalArc: '' };
     }
@@ -672,6 +680,7 @@ Return ONLY valid JSON array.`;
       if (Array.isArray(parsed) && parsed.length > 0) return parsed as CompetitorPosition[];
       return [];
     } catch (err) {
+      if (signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) throw err;
       console.error('Error mapping competitive positioning:', err);
       return [];
     }
@@ -769,6 +778,7 @@ Return ONLY valid JSON.`;
         biggestFear: '',
       };
     } catch (err) {
+      if (signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) throw err;
       console.error('Error synthesizing persona:', err);
       return {
         name: 'Unknown',
@@ -857,6 +867,7 @@ Return ONLY valid JSON.`;
     // ──────────────────────────────────────────
     // LAYER 2: Root Cause + Mechanism
     // ──────────────────────────────────────────
+    if (signal?.aborted) throw new DOMException('Research aborted', 'AbortError');
     onProgress?.(`\nLAYER 2: Problem — Root cause + belief chain...\n`);
     const rootCauseMechanism = await analyzeRootCauseMechanism(campaign, deepDesires, layerModel, signal, onProgress, webResearchContext);
 
@@ -875,6 +886,7 @@ Return ONLY valid JSON.`;
     // ──────────────────────────────────────────
     // LAYER 3: Objections + Failed Solutions
     // ──────────────────────────────────────────
+    if (signal?.aborted) throw new DOMException('Research aborted', 'AbortError');
     onProgress?.(`\nLAYER 3: Objections — What stops purchase...\n`);
     const objections = await identifyObjections(campaign, deepDesires, rootCauseMechanism, layerModel, signal, onProgress, webResearchContext);
 
@@ -891,10 +903,10 @@ Return ONLY valid JSON.`;
 
     // Run SEQUENTIALLY — remote GPU handles one at a time cleanly
     const avatarAndMarket = await researchAvatarAndMarket(campaign, deepDesires, layerModel, signal, onProgress, webResearchContext);
-    if (signal?.aborted) throw new Error('Aborted');
+    if (signal?.aborted) throw new DOMException('Research aborted', 'AbortError');
     const competitorGaps = await mapCompetitorLandscape(campaign, layerModel, signal, onProgress);
 
-    if (signal?.aborted) throw new Error('Aborted');
+    if (signal?.aborted) throw new DOMException('Research aborted', 'AbortError');
 
     const marketSoph = (avatarAndMarket.marketSophistication || 3) as MarketSophisticationLevel;
     onProgress?.(`  Market Sophistication: Level ${marketSoph}`);
@@ -977,6 +989,7 @@ Return ONLY valid JSON.`;
     // ──────────────────────────────────────────
     // PERSONA SYNTHESIS: Create rich avatar persona
     // ──────────────────────────────────────────
+    if (signal?.aborted) throw new DOMException('Research aborted', 'AbortError');
     onProgress?.(`\nSYNTHESIS: Building detailed avatar persona...\n`);
     const persona = await synthesizePersona(
       campaign, deepDesires, rootCauseMechanism, objections, avatarAndMarket,

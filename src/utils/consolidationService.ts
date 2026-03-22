@@ -148,7 +148,7 @@ export class ConsolidationService {
     try {
       // ── Phase 1: Grouping ──
       const groups = this.groupEpisodicMemories(episodic);
-      console.log(`[Consolidation] Grouped ${episodic.length} episodic → ${groups.length} groups`);
+      // Grouped episodic memories
 
       // ── Phase 2: Compression ──
       const compressionResults: CompressionResult[] = [];

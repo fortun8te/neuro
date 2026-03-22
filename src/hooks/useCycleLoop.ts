@@ -11,6 +11,7 @@ import { generateResearchReport } from '../utils/reportGenerator';
 import { visualProgressStore } from '../utils/visualProgressStore';
 import { tokenTracker } from '../utils/tokenStats';
 import { ollamaService } from '../utils/ollama';
+import { getStoredMemories } from '../utils/memoryStore';
 
 
 const FULL_STAGE_ORDER: StageName[] = ['research', 'brand-dna', 'persona-dna', 'angles', 'strategy', 'copywriting', 'production', 'test'];
@@ -49,6 +50,10 @@ function createCycle(campaignId: string, cycleNumber: number, mode: CycleMode = 
   for (const name of FULL_STAGE_ORDER) {
     stages[name] = createEmptyStage();
   }
+
+  // Fetch memories from previous cycles to inject into the new cycle
+  const priorMemories = getStoredMemories();
+
   return {
     id: `${campaignId}-cycle-${cycleNumber}`,
     campaignId,
@@ -59,6 +64,11 @@ function createCycle(campaignId: string, cycleNumber: number, mode: CycleMode = 
     currentStage: stageOrder[0],
     status: 'in-progress',
     mode,
+    priorMemories: priorMemories.slice(0, 10).map(m => ({
+      id: m.id,
+      content: m.content,
+      tags: m.tags,
+    })),
   };
 }
 
@@ -73,14 +83,12 @@ function isAbortError(err: unknown): boolean {
 }
 
 /** Preflight: verify Ollama is reachable before starting the pipeline.
- *  Returns true if reachable, false otherwise. Uses a short timeout. */
-async function checkOllamaReachable(timeoutMs = OLLAMA_PREFLIGHT_TIMEOUT): Promise<boolean> {
+ *  Returns true if reachable, false otherwise. Uses a short timeout.
+ *  Note: ollamaService.checkConnection() already applies an internal
+ *  AbortSignal.timeout(8000), so no additional timer is needed here. */
+async function checkOllamaReachable(_timeoutMs = OLLAMA_PREFLIGHT_TIMEOUT): Promise<boolean> {
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const ok = await ollamaService.checkConnection();
-    clearTimeout(timer);
-    return ok;
+    return await ollamaService.checkConnection();
   } catch {
     return false;
   }
@@ -146,7 +154,7 @@ export function useCycleLoop(askUser?: (question: UserQuestion) => Promise<strin
     return askUser(question);
   }, [askUser]);
 
-  // Generate a question using GLM and wait for user answer
+  // Generate a question using LLM and wait for user answer
   const askCheckpointQuestion = useCallback(async (
     checkpoint: QuestionCheckpoint,
     campaign: Campaign,
@@ -159,9 +167,9 @@ export function useCycleLoop(askUser?: (question: UserQuestion) => Promise<strin
 
       const { system, prompt } = getCheckpointQuestionPrompt(checkpoint, brief, stageOutputs);
 
-      // Generate question using GLM
+      // Generate question using LLM
       const response = await generate(prompt, system, {
-        model: getModelForStage('research'), // GLM for question generation
+        model: getModelForStage('research'),
         signal: abortControllerRef.current?.signal,
       });
 
@@ -170,7 +178,7 @@ export function useCycleLoop(askUser?: (question: UserQuestion) => Promise<strin
       const parsed = JSON.parse(cleaned);
 
       if (!parsed.question || !Array.isArray(parsed.options) || parsed.options.length < 3) {
-        console.warn('Invalid question format from GLM:', parsed);
+        console.warn('Invalid question format from LLM:', parsed);
         return null;
       }
 
@@ -224,6 +232,17 @@ export function useCycleLoop(askUser?: (question: UserQuestion) => Promise<strin
         if (stageName === 'research') {
           // Orchestrated research: Desire-Driven Analysis + Web Search Researchers
           const RESEARCH_OUTPUT_CAP = 2_000_000; // 2MB rolling cap — avoids O(n²) concat on MX preset
+
+          // Inject prior cycle memories into research progress stream for visibility
+          if (cycle.priorMemories && cycle.priorMemories.length > 0) {
+            const memoryIntro = `\n[MEMORY INPUT] Learnings from previous cycles:\n`;
+            cycle.priorMemories.forEach(m => {
+              stage.agentOutput += `  • ${m.content} [${m.tags.join(', ')}]\n`;
+            });
+            stage.agentOutput = memoryIntro + stage.agentOutput;
+            throttledSetCycle(cycle);
+          }
+
           const researchResult = await executeOrchestratedResearch(
             campaign,
             (msg) => {
@@ -233,7 +252,8 @@ export function useCycleLoop(askUser?: (question: UserQuestion) => Promise<strin
             },
             true, // Enable web search orchestration
             campaign.researchMode === 'interactive' ? handleResearchPauseForInput : undefined,
-            signal
+            signal,
+            cycle.priorMemories // Pass memories to research agents
           );
 
           result = researchResult.processedOutput;
@@ -574,9 +594,8 @@ Output your evaluation as ONLY a valid JSON object with this exact structure (no
 
         playSound('error');
         const errMsg = err instanceof Error ? err.message : 'Stage execution failed';
-        // Make idle timeout errors more user-friendly
-        const msg = errMsg.includes('No response from model')
-          ? 'No response from model — check Ollama connection'
+        const msg = errMsg.includes('No response from model') || errMsg.includes('Failed to fetch') || errMsg.includes('ECONNREFUSED') || errMsg.includes('fetch')
+          ? "Can't reach Ollama — make sure it's running and check Settings > Connection"
           : errMsg;
         setError(msg);
         throw err;

@@ -4,7 +4,7 @@
  * Individual step card with:
  * - Title + description
  * - Collapsible content (toggled by click)
- * - Status icons (checkmark for done, circle for pending, animated white dot for active)
+ * - Status icons (checkmark for done, circle for pending, animated blue morph for active)
  * - Sub-items with icons (search, completed, pending)
  * - Smooth open/close transitions
  */
@@ -74,14 +74,24 @@ function ChevronIcon({ open }: { open: boolean }) {
 function ThinkingDot() {
   return (
     <motion.div
-      className="w-2 h-2 rounded-full"
-      style={{ background: 'rgba(255,255,255,0.9)' }}
+      className="shrink-0"
+      style={{
+        width: 10,
+        height: 10,
+        background: 'linear-gradient(135deg, #60a5fa 0%, #2563eb 50%, #6366f1 100%)',
+      }}
       animate={{
-        scale: [0.9, 1.2, 0.9],
-        opacity: [0.7, 1, 0.7],
+        borderRadius: ['50%', '22%', '50%'],
+        rotate: [0, 90, 180],
+        scale: [0.95, 1.08, 0.95],
+        boxShadow: [
+          '0 0 3px rgba(59,130,246,0.3), 0 0 6px rgba(59,130,246,0.1)',
+          '0 0 5px rgba(59,130,246,0.5), 0 0 10px rgba(59,130,246,0.2)',
+          '0 0 3px rgba(59,130,246,0.3), 0 0 6px rgba(59,130,246,0.1)',
+        ],
       }}
       transition={{
-        duration: 1.2,
+        duration: 1.8,
         repeat: Infinity,
         ease: 'easeInOut',
       }}

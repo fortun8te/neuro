@@ -20,12 +20,13 @@ interface ShineTextProps {
   animate?: boolean;
 }
 
-// Inject keyframes once
-let injected = false;
+// Inject keyframes once (ID-gated to survive HMR)
 function injectKeyframes() {
-  if (injected || typeof document === 'undefined') return;
-  injected = true;
+  if (typeof document === 'undefined') return;
+  const id = 'nomad-shine-keyframes';
+  if (document.getElementById(id)) return;
   const style = document.createElement('style');
+  style.id = id;
   style.textContent = `
     @keyframes nomad-shine {
       0% { background-position: 0; }

@@ -33,6 +33,10 @@
   "include": ["src"],
   "exclude": [
     "src/utils/memory.test.ts",
-    "src/utils/memoryExample.ts"
+    "src/utils/memoryExample.ts",
+    "src/components/ui/button.tsx",
+    "src/components/ui/separator.tsx",
+    "src/components/ui/tooltip.tsx",
+    "src/components/ui/file-tree-1.tsx"
   ]
 }

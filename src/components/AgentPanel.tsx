@@ -12,10 +12,10 @@ import { TextShimmer } from './TextShimmer';
 import { runAgentLoop } from '../utils/agentEngine';
 import type { TaskProgress, AgentEngineEvent, ToolCall, CampaignContextData, SubagentEventData } from '../utils/agentEngine';
 import { useCampaign } from '../context/CampaignContext';
-import { getMemories } from '../utils/memoryStore';
+import { getMemories, deleteMemory } from '../utils/memoryStore';
 import { getUserMemories, touchUserProfile } from '../utils/userProfile';
 import { getModelForStage } from '../utils/modelConfig';
-import { generateWorkspaceId, getWorkspacePath, workspaceSaveBinary, workspaceListDetailed, ensureWorkspace, workspacePreview, type WorkspaceFile } from '../utils/workspace';
+import { generateWorkspaceId, getWorkspacePath, workspaceSaveBinary, workspaceListDetailed, ensureWorkspace, workspaceMkdir, seedWorkspace, type WorkspaceFile } from '../utils/workspace';
 import {
   saveConversation,
   loadConversation,
@@ -30,9 +30,10 @@ import {
 import VoiceInput from './VoiceInput';
 import { ResponseStream } from './ResponseStream';
 import { LiquidGlass } from './LiquidGlass';
-import { FilesystemTree, buildTreeFromFlatFiles, renderWorkspaceResult, type FileNode } from './FilesystemTree';
+import { renderWorkspaceResult } from './FilesystemTree';
 import { AgentUIWrapper } from './AgentUIWrapper';
 import type { StepConfig } from './AgentUIWrapper';
+import { WorkspaceModal } from './WorkspaceModal';
 import type { Campaign, Cycle } from '../types';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -218,6 +219,7 @@ function GlobeIcon() {
 }
 
 
+
 function FolderIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -330,9 +332,6 @@ function RoutingIndicator() {
     <div className="flex gap-3">
       <NomadLogo />
       <div className="flex-1 min-w-0 pt-0.5">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-[11px] font-semibold" style={{ color: 'rgba(255,255,255,0.5)' }}>nomad</span>
-        </div>
         <div className="flex items-center gap-2">
           <ThinkingMorph size={14} />
           <TextShimmer className="text-[12px] font-medium [--shimmer-base:rgba(255,255,255,0.4)] [--shimmer-highlight:rgba(255,255,255,0.9)]" duration={1.8}>Routing</TextShimmer>
@@ -370,7 +369,7 @@ function ThinkingMorph({ size = 18 }: { size?: number }) {
       style={{
         width: size,
         height: size,
-        background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,255,255,0.7), rgba(255,255,255,0.5))',
+        background: 'linear-gradient(135deg, #60a5fa 0%, #2563eb 50%, #6366f1 100%)',
         backgroundSize: '200% 200%',
       }}
       animate={{
@@ -378,9 +377,9 @@ function ThinkingMorph({ size = 18 }: { size?: number }) {
         rotate: [0, 90, 180],
         scale: [0.95, 1.08, 0.95],
         boxShadow: [
-          `0 0 ${size * 0.3}px rgba(255,255,255,0.2), 0 0 ${size * 0.6}px rgba(255,255,255,0.06)`,
-          `0 0 ${size * 0.5}px rgba(255,255,255,0.35), 0 0 ${size}px rgba(255,255,255,0.12)`,
-          `0 0 ${size * 0.3}px rgba(255,255,255,0.2), 0 0 ${size * 0.6}px rgba(255,255,255,0.06)`,
+          `0 0 ${size * 0.3}px rgba(59,130,246,0.3), 0 0 ${size * 0.6}px rgba(59,130,246,0.1)`,
+          `0 0 ${size * 0.5}px rgba(59,130,246,0.5), 0 0 ${size}px rgba(59,130,246,0.2)`,
+          `0 0 ${size * 0.3}px rgba(59,130,246,0.3), 0 0 ${size * 0.6}px rgba(59,130,246,0.1)`,
         ],
         backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'],
       }}
@@ -421,6 +420,31 @@ function renderMarkdown(text: string): React.ReactNode[] {
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
+
+    // Fenced code block: ```lang ... ```
+    if (line.trim().startsWith('\`\`\`')) {
+      const lang = line.trim().slice(3).trim();
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].trim().startsWith('\`\`\`')) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      i++; // consume closing ```
+      result.push(
+        <pre
+          key={`code-${i}`}
+          className="my-2 p-3 rounded-lg overflow-x-auto text-[11px] font-mono leading-relaxed"
+          style={{
+            background: 'rgba(0,0,0,0.45)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: 'rgba(43,121,255,0.85)',
+          }}
+          data-lang={lang || undefined}
+        >{codeLines.join('\n')}</pre>
+      );
+      continue;
+    }
 
     // Table detection: line with | separators
     if (line.includes('|') && line.trim().startsWith('|')) {
@@ -901,109 +925,6 @@ function BottomStatusBar({ steps, isWorking, currentToolName }: BottomStatusBarP
   );
 }
 
-// ── FilePreviewPanel ──────────────────────────────────────────────────────
-
-function FilePreviewPanel({ filename, workspaceId, onClose }: { filename: string; workspaceId: string; onClose: () => void }) {
-  const [content, setContent] = useState<string | null>(null);
-  const [isImage, setIsImage] = useState(false);
-  const [mimeType, setMimeType] = useState<string>('');
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    workspacePreview(workspaceId, filename).then(result => {
-      if (cancelled) return;
-      setLoading(false);
-      if (result.success) {
-        setContent(result.content);
-        setIsImage(result.isImage);
-        setMimeType(result.mimeType || '');
-      } else {
-        setContent(`Error: ${result.error || 'Could not load file'}`);
-      }
-    });
-    return () => { cancelled = true; };
-  }, [filename, workspaceId]);
-
-  return (
-    <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-      <div className="flex items-center justify-between px-3 py-1.5" style={{ background: 'rgba(255,255,255,0.02)' }}>
-        <span className="text-[10px] font-sans truncate flex-1" style={{ color: 'rgba(255,255,255,0.4)' }}>{filename}</span>
-        <button onClick={onClose} className="shrink-0 ml-2" style={{ color: 'rgba(255,255,255,0.2)' }}><XIcon /></button>
-      </div>
-      <div className="px-3 py-2 max-h-[200px] overflow-y-auto">
-        {loading ? (
-          <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.15)' }}>Loading...</span>
-        ) : isImage && content ? (
-          <img src={`data:${mimeType};base64,${content}`} alt={filename} className="max-w-full rounded" style={{ maxHeight: 160 }} />
-        ) : (
-          <pre className="text-[10px] leading-relaxed whitespace-pre-wrap font-mono" style={{ color: 'rgba(255,255,255,0.45)' }}>{content}</pre>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── WorkspaceIndicator ─────────────────────────────────────────────────────
-
-function WorkspaceIndicator({ workspaceId, files, onRefresh }: { workspaceId: string; files: WorkspaceFile[]; onRefresh: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [previewFile, setPreviewFile] = useState<string | null>(null);
-  const path = getWorkspacePath(workspaceId);
-
-  const handleFileClick = useCallback((node: FileNode) => {
-    // Extract relative filename from the full path
-    const fullPath = node.path || node.name;
-    const wsPath = getWorkspacePath(workspaceId) + '/';
-    const relative = fullPath.startsWith(wsPath) ? fullPath.substring(wsPath.length) : node.name;
-    setPreviewFile(relative);
-  }, [workspaceId]);
-
-  return (
-    <div className="relative">
-      <button onClick={() => { setOpen(o => !o); if (!open) onRefresh(); }} className="nomad-glass-pill flex items-center gap-1.5 h-8 px-2.5 rounded-lg transition-all hover:brightness-150" style={{ color: open ? 'rgba(43,121,255,0.8)' : 'rgba(255,255,255,0.35)' }} title={path}>
-        <span><FolderIcon /></span>
-        <span className="text-[10px] font-medium">Files</span>
-        {files.length > 0 && <span className="text-[9px] font-sans px-1 rounded-full" style={{ background: 'rgba(43,121,255,0.15)', color: 'rgba(43,121,255,0.7)' }}>{files.length}</span>}
-      </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div initial={{ opacity: 0, y: -4, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -4, scale: 0.97 }} transition={{ duration: 0.12 }} className="absolute top-full left-0 mt-1 rounded-xl overflow-hidden z-40" style={{ background: 'rgba(20,20,24,0.95)', border: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(16px)', minWidth: 280, maxWidth: 360, maxHeight: 'calc(100vh - 120px)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
-            <div className="flex items-center justify-between px-3 py-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              <span className="text-[10px] font-semibold" style={{ color: 'rgba(255,255,255,0.4)' }}>Workspace files</span>
-              <div className="flex items-center gap-1">
-                <button onClick={onRefresh} className="w-5 h-5 rounded flex items-center justify-center hover:bg-white/[0.05] transition-colors" style={{ color: 'rgba(255,255,255,0.2)' }} title="Refresh">
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" /></svg>
-                </button>
-                <button onClick={() => { setOpen(false); setPreviewFile(null); }} style={{ color: 'rgba(255,255,255,0.2)' }}><XIcon /></button>
-              </div>
-            </div>
-            <div className="px-3 py-1.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}><span className="text-[9px] font-sans block truncate" style={{ color: 'rgba(255,255,255,0.2)' }}>{path}</span></div>
-            <div className="max-h-[280px] overflow-y-auto px-1 py-0.5">
-              <FilesystemTree
-                nodes={buildTreeFromFlatFiles(
-                  files.map(f => ({ name: f.name, sizeStr: f.sizeStr, modifiedStr: f.modifiedStr })),
-                  path
-                )}
-                onFileClick={handleFileClick}
-              />
-            </div>
-            {/* File preview panel */}
-            {previewFile && (
-              <FilePreviewPanel
-                filename={previewFile}
-                workspaceId={workspaceId}
-                onClose={() => setPreviewFile(null)}
-              />
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
 // ── NomadLogo ──────────────────────────────────────────────────────────────
 
 function NomadLogo() {
@@ -1223,7 +1144,7 @@ export function AgentPanel() {
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [sessionMemories, setSessionMemories] = useState<Array<{ key: string; content: string }>>([]);
-  const [showMemoryPanel, setShowMemoryPanel] = useState(false);
+  const [showWorkspaceModal, setShowWorkspaceModal] = useState(false);
   const dragCountRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -1250,6 +1171,16 @@ export function AgentPanel() {
   }, []);
 
   useEffect(() => { refreshConversationList(); }, [refreshConversationList]);
+
+  // Abort any running agent loop on unmount to prevent background fetch leaks
+  useEffect(() => {
+    return () => {
+      if (abortRef.current) {
+        abortRef.current.abort('unmount');
+        abortRef.current = null;
+      }
+    };
+  }, []);
 
   // Load memories on mount — user profile + persisted memoryStore entries
   useEffect(() => {
@@ -1437,6 +1368,11 @@ export function AgentPanel() {
     const result = await workspaceListDetailed(workspaceId);
     if (result.success) setWorkspaceFiles(result.files);
   }, [workspaceId]);
+
+  // Seed default folder structure whenever a new workspace is created
+  useEffect(() => {
+    seedWorkspace(workspaceId).then(() => refreshWorkspaceFiles());
+  }, [workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDragEnter = useCallback((e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); dragCountRef.current++; if (e.dataTransfer.types.includes('Files')) setIsDragOver(true); }, []);
   const handleDragLeave = useCallback((e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); dragCountRef.current--; if (dragCountRef.current <= 0) { dragCountRef.current = 0; setIsDragOver(false); } }, []);
@@ -1686,10 +1622,24 @@ export function AgentPanel() {
                 const tcName = event.toolCall.name;
                 const ns = event.type === 'tool_done' ? 'done' as const : 'error' as const;
                 const result = event.toolCall?.result?.output?.slice(0, 500);
+
+                // BUG-01: extract screenshot from tool result data for browser tools
+                const isBrowserTool = ['browse', 'browser_screenshot', 'use_computer', 'analyze_page'].includes(tcName);
+                const screenshotBase64: string | undefined = isBrowserTool
+                  ? (event.toolCall.result?.data as { image_base64?: string } | undefined)?.image_base64
+                  : undefined;
+
+                // BUG-07: extract URL from tool result output for browser URL chip
+                const outputText = event.toolCall?.result?.output || '';
+                const urlMatch = outputText.match(/https?:\/\/[^\s"']+/);
+                const extractedUrl = urlMatch ? urlMatch[0] : undefined;
+
                 updateCurrentStep(s => ({
                   ...s,
                   actions: s.actions.map(a => a.id === tcId ? { ...a, status: ns, result } : a),
                   entries: s.entries.map(e => e.type === 'action' && e.pill.id === tcId ? { type: 'action', pill: { ...e.pill, status: ns, result } } : e),
+                  ...(screenshotBase64 ? { browserScreenshot: screenshotBase64 } : {}),
+                  ...(extractedUrl ? { browserUrl: extractedUrl } : {}),
                 }));
                 // Auto-refresh workspace files after filesystem-modifying tools
                 if (event.type === 'tool_done' && ['workspace_save', 'workspace_list', 'file_write', 'use_computer', 'sandbox_pull'].includes(tcName)) {
@@ -1791,12 +1741,18 @@ export function AgentPanel() {
       });
       setStatus('idle'); taskProgressRef.current = null; abortRef.current = null;
     } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') { setStatus('idle'); }
+      const msg = err instanceof Error ? err.message : String(err);
+      const isAbort = (err instanceof DOMException && err.name === 'AbortError')
+        || (err instanceof Error && err.name === 'AbortError')
+        || msg.toLowerCase().includes('abort')
+        || msg.toLowerCase().includes('stopped');
+      if (isAbort) { setStatus('idle'); }
       else {
         setStatus('error');
-        const msg = err instanceof Error ? err.message : String(err);
-        const friendly = msg.toLowerCase().includes('fetch') || msg.toLowerCase().includes('network') ? 'Cannot reach Ollama' : msg;
-        setBlocks(prev => [...prev, { id: crypto.randomUUID(), type: 'agent' as const, content: `Error: ${friendly}`, steps: [], timestamp: Date.now() }]);
+        const friendly = msg.toLowerCase().includes('fetch') || msg.toLowerCase().includes('network') || msg.toLowerCase().includes('econnrefused')
+          ? "Can't reach Ollama — check your connection in Settings"
+          : msg;
+        setBlocks(prev => [...prev, { id: crypto.randomUUID(), type: 'agent' as const, content: friendly, steps: [], timestamp: Date.now() }]);
       }
       activeBlockIdRef.current = null; activeStepIdRef.current = null; abortRef.current = null;
     }
@@ -1804,7 +1760,7 @@ export function AgentPanel() {
 
   const handleStop = () => {
     // Abort the controller — this propagates to all running tools via signal
-    abortRef.current?.abort('User stopped the agent');
+    abortRef.current?.abort('stopped');
     abortRef.current = null;
     setStatus('idle'); taskProgressRef.current = null;
     setCurrentToolName(undefined);
@@ -1843,65 +1799,80 @@ export function AgentPanel() {
       {/* Overlay Conversation Sidebar */}
       <ConversationSidebar groups={conversationGroups} currentId={blocks.length > 0 ? conversationId : null} onSelect={(id) => { handleSelectConversation(id); setSidebarOpen(false); }} onDelete={handleDeleteConversation} onNewChat={() => { handleNewChat(); setSidebarOpen(false); }} onRename={handleRenameConversation} isCollapsed={!sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      {/* Floating action buttons (top-left) — z-30 keeps them above content but below sidebar overlay */}
-      <div className="absolute top-3 left-3 z-30 flex items-center gap-1.5">
-        <button onClick={() => setSidebarOpen(o => !o)} className="nomad-glass-pill w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:brightness-150" style={{ color: sidebarOpen ? 'rgba(43,121,255,0.8)' : 'rgba(255,255,255,0.35)' }} title="Chat history">
-          <SidebarToggleIcon open={sidebarOpen} />
-        </button>
-        <button onClick={handleNewChat} className="nomad-glass-pill w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:brightness-150" style={{ color: 'rgba(255,255,255,0.35)' }} title="New chat">
-          <NewChatIcon />
-        </button>
-        {/* Files button — floating panel with workspace file tree */}
-        <WorkspaceIndicator workspaceId={workspaceId} files={workspaceFiles} onRefresh={refreshWorkspaceFiles} />
-        {/* Memory badge — shows count + popover of active session memories */}
-        {sessionMemories.length > 0 && (
-          <div className="relative">
-            <button
-              onClick={() => setShowMemoryPanel(o => !o)}
-              className="nomad-glass-pill h-8 px-2.5 rounded-lg flex items-center gap-1.5 transition-all hover:brightness-150 text-[10px] font-medium tabular-nums"
-              style={{ color: showMemoryPanel ? 'rgba(168,85,247,0.9)' : 'rgba(255,255,255,0.3)' }}
-              title="Active session memories"
-            >
-              <span style={{ fontSize: 11 }}>◈</span>
-              {sessionMemories.length} memories
-            </button>
-            {showMemoryPanel && (
-              <div
-                className="absolute top-10 left-0 z-40 rounded-xl overflow-hidden"
-                style={{ width: 280, background: 'rgba(15,15,20,0.95)', border: '1px solid rgba(168,85,247,0.15)', backdropFilter: 'blur(20px)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}
-              >
-                <div className="px-3 py-2.5 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                  <span className="text-[11px] font-semibold" style={{ color: 'rgba(168,85,247,0.8)' }}>Session Memory</span>
-                  <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.25)' }}>{sessionMemories.length} entries</span>
-                </div>
-                <div className="overflow-y-auto" style={{ maxHeight: 320 }}>
-                  {sessionMemories.map((m, i) => (
-                    <div key={i} className="px-3 py-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                      <div className="text-[9px] font-mono mb-0.5" style={{ color: 'rgba(168,85,247,0.6)' }}>[{m.key}]</div>
-                      <div className="text-[11px] leading-snug" style={{ color: 'rgba(255,255,255,0.55)' }}>{m.content.slice(0, 120)}{m.content.length > 120 ? '…' : ''}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Step overview toggle (top-right) — shown when agent has steps */}
-      {agentSteps.length > 0 && (
-        <div className="absolute top-3 right-3 z-30">
-          <button
-            onClick={() => setStepOverviewOpen(o => !o)}
-            className="nomad-glass-pill h-8 px-3 rounded-lg flex items-center gap-1.5 transition-all hover:brightness-150 text-[11px] font-medium"
-            style={{ color: stepOverviewOpen ? 'rgba(43,121,255,0.8)' : 'rgba(255,255,255,0.35)' }}
-            title="Toggle step overview"
-          >
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: isWorking ? '#2B79FF' : 'rgba(34,197,94,0.8)' }} />
-            Steps {agentSteps.filter(s => s.status === 'completed').length}/{agentSteps.length}
+      {/* ── Toolbar strip ─────────────────────────────────────────────── */}
+      <div
+        className="h-10 shrink-0 flex items-center justify-between px-2 z-30 relative"
+        style={{ background: 'rgba(15,15,18,0.6)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}
+      >
+        {/* Left side */}
+        <div className="flex items-center gap-1">
+          <button onClick={() => setSidebarOpen(o => !o)} className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:bg-white/[0.06]" style={{ color: sidebarOpen ? 'rgba(43,121,255,0.8)' : 'rgba(255,255,255,0.35)' }} title="Chat history">
+            <SidebarToggleIcon open={sidebarOpen} />
+          </button>
+          <button onClick={handleNewChat} className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:bg-white/[0.06]" style={{ color: 'rgba(255,255,255,0.35)' }} title="New chat">
+            <NewChatIcon />
           </button>
         </div>
-      )}
+        {/* Right side */}
+        <div className="flex items-center gap-1">
+          {/* Workspace button (opens Files + Memory modal) */}
+          <button
+            onClick={() => { setShowWorkspaceModal(true); refreshWorkspaceFiles(); }}
+            className="h-7 px-2.5 rounded-lg flex items-center gap-1.5 transition-all hover:bg-white/[0.06] text-[11px] font-medium"
+            style={{ color: showWorkspaceModal ? 'rgba(43,121,255,0.8)' : 'rgba(255,255,255,0.35)' }}
+            title={getWorkspacePath(workspaceId)}
+          >
+            <FolderIcon />
+            <span>Workspace</span>
+            {(workspaceFiles.length > 0 || sessionMemories.length > 0) && (
+              <span className="text-[9px] px-1 rounded-full tabular-nums" style={{ background: 'rgba(43,121,255,0.12)', color: 'rgba(43,121,255,0.7)' }}>
+                {workspaceFiles.length + sessionMemories.length}
+              </span>
+            )}
+          </button>
+          {/* Step overview toggle */}
+          {agentSteps.length > 0 && (
+            <button
+              onClick={() => setStepOverviewOpen(o => !o)}
+              className="h-7 px-2.5 rounded-lg flex items-center gap-1.5 transition-all hover:bg-white/[0.06] text-[11px] font-medium"
+              style={{ color: stepOverviewOpen ? 'rgba(43,121,255,0.8)' : 'rgba(255,255,255,0.35)' }}
+              title="Toggle step overview"
+            >
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: isWorking ? '#2B79FF' : 'rgba(34,197,94,0.8)' }} />
+              Steps {agentSteps.filter(s => s.status === 'completed').length}/{agentSteps.length}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Workspace Modal (Files + Memory) ──────────────────────── */}
+      <WorkspaceModal
+        isOpen={showWorkspaceModal}
+        onClose={() => setShowWorkspaceModal(false)}
+        memories={sessionMemories}
+        onDeleteMemory={(index) => {
+          const removed = sessionMemories[index];
+          if (removed) {
+            const stored = getMemories();
+            const match = stored.find(m => m.content === removed.content);
+            if (match) deleteMemory(match.id);
+            setSessionMemories(prev => prev.filter((_, i) => i !== index));
+          }
+        }}
+        onAddMemory={(key, content) => {
+          setSessionMemories(prev => [...prev, { key, content }]);
+        }}
+        onEditMemory={(index, key, content) => {
+          setSessionMemories(prev => prev.map((m, i) => i === index ? { key, content } : m));
+        }}
+        workspaceFiles={workspaceFiles}
+        onUploadFile={() => fileInputRef.current?.click()}
+        onCreateFolder={async (name) => {
+          await workspaceMkdir(workspaceId, name);
+          refreshWorkspaceFiles();
+        }}
+        workspacePath={getWorkspacePath(workspaceId)}
+      />
 
       {/* AgentUIWrapper step overview panel (right-side slide-in) */}
       <AnimatePresence>
@@ -1932,7 +1903,6 @@ export function AgentPanel() {
         {isWorking && (
           <div className="absolute top-0 left-0 right-0 h-[2px] z-10 overflow-hidden" style={{ background: 'rgba(43,121,255,0.08)' }}>
             <div className="h-full" style={{ width: '40%', background: 'linear-gradient(90deg, transparent, #2B79FF, transparent)', animation: 'agentProgressSlide 1.2s ease-in-out infinite' }} />
-            <style>{`@keyframes agentProgressSlide { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }`}</style>
           </div>
         )}
 
@@ -1953,14 +1923,14 @@ export function AgentPanel() {
         <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto relative" style={{ minHeight: 0 }}>
           {isEmpty ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 min-h-full">
-              <img src="/icons/agent.png" alt="Nomad" style={{ width: 44, height: 44, opacity: 0.5 }} className="rounded-xl" />
+              <img src="/icons/agent.png" alt="Glance" style={{ width: 44, height: 44, opacity: 0.5 }} className="rounded-xl" />
               <div className="text-center space-y-1.5">
                 <p className="text-[15px] font-medium" style={{ color: 'rgba(255,255,255,0.6)' }}>What can I help you with?</p>
                 <p className="text-[12px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.25)' }}>Search, code, browse, analyze -- autonomous multi-step agent</p>
               </div>
             </div>
           ) : (
-            <div className="max-w-3xl mx-auto w-full px-6 pt-14 pb-8 flex flex-col gap-5">
+            <div className="max-w-3xl mx-auto w-full px-6 pt-4 pb-8 flex flex-col gap-5">
               {blocks.map(block => {
                 switch (block.type) {
                   case 'user':
@@ -2004,9 +1974,9 @@ export function AgentPanel() {
                           <GlobeIcon />
                         </div>
                         <div className="flex-1 min-w-0 pt-0">
-                          {/* Identity line: "nomad" —  */}
+                          {/* Identity line: "glance" —  */}
                           <div className="flex items-center gap-1.5 mb-2">
-                            <span className="text-[11px] font-medium" style={{ color: 'rgba(255,255,255,0.35)' }}>nomad</span>
+                            <span className="text-[11px] font-medium" style={{ color: 'rgba(255,255,255,0.35)' }}>glance</span>
                             <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.1)', marginLeft: 4 }}>{formatTime(block.timestamp)}</span>
                             {block.completedAt && block.startedAt && (
                               <span className="text-[10px] font-sans" style={{ color: 'rgba(255,255,255,0.18)' }}>

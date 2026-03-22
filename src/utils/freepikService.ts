@@ -123,53 +123,59 @@ export async function generateImage(
       error: 'No result received',
     };
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || ''; // Keep incomplete line in buffer
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete line in buffer
 
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        try {
-          const event = JSON.parse(line);
-          switch (event.type) {
-            case 'progress':
-              onProgress?.(event.message);
-              break;
-            case 'warning':
-              onWarning?.(event.message);
-              onProgress?.(event.message);
-              break;
-            case 'eta_update':
-              onEtaUpdate?.(event.seconds);
-              break;
-            case 'complete':
-              result = {
-                imageBase64: event.image_base64,
-                imagesBase64: event.images_base64 || [event.image_base64],
-                success: event.success,
-              };
-              break;
-            case 'error':
-              // Handle special error codes
-              let errorMsg = event.message;
-              if (event.code === 'UNLIMITED_REQUIRED') {
-                errorMsg = `Freepik Unlimited Required: ${event.message}. Please enable unlimited mode in your Freepik account settings before generating images.`;
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const event = JSON.parse(line);
+            switch (event.type) {
+              case 'progress':
+                onProgress?.(event.message);
+                break;
+              case 'warning':
+                onWarning?.(event.message);
+                onProgress?.(event.message);
+                break;
+              case 'eta_update':
+                onEtaUpdate?.(event.seconds);
+                break;
+              case 'complete':
+                result = {
+                  imageBase64: event.image_base64,
+                  imagesBase64: event.images_base64 || [event.image_base64],
+                  success: event.success,
+                };
+                break;
+              case 'error': {
+                // Handle special error codes
+                let errorMsg = event.message;
+                if (event.code === 'UNLIMITED_REQUIRED') {
+                  errorMsg = `Freepik Unlimited Required: ${event.message}. Please enable unlimited mode in your Freepik account settings before generating images.`;
+                }
+                result = {
+                  imageBase64: '',
+                  success: false,
+                  error: errorMsg,
+                };
+                break;
               }
-              result = {
-                imageBase64: '',
-                success: false,
-                error: errorMsg,
-              };
-              break;
+            }
+          } catch {
+            // Skip malformed JSON lines
           }
-        } catch {
-          // Skip malformed JSON lines
         }
       }
+    } catch (streamErr) {
+      reader.cancel().catch(() => {});
+      throw streamErr;
     }
 
     return result;
@@ -261,21 +267,26 @@ export async function preloadFreepik(opts: {
     const decoder = new TextDecoder();
     let buf = '';
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      const lines = buf.split('\n');
-      buf = lines.pop() || '';
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        try {
-          const event = JSON.parse(line);
-          if (event.type === 'progress') onProgress?.(event.message);
-          if (event.type === 'error') { onProgress?.(event.message); return false; }
-          if (event.type === 'complete') { onProgress?.(event.message); return true; }
-        } catch { /* skip */ }
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const event = JSON.parse(line);
+            if (event.type === 'progress') onProgress?.(event.message);
+            if (event.type === 'error') { onProgress?.(event.message); reader.cancel().catch(() => {}); return false; }
+            if (event.type === 'complete') { onProgress?.(event.message); return true; }
+          } catch { /* skip */ }
+        }
       }
+    } catch {
+      reader.cancel().catch(() => {});
+      return false;
     }
     return true;
   } catch {

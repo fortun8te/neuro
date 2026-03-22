@@ -15,6 +15,7 @@ type SectionKind =
   | 'campaign'
   | 'step'
   | 'layer'
+  | 'memory-input'
   | 'orchestrator'
   | 'researcher'
   | 'reflection'
@@ -64,6 +65,14 @@ function parseOutput(text: string): Section[] {
   for (const line of rawLines) {
     const t = line.trim();
     if (!t || /^[─═]{10,}$/.test(t)) continue;
+
+    // ── Memory Input ──
+    if (t.startsWith('[MEMORY INPUT]')) {
+      push(); current = { kind: 'memory-input', title: 'Memory Input', badge: 'prior-cycles', lines: [] }; continue;
+    }
+    if (current?.kind === 'memory-input' && t.startsWith('•')) {
+      current.lines.push(t.replace('•', '').trim()); continue;
+    }
 
     // ── Phase headers ──
     if (t.startsWith('[PHASE 1]') && (t.includes('Council') || t.includes('Marketing Brains'))) {
@@ -341,7 +350,8 @@ function ManusBlob({ size = 14 }: { size?: number }) {
 // ─────────────────────────────────────────────────────────────
 
 function ActionIcon({ kind, dark }: { kind: SectionKind; dark: boolean }) {
-  const cls = `w-[14px] h-[14px] flex-shrink-0 ${dark ? 'text-zinc-500' : 'text-zinc-400'}`;
+  const isMemory = kind === 'memory-input';
+  const cls = `w-[14px] h-[14px] flex-shrink-0 ${isMemory ? (dark ? 'text-violet-400' : 'text-violet-600') : (dark ? 'text-zinc-500' : 'text-zinc-400')}`;
 
   // Search/magnifying glass
   if (kind === 'researcher') return (
@@ -403,6 +413,14 @@ function ActionIcon({ kind, dark }: { kind: SectionKind; dark: boolean }) {
   if (kind === 'ads') return (
     <svg className={cls} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
       <rect x="2" y="3" width="12" height="10" rx="1.5" /><path d="M5 8l2 2 4-4" />
+    </svg>
+  );
+
+  // Memory — book/library
+  if (kind === 'memory-input') return (
+    <svg className={cls} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+      <path d="M2 3.5C2 2.67 2.67 2 3.5 2h9c.83 0 1.5.67 1.5 1.5v10c0 .83-.67 1.5-1.5 1.5h-9c-.83 0-1.5-.67-1.5-1.5V3.5z" />
+      <path d="M5 6h6M5 9h6M5 12h4" />
     </svg>
   );
 
@@ -476,19 +494,37 @@ function ActionPill({
     ? (section.lines.find(l => l.startsWith('→'))?.slice(2) || section.lines[0]).slice(0, 80)
     : null;
 
+  // Special gradient for memory-input (purple)
+  const isMemory = section.kind === 'memory-input';
+  const getBackground = () => {
+    if (isMemory) {
+      return dark
+        ? (isExpanded ? 'linear-gradient(to right, rgba(139,92,246,0.08), rgba(39,39,42,0.8))' : 'linear-gradient(to right, rgba(139,92,246,0.03), rgba(24,24,27,0.6))')
+        : (isExpanded ? 'linear-gradient(to right, rgba(139,92,246,0.06), rgba(244,244,245,1))' : 'linear-gradient(to right, rgba(139,92,246,0.02), rgba(250,250,250,1))');
+    }
+    return dark
+      ? (isExpanded
+        ? 'linear-gradient(to right, rgba(43,121,255,0.06), rgba(39,39,42,0.8))'
+        : 'linear-gradient(to right, rgba(43,121,255,0.03), rgba(24,24,27,0.6))')
+      : (isExpanded
+        ? 'linear-gradient(to right, rgba(43,121,255,0.05), rgba(244,244,245,1))'
+        : 'linear-gradient(to right, rgba(43,121,255,0.02), rgba(250,250,250,1))');
+  };
+
+  const getBorder = () => {
+    if (isMemory) {
+      return `1px solid ${dark ? (isExpanded ? 'rgba(139,92,246,0.4)' : 'rgba(139,92,246,0.2)') : (isExpanded ? 'rgba(196,181,253,1)' : 'rgba(233,213,255,1)')}`;
+    }
+    return `1px solid ${dark ? (isExpanded ? 'rgba(63,63,70,0.6)' : 'rgba(39,39,42,0.5)') : (isExpanded ? 'rgba(228,228,231,1)' : 'rgba(244,244,245,1)')}`;
+  };
+
   return (
     <button
       onClick={onToggle}
       className={`group flex items-start gap-2.5 w-full text-left rounded-xl px-3.5 py-2.5 transition-all duration-200`}
       style={{
-        border: `1px solid ${dark ? (isExpanded ? 'rgba(63,63,70,0.6)' : 'rgba(39,39,42,0.5)') : (isExpanded ? 'rgba(228,228,231,1)' : 'rgba(244,244,245,1)')}`,
-        background: dark
-          ? (isExpanded
-            ? 'linear-gradient(to right, rgba(43,121,255,0.06), rgba(39,39,42,0.8))'
-            : 'linear-gradient(to right, rgba(43,121,255,0.03), rgba(24,24,27,0.6))')
-          : (isExpanded
-            ? 'linear-gradient(to right, rgba(43,121,255,0.05), rgba(244,244,245,1))'
-            : 'linear-gradient(to right, rgba(43,121,255,0.02), rgba(250,250,250,1))'),
+        border: getBorder(),
+        background: getBackground(),
       }}
     >
       {/* Icon */}
@@ -628,14 +664,13 @@ function ExpandedContent({ section, dark, isStreaming }: { section: Section; dar
         </div>
       )}
 
-      {/* Lines */}
-      {section.lines.map((line, i) => renderLine(line, i, i === section.lines.length - 1))}
-
-      {/* Thinking */}
-      {section.kind === 'thinking' && section.lines.length > 0 && (
+      {/* Lines — thinking sections use monospace pre block instead of per-line rendering */}
+      {section.kind === 'thinking' && section.lines.length > 0 ? (
         <pre className={`text-[10px] font-mono leading-relaxed whitespace-pre-wrap ${dimCls}`}>
           {section.lines.join('\n')}
         </pre>
+      ) : (
+        section.lines.map((line, i) => renderLine(line, i, i === section.lines.length - 1))
       )}
     </div>
   );

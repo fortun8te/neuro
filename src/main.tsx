@@ -3,6 +3,18 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 
+// ── Global crash-proof handlers ──────────────────────────────────────────────
+// Prevent unhandled promise rejections and uncaught errors from crashing the app
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('[Unhandled Promise Rejection]', event.reason);
+  event.preventDefault(); // Prevent the default browser error
+});
+
+window.addEventListener('error', (event) => {
+  console.error('[Uncaught Error]', event.error);
+  event.preventDefault();
+});
+
 try {
   const root = document.getElementById('root');
   if (!root) {

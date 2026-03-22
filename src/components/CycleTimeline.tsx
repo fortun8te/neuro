@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import type { Cycle, StageName } from '../types';
 
 const ALL_STAGES: { name: StageName; label: string; group: 'research' | 'make' | 'test' }[] = [
@@ -32,6 +33,15 @@ interface CycleTimelineProps {
 }
 
 export function CycleTimeline({ cycle, selectedStage, onSelectStage, vertical = false }: CycleTimelineProps) {
+  // Re-render every second while any stage is in-progress so elapsed timers stay live
+  const [, setTick] = useState(0);
+  const hasActiveStage = cycle ? Object.values(cycle.stages).some(s => s?.status === 'in-progress') : false;
+  useEffect(() => {
+    if (!hasActiveStage) return;
+    const id = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [hasActiveStage]);
+
   if (!cycle) return null;
 
   const stages = cycle.mode === 'concepting'
