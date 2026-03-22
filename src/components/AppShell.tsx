@@ -199,9 +199,9 @@ export function AppShell() {
             onClick={() => { play('open'); }}
             className={`flex items-center gap-2.5 hover:opacity-80 transition-opacity min-w-0 ${sidebarExpanded ? 'text-left' : 'justify-center'}`}
           >
-            <NomadIcon size={20} animated={isRunning} className="text-white/80 shrink-0" />
+            <img src="/neuro-icon-192.png" width={22} height={22} style={{ borderRadius: 6, objectFit: 'cover' }} alt="Neuro" />
             {sidebarExpanded && (
-              <span className="text-[13px] font-semibold text-white/90 tracking-[0.15em] whitespace-nowrap">NOMAD</span>
+              <span className="text-[13px] font-semibold text-white/90 tracking-[0.15em] whitespace-nowrap">NEURO</span>
             )}
           </button>
           {sidebarExpanded && (
@@ -593,7 +593,7 @@ function TestView() {
           <div className={`w-16 h-16 mx-auto rounded-2xl border border-dashed flex items-center justify-center mb-4 ${
             isDarkMode ? 'border-white/[0.08] bg-white/[0.03]' : 'border-zinc-200 bg-white'
           }`}>
-            <NomadIcon size={24} className={isDarkMode ? 'text-white/[0.30]' : 'text-zinc-300'} />
+            <img src="/neuro-icon-192.png" width={24} height={24} style={{ borderRadius: 6, objectFit: 'cover', opacity: 0.3 }} alt="Neuro" />
           </div>
           <p className={`text-[12px] ${isDarkMode ? 'text-white/[0.55]' : 'text-zinc-500'}`}>No test results yet</p>
           <p className={`text-[11px] mt-1 ${isDarkMode ? 'text-white/[0.30]' : 'text-zinc-400'}`}>Run the full pipeline to evaluate ad concepts</p>
