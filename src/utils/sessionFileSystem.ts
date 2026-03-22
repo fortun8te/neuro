@@ -359,42 +359,12 @@ export class SessionFileSystem {
     return this.createFile(path, name, screenshot, 'image/jpeg');
   }
 
-  saveNote(sessionId: string, title: string, content: string): VFSNode {
-    this.initSession(sessionId);
-    const path = `/nomad/sessions/${sessionId}/notes`;
-    const name = title.endsWith('.md') ? title : `${title}.md`;
-    return this.createFile(path, name, content, 'text/markdown');
-  }
-
   saveActivity(sessionId: string, computerId: string, description: string, data?: string): VFSNode {
     this.initComputer(sessionId, computerId);
     const path = `/nomad/sessions/${sessionId}/computers/${computerId}/activity`;
     const name = `${Date.now()}.json`;
     const payload = JSON.stringify({ timestamp: Date.now(), description, data }, null, 2);
     return this.createFile(path, name, payload, 'application/json');
-  }
-
-  /** Save a comprehensive session activity log (auto-called at end of computer agent run) */
-  saveSessionLog(sessionId: string, computerId: string, log: {
-    goal: string;
-    answer: string;
-    steps: Array<{ instruction: string; result: string }>;
-    files: Array<{ path: string; name: string }>;
-    elapsed: number;
-  }): VFSNode {
-    this.initComputer(sessionId, computerId);
-    const path = `/nomad/sessions/${sessionId}/computers/${computerId}/activity`;
-    const name = `session_log_${Date.now()}.json`;
-    const payload = JSON.stringify({
-      timestamp: Date.now(),
-      ...log,
-    }, null, 2);
-    return this.createFile(path, name, payload, 'application/json');
-  }
-
-  /** Save a download to the global Downloads folder */
-  saveGlobalDownload(fileName: string, data: string, mimeType: string): VFSNode {
-    return this.createFile('/nomad/downloads', fileName, data, mimeType);
   }
 
   // ── Query methods ──────────────────────────────────────────────────────

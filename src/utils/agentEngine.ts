@@ -897,7 +897,12 @@ function buildTools(workspaceId?: string, onEvent?: AgentEngineCallback): ToolDe
         // The full computer agent is wired through the desktopBus ask_user event.
         const onAskUser = (request: AskUserRequest): Promise<AskUserResponse> =>
           new Promise<AskUserResponse>(resolve => {
-            desktopBus.emit({ type: 'ask_user', request, resolve });
+            desktopBus.emit({
+              type: 'ask_user',
+              question: request.question,
+              isClarification: request.isClarification,
+              resolve: (answer: string) => resolve({ value: answer, label: answer }),
+            });
           });
 
         // Attempt to get desktopEl from the DOM — look for the desktop container

@@ -14,8 +14,18 @@
 
 import { ollamaService } from './ollama';
 import { getResearchModelConfig } from './modelConfig';
-import { AGENT_CONFIG } from '../config/infrastructure';
 import type { SubagentRole } from './subagentRoles';
+
+/** Local agent configuration — previously imported from infrastructure */
+const AGENT_CONFIG = {
+  subagentTimeoutMs: 120_000,
+  retryAttempts: 3,
+  retryDelayMs: 1000,
+  maxConcurrentSubagents: 3,
+  resultConfidenceThreshold: 0.4,
+  devLogging: import.meta.env.DEV,
+  poolSizeByPreset: { SQ: 1, QK: 2, NR: 3, EX: 4, MX: 5 } as Record<string, number>,
+};
 import { getRoleConfig } from './subagentRoles';
 import { recordResearchModel } from './researchAudit';
 import type {

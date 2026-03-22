@@ -197,7 +197,7 @@ async function runPhase(
     const step = steps[i];
     onStatus?.(`[Agent] Step ${i + 1}/${steps.length}: ${step.instruction}`);
 
-    desktopBus.emit({ type: 'agent_step_start', stepIndex: i, instruction: step.instruction, expectedState: step.expectedState ?? '' });
+    desktopBus.emit({ type: 'agent_step_start', stepIndex: i, description: step.instruction });
     desktopBus.emit({ type: 'agent_status', phase: 'executing', message: step.instruction, stepIndex: i, totalSteps: steps.length });
 
     // High-stakes pause
@@ -265,7 +265,7 @@ async function runPhase(
       },
       onBrowserUrl,
       onIterationUpdate: (iter, maxIter) => {
-        desktopBus.emit({ type: 'agent_iteration', stepIndex: i, iter, maxIter });
+        desktopBus.emit({ type: 'agent_iteration', iteration: iter, maxIterations: maxIter });
         onStatus?.(`[Executor] Iteration ${iter}/${maxIter}`);
       },
     });
@@ -291,7 +291,7 @@ async function runPhase(
               wayfarerSession: (session.isOpen && session.healthy) ? session : undefined,
               onBrowserUrl,
               onIterationUpdate: (iter, maxIter) => {
-                desktopBus.emit({ type: 'agent_iteration', stepIndex: i, iter, maxIter });
+                desktopBus.emit({ type: 'agent_iteration', iteration: iter, maxIterations: maxIter });
                 onStatus?.(`[Executor] Iteration ${iter}/${maxIter}`);
               },
             });
@@ -320,7 +320,7 @@ async function runPhase(
           },
           onBrowserUrl,
           onIterationUpdate: (iter, maxIter) => {
-            desktopBus.emit({ type: 'agent_iteration', stepIndex: i, iter, maxIter });
+            desktopBus.emit({ type: 'agent_iteration', iteration: iter, maxIterations: maxIter });
             onStatus?.(`[Executor] Iteration ${iter}/${maxIter}`);
           },
         });
@@ -415,6 +415,10 @@ export async function runComputerAgent(
   };
   startDownloadPoll();
 
+  // Declared outside try so catch block can access them for rich error context
+  const allStepResults: StepResult[] = [];
+  const executedStepInstructions: string[] = [];
+
   try {
     // 0. Goal ambiguity check — fast-path bypass for short/clear goals
     let effectiveGoal = goal;
@@ -503,10 +507,6 @@ export async function runComputerAgent(
 
     let finalSummary = '';
     let finalDone = false;
-    // QW-4: collect executed step instructions for memory saving
-    const executedStepInstructions: string[] = [];
-    // Collect all step results for final answer synthesis
-    const allStepResults: StepResult[] = [];
 
     const isMultiPhase = phases.length > 1;
     if (isMultiPhase) {

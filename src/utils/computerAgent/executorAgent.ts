@@ -512,7 +512,7 @@ export async function runExecutorStep(
 
   onStatus?.(`[Executor] Starting step: ${step.instruction}`);
   // Cursor starts in thinking state as we begin the step
-  desktopBus.emit({ type: 'ai_cursor_state', cursorState: 'thinking' });
+  desktopBus.emit({ type: 'ai_cursor_state', state: 'thinking' });
 
   for (let iter = 1; ; iter++) {
     if (signal?.aborted) break;
@@ -544,7 +544,7 @@ export async function runExecutorStep(
       if (lastFiveActions.length > 6) lastFiveActions.shift();
     }
     // Between iterations the agent is thinking / looking at the screen
-    desktopBus.emit({ type: 'ai_cursor_state', cursorState: 'thinking' });
+    desktopBus.emit({ type: 'ai_cursor_state', state: 'thinking' });
 
     // 1. Capture screenshot (desktop by default)
     try {
@@ -746,8 +746,7 @@ export async function runExecutorStep(
     desktopBus.emit({
       type: 'agent_step_start',
       stepIndex: iter - 1,
-      instruction: action.reasoning ?? step.instruction,
-      expectedState: step.expectedState,
+      description: action.reasoning ?? step.instruction,
       reasoning: action.selfCheck || action.reasoning || '',
     });
 
@@ -839,10 +838,10 @@ export async function runExecutorStep(
       onContextSwitch?.('desktop');
       switch (action.type) {
         case 'desktop_open_app':
-          desktopBus.emit({ type: 'open_window', window: (action.app || 'chrome') as 'chrome' | 'finder' | 'terminal' });
+          desktopBus.emit({ type: 'open_window', app: (action.app || 'chrome') as 'chrome' | 'finder' | 'terminal' });
           break;
         case 'desktop_close_window':
-          desktopBus.emit({ type: 'close_window', window: (action.app || 'chrome') as 'chrome' | 'finder' | 'terminal' });
+          desktopBus.emit({ type: 'close_window', app: (action.app || 'chrome') as string });
           break;
         case 'desktop_drag_window':
           desktopBus.emit({ type: 'move_window', app: action.app || 'chrome', x: action.toX ?? 100, y: action.toY ?? 100 });
@@ -851,7 +850,7 @@ export async function runExecutorStep(
           desktopBus.emit({ type: 'resize_window', app: action.app || 'chrome', width: action.width ?? 800, height: action.height ?? 600 });
           break;
         case 'desktop_focus_window':
-          desktopBus.emit({ type: 'focus_window', window: (action.app || 'chrome') as 'chrome' | 'finder' | 'terminal' });
+          desktopBus.emit({ type: 'focus_window', app: (action.app || 'chrome') as string });
           break;
         case 'desktop_scroll':
           if (action.app === 'chrome' || !action.app) {
@@ -863,7 +862,7 @@ export async function runExecutorStep(
           }
           break;
         case 'finder_navigate':
-          desktopBus.emit({ type: 'open_window', window: 'finder' });
+          desktopBus.emit({ type: 'open_window', app: 'finder' });
           desktopBus.emit({ type: 'finder_navigate', path: action.path || '/' });
           break;
         case 'finder_select_file':
@@ -873,7 +872,7 @@ export async function runExecutorStep(
           desktopBus.emit({ type: 'finder_open_file', path: action.path || '' });
           break;
         case 'terminal_run':
-          desktopBus.emit({ type: 'open_window', window: 'terminal' });
+          desktopBus.emit({ type: 'open_window', app: 'terminal' });
           desktopBus.emit({ type: 'terminal_run', command: action.command || '' });
           break;
         case 'terminal_read':
@@ -1001,10 +1000,10 @@ export async function runExecutorStep(
         const hasCoords = action.x !== undefined && action.y !== undefined;
         if (action.type === 'browser_navigate') {
           // Navigating: cursor goes to thinking state (loading new page)
-          desktopBus.emit({ type: 'ai_cursor_state', cursorState: 'thinking' });
+          desktopBus.emit({ type: 'ai_cursor_state', state: 'thinking' });
         } else if (hasCoords) {
           const desktopCoords = browserToDesktopCoords(action.x ?? 0, action.y ?? 0, desktopEl);
-          desktopBus.emit({ type: 'ai_cursor_move', x: desktopCoords.x, y: desktopCoords.y, cursorState: 'acting' });
+          desktopBus.emit({ type: 'ai_cursor_move', x: desktopCoords.x, y: desktopCoords.y, state: 'acting' });
         }
       }
 
@@ -1101,7 +1100,7 @@ export async function runExecutorStep(
             const finalX = jitterCoord(scaled.x);
             const finalY = jitterCoord(scaled.y);
             const dc = browserToDesktopCoords(finalX, finalY, desktopEl);
-            desktopBus.emit({ type: 'ai_cursor_move', x: dc.x, y: dc.y, cursorState: 'acting' });
+            desktopBus.emit({ type: 'ai_cursor_move', x: dc.x, y: dc.y, state: 'acting' });
             await wayfarerSession.click(finalX, finalY, signal);
             // Emit click ripple after the click lands
             desktopBus.emit({ type: 'ai_cursor_click', x: dc.x, y: dc.y });
@@ -1132,10 +1131,10 @@ export async function runExecutorStep(
             const dragStart = scaleCoords(action.startX ?? 0, action.startY ?? 0, screenshotDims, browserViewport);
             const dragEnd = scaleCoords(action.endX ?? 0, action.endY ?? 0, screenshotDims, browserViewport);
             const dragStartDc = browserToDesktopCoords(dragStart.x, dragStart.y, desktopEl);
-            desktopBus.emit({ type: 'ai_cursor_move', x: dragStartDc.x, y: dragStartDc.y, cursorState: 'dragging' });
+            desktopBus.emit({ type: 'ai_cursor_move', x: dragStartDc.x, y: dragStartDc.y, state: 'dragging' });
             await wayfarerSession.drag(dragStart.x, dragStart.y, dragEnd.x, dragEnd.y, signal);
             const dragEndDc = browserToDesktopCoords(dragEnd.x, dragEnd.y, desktopEl);
-            desktopBus.emit({ type: 'ai_cursor_move', x: dragEndDc.x, y: dragEndDc.y, cursorState: 'acting' });
+            desktopBus.emit({ type: 'ai_cursor_move', x: dragEndDc.x, y: dragEndDc.y, state: 'acting' });
             break;
           }
           case 'browser_shortcut':
@@ -1188,7 +1187,7 @@ export async function runExecutorStep(
             // QW-3: hover over element (use before dropdown menus that require hover to appear)
             const hoverScaled = scaleCoords(action.x ?? 0, action.y ?? 0, screenshotDims, browserViewport);
             const hoverDc = browserToDesktopCoords(hoverScaled.x, hoverScaled.y, desktopEl);
-            desktopBus.emit({ type: 'ai_cursor_move', x: hoverDc.x, y: hoverDc.y, cursorState: 'acting' });
+            desktopBus.emit({ type: 'ai_cursor_move', x: hoverDc.x, y: hoverDc.y, state: 'acting' });
             await wayfarerSession.action({ action: 'hover', click_x: hoverScaled.x, click_y: hoverScaled.y }, signal);
             break;
           }
@@ -1242,7 +1241,7 @@ export async function runExecutorStep(
       onContextSwitch?.('desktop');
       // Emit cursor move for desktop click/scroll actions
       if ((action.type === 'click' || action.type === 'scroll') && action.x !== undefined && action.y !== undefined) {
-        desktopBus.emit({ type: 'ai_cursor_move', x: action.x, y: action.y, cursorState: 'acting' });
+        desktopBus.emit({ type: 'ai_cursor_move', x: action.x, y: action.y, state: 'acting' });
         if (action.type === 'click') {
           desktopBus.emit({ type: 'ai_cursor_click', x: action.x, y: action.y });
         }
@@ -1268,7 +1267,7 @@ export async function runExecutorStep(
     // 6. Self-check: only every 3rd iteration to save time (the next screenshot already shows if it worked)
     const doSelfCheck = iter % 3 === 0;
     if (doSelfCheck) {
-      desktopBus.emit({ type: 'agent_step_verify', stepIndex: iter - 1 });
+      desktopBus.emit({ type: 'agent_step_verify' });
       const selfCheck = await verifyState(
         `Did the action "${action.reasoning}" succeed? ${step.expectedState}`,
         currentScreenshot,

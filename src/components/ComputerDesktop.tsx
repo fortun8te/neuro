@@ -1,9 +1,12 @@
 /**
- * ComputerDesktop — macOS-style desktop with dock and file icons
+ * ComputerDesktop -- macOS-style desktop with menu bar, windows, and dock
  *
- * Window manager: tracks focus order so the last-clicked window is always on top.
- * Drag bug fix: each window gets an onFocus callback; windows apply a transparent
- * overlay over iframes/content during drag so mousemove isn't stolen.
+ * Fills its parent container. Parent provides the gradient background.
+ * - Top: 24px menu bar (time, right-aligned)
+ * - Middle: window area (Finder, Chrome, Terminal)
+ * - Bottom: dock (3 icons, glass bg, centered)
+ * - AICursor overlay
+ * - desktopBus event handlers for window/agent control
  */
 
 import { useState, useCallback, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
@@ -20,50 +23,169 @@ import type { AskUserRequest, AskUserResponse } from '../utils/computerAgent/orc
 import { AICursor, type CursorState } from './AICursor';
 import { ErrorBoundary } from './ErrorBoundary';
 
-// Window IDs
 type WinId = 'finder' | 'chrome' | 'terminal';
-
-// Base z-indices (before focus stacking)
-const BASE_Z: Record<WinId, number> = { finder: 200, chrome: 200, terminal: 200 };
 
 export interface ComputerDesktopHandle {
   runGoal: (goal: string, options?: VisionLoopOptions) => Promise<string>;
 }
 
-export const ComputerDesktop = forwardRef<ComputerDesktopHandle, Record<string, never>>(function ComputerDesktop(_props, ref) {
+interface ComputerDesktopProps {
+  sessionId?: string;
+  computerId?: string;
+  humanControl?: boolean;
+  onHumanControlChange?: (value: boolean) => void;
+}
+
+export const ComputerDesktop = forwardRef<ComputerDesktopHandle, ComputerDesktopProps>(function ComputerDesktop({ sessionId, computerId, humanControl, onHumanControlChange }, ref) {
   const [time] = useState(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-  const [isFinderOpen, setIsFinderOpen] = useState(false);
-  const [isChromeOpen, setIsChromeOpen] = useState(false);
-  const [isTerminalOpen, setIsTerminalOpen] = useState(false);
-  // Ask-user modal state (for computer agent high-stakes pauses)
+
+  // Window open state
+  const [openWindows, setOpenWindows] = useState<Record<WinId, boolean>>({ finder: false, chrome: false, terminal: false });
+  const setWindowOpen = useCallback((id: WinId, open: boolean) => {
+    setOpenWindows(prev => ({ ...prev, [id]: open }));
+  }, []);
+
+  // Focus stack -- last element is topmost
+  const [focusStack, setFocusStack] = useState<WinId[]>([]);
+  const bringToFront = useCallback((id: WinId) => {
+    setFocusStack(prev => [...prev.filter(w => w !== id), id]);
+  }, []);
+  const zFor = useCallback((id: WinId): number => {
+    const idx = focusStack.indexOf(id);
+    return 200 + (idx === -1 ? 0 : (idx + 1) * 10);
+  }, [focusStack]);
+
+  const toggleWindow = useCallback((id: WinId) => {
+    setOpenWindows(prev => {
+      const willOpen = !prev[id];
+      if (willOpen) bringToFront(id);
+      return { ...prev, [id]: willOpen };
+    });
+  }, [bringToFront]);
+
+  // Ask-user modal
   const [askUserRequest, setAskUserRequest] = useState<AskUserRequest | null>(null);
   const askUserResolveRef = useRef<((r: AskUserResponse) => void) | null>(null);
 
-  // AI cursor overlay state
-  const [aiCursorPos, setAiCursorPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const aiCursorPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  // AI cursor
+  const [aiCursorPos, setAiCursorPos] = useState({ x: 0, y: 0 });
+  const aiCursorPosRef = useRef({ x: 0, y: 0 });
   const [aiCursorState, setAiCursorState] = useState<CursorState>('idle');
   const [aiCursorVisible, setAiCursorVisible] = useState(false);
-  const aiCursorHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const aiCursorHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Action badge state
-  type ActionType = 'click' | 'typing' | 'scroll' | 'navigate' | 'looking' | 'thinking' | 'idle';
-  const [actionBadge, setActionBadge] = useState<{ action: ActionType; x: number; y: number; visible: boolean } | null>(null);
-  const actionBadgeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Heatmap dots state (click positions collected during a task, shown on task end)
-  const taskClicksRef = useRef<{ x: number; y: number }[]>([]);
-  const [heatmapDots, setHeatmapDots] = useState<{ x: number; y: number; id: number }[]>([]);
-  const heatmapCleanupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Ref for the main desktop container (used by vision loop)
+  // Refs
   const desktopRef = useRef<HTMLDivElement>(null);
-
-  // Imperative refs for programmatic window control
   const chromeRef = useRef<ChromeWindowHandle>(null);
   const terminalRef = useRef<TerminalWindowHandle>(null);
 
-  // Expose runGoal to parent components via ref
+  // ── Human action recording ──
+  const humanActionsRef = useRef<Array<{
+    type: 'click' | 'scroll' | 'drag' | 'type' | 'window_open' | 'window_close' | 'window_drag';
+    target?: string;
+    x?: number; y?: number;
+    details?: string;
+    timestamp: number;
+  }>>([]);
+  const humanControlStartRef = useRef<number>(0);
+  const prevHumanControlRef = useRef<boolean>(false);
+
+  // Record desktop-level clicks and scrolls when human has control
+  useEffect(() => {
+    if (!humanControl || !desktopRef.current) return;
+    const root = desktopRef.current;
+
+    const identifyTarget = (e: Event): string => {
+      const el = e.target as HTMLElement;
+      if (!el) return 'desktop';
+      const closest = el.closest?.('[data-desktop-root]');
+      if (!closest) return 'desktop';
+      // Check if inside a known window
+      if (el.closest?.('[data-app="chrome"]')) return 'chrome';
+      if (el.closest?.('[data-app="finder"]')) return 'finder';
+      if (el.closest?.('[data-app="terminal"]')) return 'terminal';
+      // Check if in the dock
+      if (el.closest?.('[data-dock]')) return 'dock';
+      return 'desktop';
+    };
+
+    const onClick = (e: MouseEvent) => {
+      humanActionsRef.current.push({
+        type: 'click', target: identifyTarget(e),
+        x: e.clientX, y: e.clientY, timestamp: Date.now(),
+      });
+    };
+    const onWheel = (e: WheelEvent) => {
+      humanActionsRef.current.push({
+        type: 'scroll', target: identifyTarget(e),
+        details: `${e.deltaY > 0 ? 'down' : 'up'} ${Math.abs(Math.round(e.deltaY))}px`,
+        timestamp: Date.now(),
+      });
+    };
+
+    root.addEventListener('click', onClick, true);
+    root.addEventListener('wheel', onWheel, true);
+    return () => {
+      root.removeEventListener('click', onClick, true);
+      root.removeEventListener('wheel', onWheel, true);
+    };
+  }, [humanControl]);
+
+  // Record window open/close via bus while human has control
+  useEffect(() => {
+    if (!humanControl) return;
+    return desktopBus.subscribe(event => {
+      if (event.type === 'open_window') {
+        humanActionsRef.current.push({ type: 'window_open', target: event.app, timestamp: Date.now() });
+      } else if (event.type === 'close_window') {
+        humanActionsRef.current.push({ type: 'window_close', target: event.app, timestamp: Date.now() });
+      }
+    });
+  }, [humanControl]);
+
+  // Auto-recap: emit summary when humanControl transitions true -> false
+  useEffect(() => {
+    if (prevHumanControlRef.current && !humanControl) {
+      const actions = humanActionsRef.current;
+      const elapsed = Math.round((Date.now() - humanControlStartRef.current) / 1000);
+      const lines = actions.map(a => {
+        switch (a.type) {
+          case 'click': return `Clicked in ${a.target || 'desktop'} at (${a.x}, ${a.y})`;
+          case 'scroll': return `Scrolled ${a.details || ''} in ${a.target || 'desktop'}`;
+          case 'type': return `Typed "${a.details || ''}"`;
+          case 'window_open': return `Opened ${a.target || 'window'}`;
+          case 'window_close': return `Closed ${a.target || 'window'}`;
+          case 'window_drag': return `Dragged ${a.target || 'window'}`;
+          case 'drag': return `Dragged in ${a.target || 'desktop'}`;
+          default: return '';
+        }
+      }).filter(Boolean);
+      const summary = actions.length === 0
+        ? `User took control for ${elapsed} seconds but performed no actions.`
+        : `User took control for ${elapsed} seconds and performed ${actions.length} action(s):\n${lines.map(l => `- ${l}`).join('\n')}`;
+
+      let screenshot = '';
+      // Try to grab current frame from Chrome stream img
+      try {
+        const img = desktopRef.current?.querySelector('img[alt="Live browser"]') as HTMLImageElement | null;
+        if (img) {
+          const c = document.createElement('canvas'); c.width = 1280; c.height = 800;
+          const ctx = c.getContext('2d');
+          if (ctx) { ctx.drawImage(img, 0, 0, 1280, 800); screenshot = c.toDataURL('image/jpeg', 0.7).replace(/^data:image\/jpeg;base64,/, ''); }
+        }
+      } catch { /* tainted canvas */ }
+
+      desktopBus.emit({ type: 'human_control_summary', actions, screenshot, summary });
+      humanActionsRef.current = [];
+    }
+    if (humanControl && !prevHumanControlRef.current) {
+      humanControlStartRef.current = Date.now();
+      humanActionsRef.current = [];
+    }
+    prevHumanControlRef.current = !!humanControl;
+  }, [humanControl]);
+
+  // Expose runGoal to parent
   useImperativeHandle(ref, () => ({
     runGoal: (goal: string, options?: VisionLoopOptions) => {
       if (!desktopRef.current) return Promise.resolve('Desktop element not mounted');
@@ -71,156 +193,105 @@ export const ComputerDesktop = forwardRef<ComputerDesktopHandle, Record<string, 
     },
   }));
 
-  // Focus stack — last element is the topmost window
-  const [focusStack, setFocusStack] = useState<WinId[]>([]);
-
-  const bringToFront = useCallback((id: WinId) => {
-    setFocusStack(prev => [...prev.filter(w => w !== id), id]);
-  }, []);
-
-  // Returns z-index for a window: base + position in focus stack * 10
-  const zFor = useCallback((id: WinId): number => {
-    const idx = focusStack.indexOf(id);
-    return BASE_Z[id] + (idx === -1 ? 0 : (idx + 1) * 10);
-  }, [focusStack]);
-
-  const openWindow = useCallback((id: WinId, setOpen: (v: boolean) => void, isOpen: boolean) => {
-    if (!isOpen) bringToFront(id);
-    setOpen(!isOpen);
-  }, [bringToFront]);
-
-  // ── Desktop event bus subscription ──────────────────────────────────────
+  // -- Desktop event bus -- window management + agent control
   useEffect(() => {
-    const unsub = desktopBus.subscribe(event => {
+    return desktopBus.subscribe(event => {
       switch (event.type) {
         case 'open_window':
-          if (event.window === 'chrome') { setIsChromeOpen(true); bringToFront('chrome'); }
-          else if (event.window === 'finder') { setIsFinderOpen(true); bringToFront('finder'); }
-          else if (event.window === 'terminal') { setIsTerminalOpen(true); bringToFront('terminal'); }
+          setWindowOpen(event.app, true);
+          bringToFront(event.app);
           break;
         case 'close_window':
-          if (event.window === 'chrome') setIsChromeOpen(false);
-          else if (event.window === 'finder') setIsFinderOpen(false);
-          else if (event.window === 'terminal') setIsTerminalOpen(false);
+          setWindowOpen(event.app as any, false);
+          break;
+        case 'focus_window':
+          bringToFront(event.app as any);
           break;
         case 'navigate_chrome':
-          setIsChromeOpen(true);
+          setWindowOpen('chrome', true);
           bringToFront('chrome');
-          // Small delay so React can mount ChromeWindow before we call the ref
           setTimeout(() => chromeRef.current?.navigateTo(event.url), 80);
           break;
         case 'run_terminal':
-          setIsTerminalOpen(true);
+        case 'terminal_run':
+          setWindowOpen('terminal', true);
           bringToFront('terminal');
           setTimeout(() => terminalRef.current?.runCommand(event.command), 80);
           break;
-        case 'focus_window':
-          bringToFront(event.window);
-          break;
-        case 'run_goal':
-          if (desktopRef.current) {
-            runComputerAgent(event.goal, desktopRef.current, {
-              onStatus: (msg: string) => {
-                console.log('[ComputerDesktop]', msg);
-              },
-              onScreenshot: (base64: string) => {
-                // Screenshots are handled by the AI cursor overlay
-                void base64;
-              },
-              onBrowserUrl: (url: string) => {
-                chromeRef.current?.navigateTo(url);
-              },
-              onAskUser: (request: AskUserRequest) => new Promise<AskUserResponse>((resolve) => {
-                desktopBus.emit({ type: 'ask_user', request, resolve });
-              }),
-            }).catch((err) => {
-              console.error('[ComputerDesktop] runComputerAgent error:', err);
-              // Ensure agent_status error is emitted so the sidebar Promise resolves.
-              // The orchestrator emits this on its own catch, but if we fail before
-              // the orchestrator runs (e.g. bad desktopEl), the sidebar would hang.
-              desktopBus.emit({ type: 'agent_status', phase: 'error', message: err instanceof Error ? err.message : String(err) });
-            });
-          } else {
-            // desktopRef not available — emit error so waiting Promises don't hang
-            console.error('[ComputerDesktop] run_goal: desktopRef.current is null');
-            desktopBus.emit({ type: 'agent_status', phase: 'error', message: 'Desktop element not available' });
-          }
-          break;
-        case 'ask_user':
-          askUserResolveRef.current = event.resolve;
-          setAskUserRequest(event.request);
-          break;
-        case 'browser_stream':
-          chromeRef.current?.connectStream(event.sessionId);
-          // Auto-open Chrome window when stream starts
-          setIsChromeOpen(true);
-          bringToFront('chrome');
-          break;
-        case 'browser_stream_stop':
-          chromeRef.current?.disconnectStream();
-          break;
-        case 'open_image':
-          // Image viewing now handled by Finder preview panel
-          break;
-        case 'open_pdf':
-          // PDF viewing now handled by Finder preview panel
-          break;
         case 'move_window':
-          // Window position is managed by useWindowDrag inside each window.
-          // For now, bring to front so it's visible. Full drag-to-position
-          // would require exposing setPos on each window ref.
           if (event.app === 'chrome' || event.app === 'finder' || event.app === 'terminal') {
             bringToFront(event.app as WinId);
           }
           break;
         case 'resize_window':
-          // Window size is managed internally by each window component.
-          // Log for debugging; full resize would require exposing setSize refs.
-          console.log(`[ComputerDesktop] resize_window: ${event.app} to ${event.width}x${event.height} (not yet implemented)`);
-          break;
-        case 'terminal_run':
-          setIsTerminalOpen(true);
-          bringToFront('terminal');
-          setTimeout(() => terminalRef.current?.runCommand(event.command), 80);
           break;
         case 'finder_navigate':
-          setIsFinderOpen(true);
-          bringToFront('finder');
-          // FinderWindow listens to this event internally
-          break;
         case 'finder_open_file':
-          setIsFinderOpen(true);
-          bringToFront('finder');
-          // FinderWindow listens to this event internally
-          break;
         case 'finder_select_file':
-          setIsFinderOpen(true);
+          setWindowOpen('finder', true);
           bringToFront('finder');
-          // FinderWindow listens to this event internally
           break;
+        case 'browser_stream':
+          chromeRef.current?.connectStream(event.sessionId);
+          setWindowOpen('chrome', true);
+          bringToFront('chrome');
+          break;
+        case 'browser_stream_stop':
+          chromeRef.current?.disconnectStream();
+          break;
+        case 'run_goal':
+          if (desktopRef.current) {
+            runComputerAgent(event.goal, desktopRef.current, {
+              onStatus: (msg: string) => console.log('[ComputerDesktop]', msg),
+              onBrowserUrl: (url: string) => chromeRef.current?.navigateTo(url),
+              onAskUser: (request: AskUserRequest) => new Promise<AskUserResponse>((resolve) => {
+                desktopBus.emit({
+                  type: 'ask_user',
+                  question: request.question,
+                  isClarification: request.isClarification,
+                  resolve: (answer: string) => resolve({ value: answer, label: answer }),
+                });
+              }),
+            }).catch((err) => {
+              console.error('[ComputerDesktop] runComputerAgent error:', err);
+              desktopBus.emit({ type: 'agent_status', phase: 'error', message: err instanceof Error ? err.message : String(err) });
+            });
+          } else {
+            desktopBus.emit({ type: 'agent_status', phase: 'error', message: 'Desktop element not available' });
+          }
+          break;
+        case 'ask_user':
+          askUserResolveRef.current = event.resolve ? (r) => event.resolve!(r.value) : null;
+          setAskUserRequest({
+            id: `ask_${Date.now()}`,
+            question: event.question,
+            context: '',
+            options: [],
+            allowCustom: true,
+            isClarification: event.isClarification,
+          });
+          break;
+        case 'open_image':
+        case 'open_pdf':
         case 'window_scroll':
-          // Scroll events are handled by each window internally
           break;
       }
     });
-    return unsub;
-  }, [bringToFront]);
+  }, [bringToFront, setWindowOpen]);
 
-  // AI cursor — listen to desktopBus cursor events
-  // NOTE: This effect must have [] deps to avoid re-subscribing on every cursor move.
-  // We use aiCursorPosRef (not aiCursorPos state) for the fallback badge position.
+  // -- AI cursor events (stable [] deps to avoid re-subscribing on every move)
   useEffect(() => {
-    const unsub = desktopBus.subscribe(event => {
-      const resetHideTimer = () => {
-        if (aiCursorHideTimerRef.current) clearTimeout(aiCursorHideTimerRef.current);
-        aiCursorHideTimerRef.current = setTimeout(() => setAiCursorVisible(false), 4000);
-      };
+    const resetHideTimer = () => {
+      if (aiCursorHideTimer.current) clearTimeout(aiCursorHideTimer.current);
+      aiCursorHideTimer.current = setTimeout(() => setAiCursorVisible(false), 4000);
+    };
 
+    const unsub = desktopBus.subscribe(event => {
       if (event.type === 'ai_cursor_move') {
         const pos = { x: event.x, y: event.y };
         aiCursorPosRef.current = pos;
         setAiCursorPos(pos);
-        setAiCursorState(event.cursorState);
+        setAiCursorState(event.state as CursorState);
         setAiCursorVisible(true);
         resetHideTimer();
       } else if (event.type === 'ai_cursor_click') {
@@ -229,281 +300,129 @@ export const ComputerDesktop = forwardRef<ComputerDesktopHandle, Record<string, 
         setAiCursorPos(pos);
         setAiCursorState('clicking');
         setAiCursorVisible(true);
-        // Collect for heatmap
-        taskClicksRef.current.push(pos);
-        // Return to acting state after click animation completes
         setTimeout(() => setAiCursorState(s => s === 'clicking' ? 'acting' : s), 300);
         resetHideTimer();
       } else if (event.type === 'ai_cursor_state') {
-        setAiCursorState(event.cursorState);
-        if (event.cursorState !== 'idle') {
+        setAiCursorState(event.state as CursorState);
+        if (event.state !== 'idle') {
           setAiCursorVisible(true);
           resetHideTimer();
         } else {
           setAiCursorVisible(false);
-          if (aiCursorHideTimerRef.current) clearTimeout(aiCursorHideTimerRef.current);
+          if (aiCursorHideTimer.current) clearTimeout(aiCursorHideTimer.current);
         }
       } else if (event.type === 'agent_status') {
-        // Hide cursor shortly after agent finishes
         if (event.phase === 'done' || event.phase === 'error') {
-          if (aiCursorHideTimerRef.current) clearTimeout(aiCursorHideTimerRef.current);
-          aiCursorHideTimerRef.current = setTimeout(() => setAiCursorVisible(false), 1500);
+          if (aiCursorHideTimer.current) clearTimeout(aiCursorHideTimer.current);
+          aiCursorHideTimer.current = setTimeout(() => setAiCursorVisible(false), 1500);
         }
       } else if (event.type === 'ai_action') {
-        // Map action to cursor visual state
-        const actionToCursorState: Record<string, CursorState> = {
-          click:    'clicking',
-          typing:   'typing',
-          scroll:   'acting',
-          navigate: 'acting',
-          looking:  'thinking',
-          thinking: 'thinking',
-          idle:     'idle',
-        };
-        const mappedState = actionToCursorState[event.action];
-        if (mappedState && mappedState !== 'idle') {
-          setAiCursorState(mappedState);
+        const map: Record<string, CursorState> = { click: 'clicking', typing: 'typing', scroll: 'acting', navigate: 'acting', looking: 'thinking', thinking: 'thinking' };
+        const mapped = map[event.action];
+        if (mapped) {
+          setAiCursorState(mapped);
           setAiCursorVisible(true);
           resetHideTimer();
         }
-        // Show action badge near cursor position (use ref for stable fallback)
-        const badgeX = event.x ?? aiCursorPosRef.current.x;
-        const badgeY = event.y ?? aiCursorPosRef.current.y;
-        if (event.action === 'idle') {
-          setActionBadge(null);
-        } else {
-          setActionBadge({ action: event.action as ActionType, x: badgeX, y: badgeY, visible: true });
-          if (actionBadgeTimer.current) clearTimeout(actionBadgeTimer.current);
-          actionBadgeTimer.current = setTimeout(() => {
-            setActionBadge(prev => prev ? { ...prev, visible: false } : null);
-            actionBadgeTimer.current = setTimeout(() => setActionBadge(null), 200);
-          }, 800);
-        }
-      } else if (event.type === 'ai_task_start') {
-        taskClicksRef.current = [];
-        setHeatmapDots([]);
-      } else if (event.type === 'ai_task_end') {
-        const clicks = taskClicksRef.current;
-        if (clicks.length > 0) {
-          const dots = clicks.map((pt, i) => ({ ...pt, id: i }));
-          setHeatmapDots(dots);
-          if (heatmapCleanupTimer.current) clearTimeout(heatmapCleanupTimer.current);
-          heatmapCleanupTimer.current = setTimeout(() => {
-            setHeatmapDots([]);
-            taskClicksRef.current = [];
-          }, 2000);
-        }
       }
     });
+
     return () => {
       unsub();
-      if (aiCursorHideTimerRef.current) clearTimeout(aiCursorHideTimerRef.current);
-      if (actionBadgeTimer.current) clearTimeout(actionBadgeTimer.current);
-      if (heatmapCleanupTimer.current) clearTimeout(heatmapCleanupTimer.current);
+      if (aiCursorHideTimer.current) clearTimeout(aiCursorHideTimer.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Action badge label map
-  const ACTION_LABELS: Record<ActionType, string> = {
-    click: '\uD83D\uDDB1 Click',
-    typing: '\u2328 Typing',
-    scroll: '\u2195 Scroll',
-    navigate: '\uD83C\uDF10 Navigate',
-    looking: '\uD83D\uDC41 Looking',
-    thinking: '\uD83E\uDD14 Thinking',
-    idle: '',
-  };
-
   return (
     <ErrorBoundary>
-    <div ref={desktopRef} data-desktop-root className="absolute inset-0 pointer-events-none z-20 flex flex-col">
-      {/* Top menu bar */}
-      <div className="h-6 px-4 flex items-center justify-end bg-black/[0.35] backdrop-blur-md border-b border-white/[0.04]">
-        <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.30)' }}>{time}</div>
-      </div>
+      <div ref={desktopRef} data-desktop-root className="w-full h-full flex flex-col" style={{ position: 'relative', pointerEvents: humanControl ? 'auto' : 'none' }}>
+        {/* Menu bar */}
+        <div style={{
+          height: 24, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '0 16px',
+          background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.04)',
+          flexShrink: 0,
+        }}>
+          <span style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.30)' }}>{time}</span>
+        </div>
 
-      {/* Desktop area — windows here, pointer-events-auto so they're draggable */}
-      <div className="flex-1 relative pointer-events-auto">
-        <AnimatePresence>
-          {isFinderOpen && (
-            <FinderWindow
-              onClose={() => setIsFinderOpen(false)}
-              zIndex={zFor('finder')}
-              onFocus={() => bringToFront('finder')}
-            />
-          )}
-        </AnimatePresence>
-        <AnimatePresence>
-          {isChromeOpen && (
-            <ErrorBoundary fallback={
-              <div style={{ position: 'absolute', inset: 40, background: '#111', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666', fontSize: 13, zIndex: zFor('chrome') }}>
-                Chrome crashed. Close and reopen from the dock.
-              </div>
-            }>
-              <ChromeWindow
-                ref={chromeRef}
-                onClose={() => setIsChromeOpen(false)}
-                zIndex={zFor('chrome')}
-                onFocus={() => bringToFront('chrome')}
-              />
-            </ErrorBoundary>
-          )}
-        </AnimatePresence>
-        <AnimatePresence>
-          {isTerminalOpen && (
-            <TerminalWindow
-              ref={terminalRef}
-              onClose={() => setIsTerminalOpen(false)}
-              zIndex={zFor('terminal')}
-              onFocus={() => bringToFront('terminal')}
-            />
-          )}
-        </AnimatePresence>
-        {/* AI cursor overlay — isolated so a cursor crash doesn't kill the desktop */}
-        <ErrorBoundary fallback={null}>
-          <AICursor
-            x={aiCursorPos.x}
-            y={aiCursorPos.y}
-            cursorState={aiCursorState}
-            visible={aiCursorVisible}
-          />
-        </ErrorBoundary>
+        {/* Window area */}
+        <div className="flex-1 relative" style={{ minHeight: 0 }}>
+          <AnimatePresence>
+            {openWindows.finder && (
+              <FinderWindow onClose={() => setWindowOpen('finder', false)} zIndex={zFor('finder')} onFocus={() => bringToFront('finder')} rootPath={sessionId && computerId ? `/nomad/sessions/${sessionId}/computers/${computerId}` : '/nomad'} />
+            )}
+          </AnimatePresence>
+          <AnimatePresence>
+            {openWindows.chrome && (
+              <ErrorBoundary fallback={
+                <div style={{ position: 'absolute', inset: 40, background: '#111', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666', fontSize: 13, zIndex: zFor('chrome') }}>
+                  Chrome crashed. Close and reopen from the dock.
+                </div>
+              }>
+                <ChromeWindow ref={chromeRef} onClose={() => setWindowOpen('chrome', false)} zIndex={zFor('chrome')} onFocus={() => bringToFront('chrome')} externalHumanControl={humanControl} onHumanControlChange={onHumanControlChange} />
+              </ErrorBoundary>
+            )}
+          </AnimatePresence>
+          <AnimatePresence>
+            {openWindows.terminal && (
+              <TerminalWindow ref={terminalRef} onClose={() => setWindowOpen('terminal', false)} zIndex={zFor('terminal')} onFocus={() => bringToFront('terminal')} />
+            )}
+          </AnimatePresence>
 
-        {/* Action badge — floats 20px below the cursor, clamped to viewport edges */}
-        {actionBadge && actionBadge.action !== 'idle' && (
-          <div
+          {/* AI cursor overlay */}
+          <ErrorBoundary fallback={null}>
+            <AICursor x={aiCursorPos.x} y={aiCursorPos.y} cursorState={aiCursorState} visible={aiCursorVisible} />
+          </ErrorBoundary>
+        </div>
+
+        {/* Dock */}
+        <div style={{
+          height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          background: 'linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 100%)',
+          position: 'relative', zIndex: 500,
+        }}>
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
             style={{
-              position: 'absolute',
-              left: Math.max(40, Math.min(actionBadge.x, (desktopRef.current?.clientWidth ?? 1280) - 40)),
-              top: Math.min(actionBadge.y + 20, (desktopRef.current?.clientHeight ?? 800) - 30),
-              transform: 'translateX(-50%)',
-              pointerEvents: 'none',
-              zIndex: 10000,
-              background: 'rgba(14,14,18,0.82)',
-              border: '1px solid rgba(255,255,255,0.10)',
-              borderRadius: 6,
-              padding: '3px 8px',
-              fontSize: 10,
-              fontWeight: 600,
-              color: 'rgba(255,255,255,0.88)',
-              whiteSpace: 'nowrap',
-              backdropFilter: 'blur(8px)',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
-              opacity: actionBadge.visible ? 1 : 0,
-              transition: 'opacity 0.15s ease',
-              letterSpacing: '0.03em',
+              display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderRadius: 14,
+              background: 'rgba(20,20,28,0.55)', backdropFilter: 'blur(16px)',
+              border: '1px solid rgba(255,255,255,0.05)', boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
             }}
           >
-            {ACTION_LABELS[actionBadge.action]}
-          </div>
-        )}
+            <DockIcon label="Finder" isOpen={openWindows.finder} onClick={() => toggleWindow('finder')}>
+              <IconFinderReal size={40} />
+            </DockIcon>
+            <DockIcon label="Chrome" isOpen={openWindows.chrome} onClick={() => toggleWindow('chrome')}>
+              <IconChromeReal size={40} />
+            </DockIcon>
+            <DockIcon label="Terminal" isOpen={openWindows.terminal} onClick={() => toggleWindow('terminal')}>
+              <IconTerminalReal size={40} />
+            </DockIcon>
+          </motion.div>
+        </div>
 
-        {/* Heatmap dots — pulse once on task end, shown for 2s */}
-        {heatmapDots.map(dot => (
-          <div
-            key={dot.id}
-            style={{
-              position: 'absolute',
-              left: dot.x,
-              top: dot.y,
-              transform: 'translate(-50%, -50%)',
-              pointerEvents: 'none',
-              zIndex: 9998,
-              width: 10,
-              height: 10,
-              borderRadius: '50%',
-              background: 'rgba(255, 110, 40, 0.85)',
-              boxShadow: '0 0 6px rgba(255, 110, 40, 0.6)',
-              animation: '_nomad_heatmap_pulse 0.6s ease-out forwards',
-            }}
-          />
-        ))}
-
-        {/* _nomad_heatmap_pulse keyframe is in index.css */}
-      </div>
-
-      {/* Bottom dock */}
-      <div className="h-20 px-6 flex items-end justify-center pb-2 pointer-events-auto" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0) 100%)', zIndex: 500, position: 'relative' }}>
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex items-center"
-          style={{
-            gap: 10,
-            padding: '10px 16px',
-            borderRadius: 14,
-            background: 'rgba(20,20,28,0.55)',
-            backdropFilter: 'blur(16px)',
-            border: '1px solid rgba(255,255,255,0.05)',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+        {/* Ask-user modal */}
+        <AskUserModal
+          request={askUserRequest}
+          onResponse={(r) => {
+            askUserResolveRef.current?.(r);
+            askUserResolveRef.current = null;
+            setAskUserRequest(null);
           }}
-        >
-          {/* Finder */}
-          <DockIcon
-            label="Finder"
-            isOpen={isFinderOpen}
-            onClick={() => openWindow('finder', setIsFinderOpen, isFinderOpen)}
-            title="Open Finder — Browse session files"
-            ariaLabel="Open Finder — Browse session files"
-            hint="Click to open the Finder file browser window"
-          >
-            <IconFinderReal size={40} />
-          </DockIcon>
-
-          {/* Chrome */}
-          <DockIcon
-            label="Chrome"
-            isOpen={isChromeOpen}
-            onClick={() => openWindow('chrome', setIsChromeOpen, isChromeOpen)}
-            title="Open Chrome — AI web browser"
-            ariaLabel="Open Chrome — AI web browser"
-            hint="Click to open the Chrome browser for web navigation"
-          >
-            <IconChromeReal size={40} />
-          </DockIcon>
-
-          {/* Terminal */}
-          <DockIcon
-            label="Terminal"
-            isOpen={isTerminalOpen}
-            onClick={() => openWindow('terminal', setIsTerminalOpen, isTerminalOpen)}
-            title="Terminal — AI command interface"
-            ariaLabel="Terminal — AI command interface"
-            hint="Click to open the AI terminal command window"
-          >
-            <IconTerminalReal size={40} />
-          </DockIcon>
-
-        </motion.div>
+        />
       </div>
-
-      {/* Ask-user modal — rendered when computer agent needs confirmation */}
-      <AskUserModal
-        request={askUserRequest}
-        onResponse={(r) => {
-          askUserResolveRef.current?.(r);
-          askUserResolveRef.current = null;
-          setAskUserRequest(null);
-        }}
-      />
-    </div>
     </ErrorBoundary>
   );
 });
 
-// ── DockIcon sub-component ────────────────────────────────────────────────────
-
-function DockIcon({
-  children, label, isOpen, onClick, title, ariaLabel, hint,
-}: {
+// -- DockIcon --
+function DockIcon({ children, label, isOpen, onClick }: {
   children: React.ReactNode;
   label: string;
   isOpen: boolean;
   onClick: () => void;
-  title: string;
-  ariaLabel: string;
-  hint: string;
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -513,24 +432,16 @@ function DockIcon({
           whileTap={{ scale: 0.92, y: 0 }}
           transition={{ type: 'spring', stiffness: 400, damping: 25 }}
           onClick={onClick}
-          className="cursor-pointer pointer-events-auto"
-          style={{ background: 'none', border: 'none', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 56, height: 56 }}
-          title={title}
-          aria-label={ariaLabel}
-          data-ai-hint={hint}
+          style={{ background: 'none', border: 'none', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 48, height: 48, cursor: 'pointer' }}
+          title={label}
         >
           {children}
         </motion.button>
         {isOpen && (
-          <div style={{
-            position: 'absolute', bottom: -3, left: '50%', transform: 'translateX(-50%)',
-            width: 3, height: 3, borderRadius: '50%', background: 'rgba(255,255,255,0.7)',
-          }} />
+          <div style={{ position: 'absolute', bottom: -3, left: '50%', transform: 'translateX(-50%)', width: 3, height: 3, borderRadius: '50%', background: 'rgba(255,255,255,0.7)' }} />
         )}
       </div>
-      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', textAlign: 'center', marginTop: 1, letterSpacing: 0.2 }}>
-        {label}
-      </div>
+      <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', textAlign: 'center', marginTop: 1 }}>{label}</div>
     </div>
   );
 }

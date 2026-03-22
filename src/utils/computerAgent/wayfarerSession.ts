@@ -86,7 +86,7 @@ export class WayfarerSession {
       this.sessionId = data.session_id;
       this.healthy = true;
       // Notify the desktop to connect the live stream
-      desktopBus.emit({ type: 'browser_stream', sessionId: this.sessionId });
+      desktopBus.emit({ type: 'browser_stream', sessionId: this.sessionId, frame: '' });
       return {
         image_base64: data.image_base64,
         url: data.current_url ?? data.url,

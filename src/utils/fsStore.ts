@@ -68,12 +68,12 @@ export function addItem(path: string[], node: FSNode): void {
   }
 }
 
-export function removeItem(path: string[], id: string): void {
+export function removeItem(_path: string[], id: string): void {
   const node = vfs.getById(id);
   if (node) vfs.deleteNode(node.path);
 }
 
-export function renameItem(path: string[], id: string, newName: string): void {
+export function renameItem(_path: string[], id: string, newName: string): void {
   const node = vfs.getById(id);
   if (node) vfs.renameNode(node.path, newName);
 }

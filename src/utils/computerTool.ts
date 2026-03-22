@@ -97,17 +97,17 @@ export async function runComputerTool(request: ComputerToolRequest): Promise<Com
       }
     }
     if (event.type === 'agent_step_start') {
-      onProgress?.({ type: 'step_start', step: event.instruction, index: event.stepIndex });
+      onProgress?.({ type: 'step_start', step: event.description, index: event.stepIndex });
     }
     if (event.type === 'agent_step_done') {
       const step = {
         instruction: '',
-        result: event.result,
+        result: event.result ?? '',
         screenshots: [...collectedScreenshots],
       };
       collectedSteps.push(step);
       collectedScreenshots.length = 0;
-      onProgress?.({ type: 'step_done', step: event.result, result: event.result });
+      onProgress?.({ type: 'step_done', step: event.result ?? '', result: event.result ?? '' });
     }
     if (event.type === 'agent_action_desc') {
       onProgress?.({ type: 'action', description: event.description });

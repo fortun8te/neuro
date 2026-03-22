@@ -75,15 +75,12 @@ export function useWindowDrag({
   // Center on mount, applying the optional offset.
   // Clamp initial position so the window fits inside the parent container.
   useEffect(() => {
-    const parent = windowRef.current?.parentElement;
-    if (!parent) return;
-    const pr = parent.getBoundingClientRect();
-    // Effective window size is capped to the parent size (with 8px margin)
-    const effW = Math.min(windowWidth, pr.width - 8);
-    const effH = Math.min(windowHeight, pr.height - 8);
+    const parentRect = windowRef.current?.parentElement?.getBoundingClientRect();
+    const initialX = parentRect ? (parentRect.width - windowWidth) / 2 : 100;
+    const initialY = parentRect ? (parentRect.height - windowHeight) / 2 : 100;
     setPos({
-      x: Math.max(0, (pr.width - effW) / 2 + centerOffset.x),
-      y: Math.max(0, (pr.height - effH) / 2 + centerOffset.y),
+      x: Math.max(0, initialX + centerOffset.x),
+      y: Math.max(0, initialY + centerOffset.y),
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // intentionally run only on mount
