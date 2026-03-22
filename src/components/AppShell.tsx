@@ -199,9 +199,9 @@ export function AppShell() {
             onClick={() => { play('open'); }}
             className={`flex items-center gap-2.5 hover:opacity-80 transition-opacity min-w-0 ${sidebarExpanded ? 'text-left' : 'justify-center'}`}
           >
-            <img src="/neuro-icon-192.png" width={22} height={22} style={{ borderRadius: 6, objectFit: 'cover' }} alt="Neuro" />
+            <NomadIcon size={20} animated={isRunning} className="text-white/80 shrink-0" />
             {sidebarExpanded && (
-              <span className="text-[13px] font-semibold text-white/90 tracking-[0.15em] whitespace-nowrap">NEURO</span>
+              <span className="text-[13px] font-semibold text-white/90 tracking-[0.15em] whitespace-nowrap">NOMAD</span>
             )}
           </button>
           {sidebarExpanded && (

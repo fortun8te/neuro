@@ -253,9 +253,16 @@ function UserBubble({ text }: { text: string }) {
 function AgentText({ text }: { text: string }) {
   return (
     <div style={{ padding: '4px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+        <img src="/neuro-icon-192.png" width={18} height={18} style={{ borderRadius: 5, objectFit: 'cover', opacity: 0.7 }} alt="" />
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.50)' }}>neuro</span>
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.20)' }}>
+          {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </span>
+      </div>
       <div style={{
         fontSize: 12, color: 'rgba(255,255,255,0.70)', lineHeight: 1.55,
-        wordBreak: 'break-word', whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word', whiteSpace: 'pre-wrap', paddingLeft: 24,
       }}>{text}</div>
     </div>
   );
@@ -386,41 +393,89 @@ function ManusStatusIcon({ status, size = 14 }: { status: 'pending' | 'running' 
   );
 }
 
-/** Manus-style sub-step pill badge */
+/** Icon picker for Manus-style tool pills */
+function toolPillIcon(label: string): string {
+  const l = label.toLowerCase();
+  if (l.includes('search') || l.includes('webfetch') || l.includes('fetching') || l.includes('searxng')) return '\u{1F50D}';
+  if (l.includes('read') || l.includes('brows') || l.includes('page') || l.includes('scraping')) return '\u{1F4D6}';
+  if (l.includes('writ') || l.includes('creat') || l.includes('generat') || l.includes('compos') || l.includes('synthes')) return '\u270F\uFE0F';
+  if (l.includes('computer') || l.includes('browser') || l.includes('using')) return '\u{1F5A5}\uFE0F';
+  if (l.includes('knowledge') || l.includes('memory') || l.includes('recall')) return '\u26A1';
+  if (l.includes('think') || l.includes('routing') || l.includes('classif')) return '\u{1F914}';
+  if (l.includes('summariz')) return '\u{1F4DD}';
+  if (l.includes('research')) return '\u{1F52C}';
+  return '\u2699\uFE0F';
+}
+
+/** Manus-style tool action pill -- gray rounded badge with icon */
 function SubStepPill({ label, status }: { label: string; status: 'pending' | 'running' | 'done' | 'error' | 'failed' }) {
-  const bg = status === 'running' ? 'rgba(34,197,94,0.08)'
-    : status === 'error' || status === 'failed' ? 'rgba(239,68,68,0.08)'
-    : 'rgba(255,255,255,0.06)';
+  const icon = toolPillIcon(label);
+  const isActive = status === 'running';
   return (
     <div style={{
       display: 'inline-flex', alignItems: 'center', gap: 6,
-      background: bg, borderRadius: 20, padding: '4px 12px 4px 8px',
-      fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 4,
+      padding: '6px 12px', borderRadius: 8,
+      background: 'rgba(255,255,255,0.06)',
+      fontSize: 13, color: isActive ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.55)',
+      marginBottom: 6,
     }}>
-      <ManusStatusIcon status={status} size={14} />
+      <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>{icon}</span>
+      <span>{label}</span>
+      {isActive && (
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3b82f6', animation: '_nomad_pulse 1.5s infinite', flexShrink: 0, marginLeft: 2 }} />
+      )}
+    </div>
+  );
+}
+
+/** Manus-style status indicator -- animated blue dot + label */
+function ToolIndicator({ label }: { label: string }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 6,
+      padding: '4px 0', marginBottom: 4,
+      color: 'rgba(255,255,255,0.4)', fontSize: 13,
+    }}>
+      <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b82f6', animation: '_nomad_pulse 1.5s infinite', flexShrink: 0 }} />
       <span>{label}</span>
     </div>
   );
 }
 
-/** Manus-style tool indicator with spinning icon */
-function ToolIndicator({ label }: { label: string }) {
+/** Agent commentary text between pills -- Manus style */
+function AgentCommentary({ text }: { text: string }) {
   return (
-    <div style={{
-      display: 'inline-flex', alignItems: 'center', gap: 6,
-      padding: '3px 0', marginBottom: 2,
-    }}>
-      <span style={{ display: 'inline-block', animation: '_nomad_spin 1.5s linear infinite', fontSize: 12, lineHeight: 1, color: 'rgba(255,255,255,0.35)' }}>&#x27F2;</span>
-      <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.40)', fontStyle: 'italic' }}>{label}</span>
-    </div>
+    <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6, margin: '8px 0' }}>
+      {text}
+    </p>
   );
 }
 
-/** Agent commentary text between pills */
-function AgentCommentary({ text }: { text: string }) {
+/** Knowledge recalled -- expandable section with count badge */
+function KnowledgeRecalled({ count, items }: { count: number; items?: string[] }) {
+  const [expanded, setExpanded] = useState(false);
+  if (count === 0) return null;
   return (
-    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', lineHeight: 1.5, padding: '2px 0', marginBottom: 2 }}>
-      {text}
+    <div style={{ marginBottom: 6 }}>
+      <button onClick={() => setExpanded(e => !e)} style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        padding: '4px 10px', borderRadius: 20,
+        background: 'rgba(255,255,255,0.06)', border: 'none',
+        color: 'rgba(255,255,255,0.5)', fontSize: 12, cursor: 'pointer',
+      }}>
+        <span>{'\u26A1'}</span>
+        <span>Knowledge recalled({count})</span>
+        <span style={{ fontSize: 10 }}>{expanded ? '\u2227' : '\u2228'}</span>
+      </button>
+      {expanded && items && items.length > 0 && (
+        <div style={{ paddingLeft: 16, paddingTop: 4 }}>
+          {items.map((item, i) => (
+            <div key={i} style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', lineHeight: 1.5, marginBottom: 2 }}>
+              {item}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -454,21 +509,18 @@ function ComputerCard({ screenshot, status, steps, onExpand }: {
   );
 }
 
-/** Manus-style task block -- collapsible header with pill sub-steps, commentary, and tool indicators */
+/** Manus-style task block -- green checkmark header, collapsible pills + commentary */
 function ManusTaskBlock({ run, onDocClick, onExpandComputer }: { run: AgentRun; onDocClick: (doc: AgentDocument) => void; onExpandComputer?: () => void }) {
   const [expanded, setExpanded] = useState(run.status === 'running');
   const visibleSteps = run.steps.filter(s => !s.hidden);
   const runningStep = visibleSteps.find(s => s.status === 'running');
   const latestScreenshot = [...run.steps].reverse().find(s => s.latestScreenshot)?.latestScreenshot;
   const isComputerTask = run.steps.some(s => s.id.startsWith('agent_step_'));
+  const isDone = run.status === 'done';
+  const isError = run.status === 'error';
 
-  // Derive the header label
-  const headerLabel = run.status === 'done'
-    ? (visibleSteps.length > 0 ? visibleSteps[visibleSteps.length - 1].label : 'Task completed')
-    : run.status === 'error' ? 'Task failed'
-    : runningStep?.label || 'Working...';
-
-  const headerStatus: 'done' | 'running' | 'error' = run.status === 'done' ? 'done' : run.status === 'error' ? 'error' : 'running';
+  // Derive the header label -- use the user message as the task description (Manus style)
+  const taskDescription = run.userMessage.length > 60 ? run.userMessage.slice(0, 60) + '...' : run.userMessage;
 
   useEffect(() => { if (run.status === 'running') setExpanded(true); }, [run.status]);
 
@@ -481,30 +533,54 @@ function ManusTaskBlock({ run, onDocClick, onExpandComputer }: { run: AgentRun; 
     : runningStep?.label?.startsWith('Synthesiz') ? 'Synthesizing findings'
     : null;
 
+  // Count knowledge items (steps with output that are done)
+  const knowledgeSteps = visibleSteps.filter(s => s.status === 'done' && s.output);
+
   return (
     <div style={{ margin: '4px 0' }}>
-      {/* Collapsible header row */}
-      <button onClick={() => setExpanded(e => !e)} style={{
-        display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-        background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: '5px 0',
+      {/* Collapsible header row -- Manus style: green check / spinner + task + chevron */}
+      <div onClick={() => setExpanded(e => !e)} style={{
+        display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '8px 0',
       }}>
-        <ManusStatusIcon status={headerStatus} size={16} />
-        <span style={{
-          flex: 1, fontSize: 13, color: 'rgba(255,255,255,0.65)', fontWeight: 500,
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-        }}>{headerLabel}</span>
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{
-          color: 'rgba(255,255,255,0.22)', transform: expanded ? 'rotate(0deg)' : 'rotate(180deg)',
-          transition: 'transform 0.15s ease', flexShrink: 0,
-        }}><polyline points="6 15 12 9 18 15" /></svg>
-      </button>
+        {/* Status icon */}
+        {isDone ? (
+          <svg width="18" height="18" viewBox="0 0 18 18" style={{ flexShrink: 0 }}>
+            <circle cx="9" cy="9" r="9" fill="#22c55e" />
+            <path d="M5 9l3 3 5-5" stroke="white" strokeWidth="2" fill="none" strokeLinecap="round" />
+          </svg>
+        ) : isError ? (
+          <svg width="18" height="18" viewBox="0 0 18 18" style={{ flexShrink: 0 }}>
+            <circle cx="9" cy="9" r="9" fill="rgba(239,68,68,0.85)" />
+            <line x1="6" y1="6" x2="12" y2="12" stroke="white" strokeWidth="2" strokeLinecap="round" />
+            <line x1="12" y1="6" x2="6" y2="12" stroke="white" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        ) : (
+          <div style={{ width: 18, height: 18, borderRadius: '50%', border: '2px solid rgba(59,130,246,0.5)', borderTopColor: 'rgba(59,130,246,0.9)', animation: '_nomad_spin 0.8s linear infinite', flexShrink: 0 }} />
+        )}
+        {/* Task description */}
+        <span style={{ flex: 1, fontSize: 14, color: 'rgba(255,255,255,0.75)', fontWeight: 500 }}>
+          {taskDescription}
+        </span>
+        {/* Chevron */}
+        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>
+          {expanded ? '\u2227' : '\u2228'}
+        </span>
+      </div>
 
-      {/* Expanded: pills + commentary + tool indicators */}
+      {/* Expanded: knowledge recalled + tool pills + commentary */}
       <AnimatePresence>
         {expanded && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.15 }} style={{ overflow: 'hidden' }}>
-            <div style={{ paddingLeft: 24, paddingBottom: 6 }}>
-              {/* Tool indicator */}
+            <div style={{ paddingLeft: 26, paddingBottom: 8 }}>
+              {/* Knowledge recalled section */}
+              {knowledgeSteps.length > 0 && (
+                <KnowledgeRecalled
+                  count={knowledgeSteps.length}
+                  items={knowledgeSteps.map(s => s.output!.slice(0, 120))}
+                />
+              )}
+
+              {/* Tool indicator for active state */}
               {run.status === 'running' && toolLabel && (
                 <ToolIndicator label={toolLabel} />
               )}
@@ -513,28 +589,26 @@ function ManusTaskBlock({ run, onDocClick, onExpandComputer }: { run: AgentRun; 
               {visibleSteps.map((step) => {
                 const isAgent = step.id.startsWith('agent_step_');
                 return (
-                  <div key={step.id} style={{ marginBottom: 2 }}>
+                  <div key={step.id} style={{ marginBottom: 4 }}>
                     <SubStepPill label={step.label} status={step.status} />
 
                     {/* Commentary: reasoning or output snippet */}
                     {step.status === 'running' && step.reasoning && (
-                      <AgentCommentary text={step.reasoning.slice(0, 80) + (step.reasoning.length > 80 ? '...' : '')} />
+                      <AgentCommentary text={step.reasoning.slice(0, 120) + (step.reasoning.length > 120 ? '...' : '')} />
                     )}
                     {step.status === 'running' && step.output && (
-                      <AgentCommentary text={step.output.slice(0, 80) + (step.output.length > 80 ? '...' : '')} />
+                      <AgentCommentary text={step.output.slice(0, 120) + (step.output.length > 120 ? '...' : '')} />
                     )}
                     {step.status === 'done' && step.output && !isAgent && (
-                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', padding: '1px 0 2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {step.output.slice(0, 80)}
-                      </div>
+                      <AgentCommentary text={step.output.slice(0, 120) + (step.output.length > 120 ? '...' : '')} />
                     )}
 
                     {/* Action log for agent steps (inline) */}
                     {isAgent && step.actionLog && step.actionLog.length > 0 && (
                       <div style={{ paddingLeft: 8, marginTop: 2, marginBottom: 4 }}>
                         {step.actionLog.slice(-5).map((entry, i) => (
-                          <div key={`${entry.ts}_${i}`} style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', lineHeight: 1.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            <span style={{ color: 'rgba(255,255,255,0.18)', marginRight: 4 }}>-&gt;</span>{entry.desc}
+                          <div key={`${entry.ts}_${i}`} style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', lineHeight: 1.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            <span style={{ color: 'rgba(255,255,255,0.18)', marginRight: 4 }}>{'\u2192'}</span>{entry.desc}
                           </div>
                         ))}
                       </div>
@@ -581,7 +655,7 @@ function ManusTaskBlock({ run, onDocClick, onExpandComputer }: { run: AgentRun; 
 
               {/* Error footer */}
               {run.status === 'error' && run.errorDetail && (
-                <div style={{ marginTop: 6, fontSize: 12, color: 'rgba(239,68,68,0.75)', lineHeight: 1.45 }}>
+                <div style={{ marginTop: 6, fontSize: 13, color: 'rgba(239,68,68,0.75)', lineHeight: 1.45 }}>
                   Something went wrong: {run.errorDetail}
                 </div>
               )}
@@ -1579,9 +1653,9 @@ Based on this data, answer the user's question directly and conversationally. Be
             borderBottom: '1px solid rgba(255,255,255,0.04)', flexShrink: 0,
           }}>
             <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
-              {isRouting && <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'rgba(52,211,153,0.8)', animation: '_nomad_pulse 1.2s ease-in-out infinite', flexShrink: 0, display: 'inline-block' }} />}
-              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: 600 }}>Neuro</span>
-              {showThinkingDots && <ThinkingDots />}
+              {isRouting && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3b82f6', animation: '_nomad_pulse 1.5s infinite', flexShrink: 0, display: 'inline-block' }} />}
+              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: 600 }}>neuro</span>
+              {showThinkingDots && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>routing</span>}
               {currentTotal > 0 && isRouting && (
                 <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.22)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{currentDone}/{currentTotal}</span>
               )}
@@ -1615,7 +1689,7 @@ Based on this data, answer the user's question directly and conversationally. Be
                         <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
                       </svg>
                     </div>
-                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>Ask Neuro anything</div>
+                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>Ask neuro anything</div>
                   </div>
                 </div>
               ) : (
@@ -1668,18 +1742,19 @@ Based on this data, answer the user's question directly and conversationally. Be
                       <ContinueNotice />
                     </motion.div>
                   )}
-                  {/* Thinking indicator */}
+                  {/* Manus-style routing/thinking status indicator */}
                   {showThinkingDots && (
                     <div style={{ padding: '6px 0' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px' }}>
-                        <ThinkingDots />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b82f6', animation: '_nomad_pulse 1.5s infinite', flexShrink: 0 }} />
+                        <span>thinking</span>
                       </div>
                     </div>
                   )}
                 </AnimatePresence>
               )}
             </div>
-            <div className="absolute bottom-0 left-0 right-0 h-3 pointer-events-none z-10" style={{ background: 'linear-gradient(to top, rgba(12,14,20,0.8), transparent)' }} />
+            {/* Bottom gradient removed for clean Manus-style transition to input */}
             <AnimatePresence>
               {showNewActivity && (
                 <motion.button initial={{ opacity: 0, y: 4, scale: 0.92 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 4, scale: 0.92 }} transition={{ duration: 0.15 }} onClick={scrollToBottomNow} style={{
@@ -1697,13 +1772,13 @@ Based on this data, answer the user's question directly and conversationally. Be
         </div>
 
         {/* Input bar */}
-        <div style={{ padding: '10px 12px 12px', borderTop: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
+        <div style={{ padding: '10px 12px 12px', borderTop: 'none', flexShrink: 0 }}>
           <div style={{ position: 'relative' }}>
             <textarea ref={inputRef} value={input}
               onChange={e => { setInput(e.target.value); if (inputRef.current) { inputRef.current.style.height = 'auto'; inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 72) + 'px'; } }}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendInstruction(); } }}
-              placeholder={isRouting ? 'Queue next task...' : 'Ask Neuro anything...'}
-              data-role="instruction-input" aria-label="Send a message to the Neuro agent"
+              placeholder={isRouting ? 'Queue next task...' : 'Ask neuro anything...'}
+              data-role="instruction-input" aria-label="Send a message to neuro"
               style={{
                 width: '100%', padding: '10px 40px 10px 12px', borderRadius: 10, fontSize: 12,
                 background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.80)',
@@ -1731,7 +1806,7 @@ Based on this data, answer the user's question directly and conversationally. Be
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" /></svg>
             </button>
           </div>
-          {isRouting && <div style={{ marginTop: 4, fontSize: 9, color: 'rgba(255,255,255,0.28)', textAlign: 'center' }}>Agent running -- type to queue next task</div>}
+          {isRouting && <div style={{ marginTop: 4, fontSize: 9, color: 'rgba(255,255,255,0.28)', textAlign: 'center' }}>neuro is working -- type to queue next task</div>}
           {isRouting && pendingQueue.length > 0 && (
             <div style={{ marginTop: 4, marginBottom: -2 }}>
               <span style={{ fontSize: 9, color: 'rgba(251,191,36,0.70)', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.15)', borderRadius: 4, padding: '2px 6px' }}>{pendingQueue.length} queued</span>
@@ -1752,7 +1827,7 @@ Based on this data, answer the user's question directly and conversationally. Be
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
               <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'rgba(251,191,36,0.80)', animation: '_nomad_pulse 1.2s ease-in-out infinite', flexShrink: 0 }} />
-              <span style={{ fontSize: 10, fontWeight: 600, color: 'rgba(251,191,36,0.80)', letterSpacing: '0.04em' }}>Agent paused</span>
+              <span style={{ fontSize: 10, fontWeight: 600, color: 'rgba(251,191,36,0.80)', letterSpacing: '0.04em' }}>neuro paused</span>
               <button onClick={() => { askUserResolveRef.current?.({ value: 'abort', label: 'Abort' }); askUserResolveRef.current = null; setAskUserRequest(null); }} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.30)', fontSize: 12, padding: 0, lineHeight: 1 }} aria-label="Dismiss">x</button>
             </div>
             {askUserRequest.screenshot && <img src={`data:image/jpeg;base64,${askUserRequest.screenshot}`} alt="Current state" style={{ width: '100%', maxHeight: 120, objectFit: 'contain', borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)', marginBottom: 8, display: 'block' }} />}
