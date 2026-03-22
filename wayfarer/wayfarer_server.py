@@ -1872,6 +1872,76 @@ async def element_at(session_id: str, x: float, y: float):
         raise HTTPException(500, detail=str(e))
 
 
+# ── Indexed interactive elements — browser-use style targeting ──
+
+
+@app.get("/session/{session_id}/elements")
+async def get_elements(session_id: str):
+    """Return all visible interactive elements as an indexed list.
+
+    Each element gets a numeric index that the agent can reference for
+    precise click/type/select actions without pixel-coordinate guessing.
+    """
+    session = _active_pages.get(session_id)
+    if not session:
+        raise HTTPException(404, f"Session {session_id} not found")
+    page = session["page"]
+    _session_last_active[session_id] = _time.time()
+
+    try:
+        elements = await page.evaluate("""() => {
+            const interactiveSelectors = 'a, button, input, select, textarea, [role="button"], [role="link"], [role="tab"], [role="checkbox"], [role="radio"], [role="menuitem"], [onclick], [tabindex]';
+            const els = document.querySelectorAll(interactiveSelectors);
+            const results = [];
+            let idx = 1;
+
+            for (const el of els) {
+                const rect = el.getBoundingClientRect();
+                if (rect.width === 0 || rect.height === 0) continue;
+                if (rect.top > window.innerHeight || rect.bottom < 0) continue;
+                if (rect.left > window.innerWidth || rect.right < 0) continue;
+
+                const style = window.getComputedStyle(el);
+                if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
+
+                const tag = el.tagName.toLowerCase();
+                const role = el.getAttribute('role') || tag;
+                const text = (el.textContent || '').trim().slice(0, 80);
+                const placeholder = el.getAttribute('placeholder') || '';
+                const ariaLabel = el.getAttribute('aria-label') || '';
+                const href = el.getAttribute('href') || '';
+                const type = el.getAttribute('type') || '';
+                const name = el.getAttribute('name') || '';
+
+                let label = ariaLabel || text || placeholder || name || tag;
+                if (tag === 'input') label = (type || 'text') + ' input: ' + (placeholder || name || '');
+                if (tag === 'a' && href) label = (text || 'link') + ' \\u2192 ' + href.slice(0, 60);
+                if (tag === 'select') label = 'dropdown: ' + (ariaLabel || name || text);
+
+                results.push({
+                    idx: idx,
+                    tag: tag,
+                    role: role,
+                    label: label.trim(),
+                    x: Math.round(rect.x + rect.width / 2),
+                    y: Math.round(rect.y + rect.height / 2),
+                    w: Math.round(rect.width),
+                    h: Math.round(rect.height),
+                });
+                idx++;
+            }
+            return results;
+        }""")
+
+        text_repr = "Interactive elements on page:\\n"
+        for el in elements:
+            text_repr += f"  [{el['idx']}] {el['role']}: {el['label']}\\n"
+
+        return {"elements": elements, "text": text_repr, "count": len(elements)}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
 # ── Fix #1: Scroll via page.mouse.wheel — more reliable than window.scrollBy ──
 
 

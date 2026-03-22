@@ -40,6 +40,10 @@ export interface ExecutorAction {
     | 'browser_eval'
     | 'browser_extract_text'
     | 'browser_hover'
+    // Element-index based actions (browser-use style targeting)
+    | 'click_element'
+    | 'type_element'
+    | 'select_element'
     // Desktop / window management
     | 'desktop_open_app'
     | 'desktop_close_window'
@@ -63,6 +67,7 @@ export interface ExecutorAction {
     | 'file_move'
     | 'file_download'
     | 'file_list';
+  index?: number;     // for click_element / type_element / select_element: element index from getElements
   x?: number;
   y?: number;
   startX?: number;    // for browser_drag

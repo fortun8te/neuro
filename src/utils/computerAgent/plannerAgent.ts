@@ -147,6 +147,7 @@ CRITICAL RULES:
 - "Scroll down 300 pixels" NOT "Scroll down the page to find more results"
 - "Read the main heading text" NOT "Analyze the page content to extract information"
 - NEVER ask the executor to "identify", "analyze", "evaluate", or "determine" — just click/type/read
+- The executor can see indexed interactive elements on the page and click them by index — you do NOT need to describe element positions precisely
 - Maximum ${maxSteps} steps. Fewer is better.
 
 SEARCH QUERIES:

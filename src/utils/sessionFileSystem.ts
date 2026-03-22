@@ -131,6 +131,9 @@ export class SessionFileSystem {
       this._mkdirp('/nomad/sessions', 'Sessions');
       this._mkdirp('/nomad/shared', 'Shared');
       this._mkdirp('/nomad/downloads', 'Downloads');
+      this._mkdirp('/nomad/memory', 'Memory');
+      this._mkdirp('/nomad/memory/daily', 'Daily');
+      this._mkdirp('/nomad/memory/sessions', 'Sessions');
     }
   }
 

@@ -15,6 +15,7 @@ import { WayfarerSession } from './wayfarerSession';
 import { INFRASTRUCTURE } from '../../config/infrastructure';
 import type { PlanStep, ExecutorAction, StepResult, ExecutionContext } from './types';
 import { desktopBus } from '../desktopBus';
+import { estimateTokens, estimateImageTokens, getContextWindow } from '../tokenCounter';
 
 // ─────────────────────────────────────────────────────────────
 // AX tree coordinate resolver — NOT LLM input
@@ -330,17 +331,26 @@ function looksLikeProse(text: string): boolean {
 // Executor LLM
 // ─────────────────────────────────────────────────────────────
 
-function buildExecutorSystemPrompt(step: PlanStep, iteration: number): string {
+function buildExecutorSystemPrompt(step: PlanStep, iteration: number, elementsText?: string): string {
   const iterHint = iteration > 1
     ? ` Iteration ${iteration}.`
     : '';
 
+  const elementSection = elementsText
+    ? `\n${elementsText}\n`
+    : '';
+
   return `You see a screenshot of a desktop with windows. Your task: ${step.instruction}
 Expected outcome: ${step.expectedState}${iterHint}
-
+${elementSection}
 Actions (respond with ONE JSON object, no other text):
 
-BROWSER ACTIONS (for web browsing inside Chrome):
+ELEMENT ACTIONS (PREFERRED — use element index from the list above for precise targeting):
+  click_element — {"type":"click_element","index":14,"reasoning":"click privacy link"}
+  type_element — {"type":"type_element","index":2,"text":"user@example.com","reasoning":"enter email"} "clear":true clears first
+  select_element — {"type":"select_element","index":5,"value":"US","reasoning":"select country"}
+
+BROWSER ACTIONS (fallback — use pixel coordinates when element list is unavailable):
   browser_click — {"type":"browser_click","x":450,"y":230,"reasoning":"click search"} Optional: "targetText":"Buy Now" or "selector":"#btn"
   browser_type — {"type":"browser_type","text":"hello","selector":"input#search","reasoning":"type query"} "clear":true clears first
   browser_scroll — {"type":"browser_scroll","direction":"down","distance":300,"reasoning":"scroll to see more"}
@@ -386,8 +396,9 @@ async function decideAction(
   lastActions: string[],
   iteration: number,
   signal?: AbortSignal,
+  elementsText?: string,
 ): Promise<ExecutorAction> {
-  const systemPrompt = buildExecutorSystemPrompt(step, iteration);
+  const systemPrompt = buildExecutorSystemPrompt(step, iteration, elementsText);
   const prompt =
     `You are looking at a screenshot of a web browser.${screenDescription ? ` You can see: ${screenDescription}` : ''}\n` +
     `Your task: ${step.instruction}\n\n` +
@@ -600,13 +611,41 @@ export async function runExecutorStep(
     await sleep(lastWasBrowserAction || lastFiveActions.length === 0 ? thinkPause() : 50);
     if (signal?.aborted) break;
 
+    // Fetch indexed interactive elements from the browser (browser-use style targeting)
+    let currentElementsText: string | undefined;
+    let currentElements: Array<{ idx: number; tag: string; role: string; label: string; x: number; y: number; w: number; h: number }> = [];
+    if (wayfarerSession?.isOpen && wayfarerSession.healthy) {
+      try {
+        const elData = await wayfarerSession.getElements(signal);
+        if (elData.count > 0) {
+          currentElements = elData.elements;
+          currentElementsText = elData.text;
+        }
+      } catch {
+        // Non-critical — fall back to pixel-coordinate mode
+      }
+    }
+
+    // Token-aware context check: trim action history if prompt is too large
+    const executorModel = getModelForStage('executor');
+    const executorSystemPrompt = buildExecutorSystemPrompt(step, iter);
+    const historyText = actionsWithHints.slice(-5).join('\n');
+    const promptTokens = estimateTokens(executorSystemPrompt) + estimateTokens(historyText) + estimateImageTokens();
+    const maxContext = getContextWindow(executorModel);
+    let trimmedActions = actionsWithHints;
+    if (promptTokens > maxContext * 0.7) {
+      trimmedActions = actionsWithHints.slice(-3);
+      console.log(`[context] Executor prompt at ${Math.round((promptTokens / maxContext) * 100)}% — trimmed actions to last 3`);
+    }
+
     const action = await decideAction(
       step,
       currentScreenshot,
       lastStateDescription,
-      actionsWithHints.slice(-5),
+      trimmedActions.slice(-5),
       iter,
       signal,
+      currentElementsText,
     );
     // ME-2: capture screenState from executor JSON to use as context next iteration
     if (action.screenState) {
@@ -646,6 +685,21 @@ export async function runExecutorStep(
         case 'browser_hover':
           desc = `Hovering at (${action.x ?? '?'}, ${action.y ?? '?'})`;
           break;
+        case 'click_element': {
+          const elClick = currentElements.find(e => e.idx === action.index);
+          desc = `Clicking [${action.index}] ${elClick?.label ?? 'element'}`;
+          break;
+        }
+        case 'type_element': {
+          const elType = currentElements.find(e => e.idx === action.index);
+          desc = `Typing "${(action.text ?? '').slice(0, 40)}" into [${action.index}] ${elType?.label ?? 'element'}`;
+          break;
+        }
+        case 'select_element': {
+          const elSelect = currentElements.find(e => e.idx === action.index);
+          desc = `Selecting "${action.value ?? ''}" in [${action.index}] ${elSelect?.label ?? 'dropdown'}`;
+          break;
+        }
         case 'browser_eval':
           desc = `Evaluating JS: ${(action.script ?? '').slice(0, 50)}`;
           break;
@@ -989,7 +1043,8 @@ export async function runExecutorStep(
     }
 
     // 5d. Execute action — browser or desktop
-    const isBrowserAction = action.type.startsWith('browser_');
+    const isElementAction = action.type === 'click_element' || action.type === 'type_element' || action.type === 'select_element';
+    const isBrowserAction = action.type.startsWith('browser_') || isElementAction;
 
     if (isBrowserAction && wayfarerSession?.isOpen && wayfarerSession.healthy) {
       // ── Browser path: Playwright via Wayfarer ──
@@ -1189,6 +1244,52 @@ export async function runExecutorStep(
             const hoverDc = browserToDesktopCoords(hoverScaled.x, hoverScaled.y, desktopEl);
             desktopBus.emit({ type: 'ai_cursor_move', x: hoverDc.x, y: hoverDc.y, state: 'acting' });
             await wayfarerSession.action({ action: 'hover', click_x: hoverScaled.x, click_y: hoverScaled.y }, signal);
+            break;
+          }
+          // ── Element-index based actions (browser-use style) ──
+          case 'click_element': {
+            const elIdx = action.index;
+            const el = currentElements.find(e => e.idx === elIdx);
+            if (el) {
+              const elDc = browserToDesktopCoords(el.x, el.y, desktopEl);
+              desktopBus.emit({ type: 'ai_cursor_move', x: elDc.x, y: elDc.y, state: 'acting' });
+              await wayfarerSession.click(jitterCoord(el.x), jitterCoord(el.y), signal);
+              desktopBus.emit({ type: 'ai_cursor_click', x: elDc.x, y: elDc.y });
+              onStatus?.(`[Executor] Clicked [${elIdx}] ${el.label}`);
+              await sleep(clickPause());
+            } else {
+              onStatus?.(`[Executor] Element [${elIdx}] not found in current element list`);
+            }
+            break;
+          }
+          case 'type_element': {
+            const typeElIdx = action.index;
+            const typeEl = currentElements.find(e => e.idx === typeElIdx);
+            if (typeEl) {
+              // Click to focus the element first
+              await wayfarerSession.click(typeEl.x, typeEl.y, signal);
+              await sleep(100);
+              // Type into it
+              await wayfarerSession.type(action.text ?? '', undefined, action.clear ?? true, signal);
+              onStatus?.(`[Executor] Typed into [${typeElIdx}] ${typeEl.label}`);
+            } else {
+              onStatus?.(`[Executor] Element [${typeElIdx}] not found for typing`);
+            }
+            break;
+          }
+          case 'select_element': {
+            const selElIdx = action.index;
+            const selEl = currentElements.find(e => e.idx === selElIdx);
+            if (selEl) {
+              const selValue = action.value ?? '';
+              await wayfarerSession.evalJs(
+                `(()=>{const el=document.elementFromPoint(${selEl.x},${selEl.y});if(el&&el.tagName==='SELECT'){const opt=Array.from(el.options).find(o=>o.value===${JSON.stringify(selValue)}||o.text.includes(${JSON.stringify(selValue)}));if(opt){el.value=opt.value;el.dispatchEvent(new Event('change',{bubbles:true}))}}})()`,
+                signal,
+              );
+              onStatus?.(`[Executor] Selected "${selValue}" in [${selElIdx}] ${selEl.label}`);
+            } else {
+              onStatus?.(`[Executor] Element [${selElIdx}] not found for selection`);
+            }
             break;
           }
           default:

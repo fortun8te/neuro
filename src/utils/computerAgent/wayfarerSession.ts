@@ -287,6 +287,37 @@ export class WayfarerSession {
   }
 
   /**
+   * Get all visible interactive elements as an indexed list.
+   * Used by the executor for browser-use style element targeting by index.
+   * Returns elements with idx, tag, role, label, x, y, w, h plus a text summary.
+   */
+  async getElements(signal?: AbortSignal): Promise<{
+    elements: Array<{ idx: number; tag: string; role: string; label: string; x: number; y: number; w: number; h: number }>;
+    text: string;
+    count: number;
+  }> {
+    if (!this.healthy || !this.sessionId) {
+      return { elements: [], text: 'No interactive elements (session unavailable)\n', count: 0 };
+    }
+    try {
+      const controller = new AbortController();
+      const combinedSignal = signal
+        ? AbortSignal.any([signal, controller.signal])
+        : controller.signal;
+      const timer = setTimeout(() => controller.abort(), 15_000);
+      const resp = await fetch(`${this.baseUrl}/session/${this.sessionId}/elements`, { signal: combinedSignal });
+      clearTimeout(timer);
+      if (!resp.ok) {
+        return { elements: [], text: 'Failed to fetch interactive elements\n', count: 0 };
+      }
+      return resp.json();
+    } catch (err) {
+      console.warn(`[WayfarerSession] getElements failed: ${err instanceof Error ? err.message : String(err)}`);
+      return { elements: [], text: 'Failed to fetch interactive elements\n', count: 0 };
+    }
+  }
+
+  /**
    * Find elements matching a CSS selector.
    * Returns up to 20 element descriptors.
    */

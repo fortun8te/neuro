@@ -17,7 +17,10 @@ import { ResponseStream } from './ResponseStream';
 import { INFRASTRUCTURE } from '../config/infrastructure';
 import { vfs, generateSessionId, getSessionSuffix } from '../utils/sessionFileSystem';
 import { runMassResearch } from '../utils/massResearch';
+import { loadSkills, formatSkillsForPrompt } from '../utils/skillLoader';
 import type { ResearchProgressEvent } from '../utils/massResearch';
+import { neuroMemory } from '../utils/neuroMemory';
+import { calculateBudget, compactMessages, getContextWindow } from '../utils/tokenCounter';
 
 // ── Types ──
 
@@ -869,6 +872,9 @@ export function ActionSidebarCompact({ machineId: _machineId, onComputerTask, ag
     return () => clearTimeout(timer);
   }, [runStartedAt]);
 
+  // Init neuro memory on mount
+  useEffect(() => { neuroMemory.init().catch(() => { /* non-fatal */ }); }, []);
+
   // Cleanup on unmount
   useEffect(() => () => { abortRef.current?.abort(); stepTimeoutMapRef.current.forEach(h => clearTimeout(h)); stepTimeoutMapRef.current.clear(); }, []);
 
@@ -1114,7 +1120,10 @@ export function ActionSidebarCompact({ machineId: _machineId, onComputerTask, ag
           responseText = await waitForAgent(runId, actionStepId, abort);
         }
       }
-      // ── Main path: classify tool first, then generate response ──
+      // ── Main path: sequential tool loop (OpenClaw pattern) ──
+      // 1. Classifier determines tool needed
+      // 2. If none -> generate chat response directly, done
+      // 3. If tool needed -> run tool FIRST -> call LLM with results -> loop if LLM wants more
       else {
         // Step 0: Get user location if needed and not yet known
         if (!userLocationRef.current && /weather|near me|nearby|local|around here|my area|in my city/i.test(userMessage)) {
@@ -1133,267 +1142,292 @@ export function ActionSidebarCompact({ machineId: _machineId, onComputerTask, ag
         }
 
         // Step 1: Fast tool classification (qwen3.5:2b, ~10 tokens, <1s)
+        // Uses SKILL.md definitions -- add a new skill file to extend, no code changes needed.
+        const skills = loadSkills();
+        const skillNames = skills.map((s) => s.name);
+        const skillsList = formatSkillsForPrompt(skills);
+
         let toolClass = 'none';
         let toolParam = '';
         const { signal: cs, cleanup: cc } = combinedSignal(abort.signal, 8_000);
         try {
           let classResult = '';
           await ollamaService.generateStream(
-            `User message: "${userMessage}"${userLocationRef.current ? `\nUser location: ${userLocationRef.current}` : ''}\n\nClassify what tool is needed. Reply with ONLY one line:\nnone\nwebfetch: <search query>\nresearch: <topic>\ncomputer: <goal>\nask: <question>\n\nExamples:\n"yo" → none\n"whats the weather" → webfetch: weather ${userLocationRef.current || 'current location'}\n"research competitors" → research: competitor analysis\n"go to github" → computer: navigate to github.com\n"fix it" → ask: What would you like me to fix?\n\nReply:`,
+            `Available tools:\n${skillsList}\n\nUser message: "${userMessage}"${userLocationRef.current ? `\nUser location: ${userLocationRef.current}` : ''}\n\nClassify what tool is needed. Reply with ONLY one line:\nnone\n${skillNames.map((n) => `${n}: <param>`).join('\n')}\nask: <question>\n\nExamples:\n"yo" -> none\n"whats the weather" -> webfetch: weather ${userLocationRef.current || 'current location'}\n"research competitors" -> research: competitor analysis\n"go to github" -> computer: navigate to github.com\n"fix it" -> ask: What would you like me to fix?\n\nReply:`,
             'You are a tool classifier. Output ONE line only. No explanation.',
             { model: 'qwen3.5:2b', temperature: 0.1, num_predict: 30, signal: cs, think: false,
               onChunk: (c) => { classResult += c; } },
           );
-          console.log("[Classifier]", classResult.trim()); const line = classResult.trim().split('\n')[0].trim().toLowerCase();
-          if (line.startsWith('webfetch:')) { toolClass = 'webfetch'; toolParam = line.slice(9).trim(); }
-          else if (line.startsWith('research:')) { toolClass = 'research'; toolParam = line.slice(9).trim(); }
-          else if (line.startsWith('computer:')) { toolClass = 'computer'; toolParam = line.slice(9).trim(); }
-          else if (line.startsWith('ask:')) { toolClass = 'ask'; toolParam = line.slice(4).trim(); }
-          else { toolClass = 'none'; }
+          console.log("[Classifier]", classResult.trim());
+          const line = classResult.trim().split('\n')[0].trim().toLowerCase();
+          // Dynamic matching against loaded skill names
+          let matched = false;
+          for (const sn of skillNames) {
+            if (line.startsWith(`${sn}:`)) {
+              toolClass = sn;
+              toolParam = line.slice(sn.length + 1).trim();
+              matched = true;
+              break;
+            }
+          }
+          if (!matched && line.startsWith('ask:')) { toolClass = 'ask'; toolParam = line.slice(4).trim(); }
+          else if (!matched) { toolClass = 'none'; }
         } catch { toolClass = 'none'; }
         finally { cc(); }
 
-        // Step 2: Generate conversational response (qwen3.5:4b)
-        const history = runs.slice(-5).flatMap(run => [
+        // Build conversation history + token-aware context management
+        let history = runs.slice(-5).flatMap(run => [
           { role: 'user' as const, content: run.userMessage },
           ...(run.finalAnswer ? [{ role: 'assistant' as const, content: run.finalAnswer }] : []),
         ]);
+        const chatModel = 'qwen3.5:4b';
+        const memoryContext = neuroMemory.ready ? neuroMemory.getContextForPrompt() : '';
+        const chatSystemPrompt = `${NEURO_SYSTEM}\n\nIf you learn something important about the user (location, preferences, project details, decisions), include [REMEMBER: content] in your response to save it to memory.\n\n${memoryContext}`;
 
-        const toolContext = toolClass === 'none' ? ''
-          : toolClass === 'webfetch' ? `\n\n[You are about to search the web for: "${toolParam}". Say something brief like "let me check" or "looking it up".]`
-          : toolClass === 'research' ? `\n\n[You are about to do deep research on: "${toolParam}". Say something brief about starting research.]`
-          : toolClass === 'computer' ? `\n\n[You are about to use the browser for: "${toolParam}". Say something brief about opening the browser.]`
-          : toolClass === 'ask' ? `\n\n[You need to ask the user: "${toolParam}". Ask the question naturally.]`
-          : '';
-
-        let fullResponse = '';
-        const { signal: gs, cleanup: gc } = combinedSignal(abort.signal, 20_000);
-        try {
-          await ollamaService.generateStream(
-            history.map(m => `${m.role === 'user' ? 'User' : 'Neuro'}: ${m.content}`).join('\n') + `\nUser: ${userMessage}${toolContext}\nNeuro:`,
-            'You are Neuro, a helpful AI assistant. Be conversational and brief. 1-3 sentences max. No formal language. If you don\'t know something factual, say so — never make up data like weather or prices.',
-            {
-              model: 'qwen3.5:4b', temperature: 0.5, num_predict: 200, signal: gs, think: false,
-              onChunk: (chunk) => { fullResponse += chunk; },
-            },
-          );
-        } finally { gc(); }
+        // Compact history if over 80% utilization
+        const chatBudget = calculateBudget(getContextWindow(chatModel), 400, chatSystemPrompt, history, 0);
+        if (chatBudget.utilizationPct > 80) {
+          const importantFacts = history
+            .filter(m => m.role === 'assistant' && m.content.length > 50)
+            .map(m => m.content.slice(0, 200));
+          for (const fact of importantFacts.slice(-3)) {
+            await neuroMemory.log(`Context: ${fact}`);
+          }
+          const targetTokens = Math.floor(chatBudget.available + chatBudget.messageTokens * 0.5);
+          history = compactMessages(history, targetTokens);
+          const newBudget = calculateBudget(getContextWindow(chatModel), 400, chatSystemPrompt, history, 0);
+          console.log(`[context] Compacted: ${chatBudget.utilizationPct}% -> ${newBudget.utilizationPct}%`);
+        }
+        const historyStr = history.map(m => `${m.role === 'user' ? 'User' : 'Neuro'}: ${m.content}`).join('\n');
 
         updateStep(runId, thinkStepId, s => ({ ...s, status: 'done', output: `Tool: ${toolClass}` }));
 
-        // Use the classified tool and conversational response
-        const tool = toolClass;
-        const param = toolParam;
-        const conversationalMsg = fullResponse.trim();
-        const askQuestion = toolClass === 'ask' ? toolParam : undefined;
-        const askOptions = toolClass === 'ask' ? ['Yes', 'No', 'Something else'] : undefined;
+        // ── No tool needed: generate chat response directly ──
+        if (toolClass === 'none') {
+          let chatResponse = '';
+          const { signal: gs, cleanup: gc } = combinedSignal(abort.signal, 20_000);
+          try {
+            await ollamaService.generateStream(
+              historyStr + `\nUser: ${userMessage}\nNeuro:`,
+              chatSystemPrompt,
+              {
+                model: chatModel, temperature: 0.5, num_predict: 300, signal: gs, think: false,
+                onChunk: (chunk) => { chatResponse += chunk; },
+              },
+            );
+          } finally { gc(); }
+          chatResponse = await neuroMemory.parseAndRemember(chatResponse, computerId);
+          responseText = chatResponse.replace(/^\[TOOL:[^\]]*\]\n?/, '').trim();
+        }
 
-        switch (tool) {
-          case 'none': {
-            responseText = conversationalMsg || fullResponse;
-            break;
-          }
+        // ── Ask tool: show inline question, wait for answer, then respond ──
+        else if (toolClass === 'ask') {
+          const askEntryId = `ask_${runId}_${uid()}`;
+          const askQ = toolParam || 'What would you like?';
+          const askOpts = ['Yes', 'No', 'Something else'];
 
-          case 'webfetch': {
-            // Show conversational message first
-            if (conversationalMsg) responseText = conversationalMsg;
+          addStep(runId, { id: askEntryId, label: 'Asking user', status: 'running', hidden: true });
+          setRuns(prev => prev.map(r => {
+            if (r.id !== runId) return r;
+            return { ...r, _askEntry: { id: askEntryId, question: askQ, options: askOpts } } as AgentRun;
+          }));
+          scrollToBottom();
 
-            const query = param || userMessage;
+          const answer = await new Promise<string>((resolve) => {
+            neuroAskResolveRef.current = resolve;
+          });
 
-            // Step 1: Querying SearXNG
-            const queryStepId = uid();
-            addStep(runId, { id: queryStepId, label: `Querying SearXNG for "${query}"`, status: 'running' });
+          setRuns(prev => prev.map(r => {
+            if (r.id !== runId) return r;
+            return { ...r, _askEntry: { ...(r as AgentRun & { _askEntry?: { id: string; question: string; options: string[] } })._askEntry!, answered: answer } } as AgentRun;
+          }));
+          updateStep(runId, askEntryId, s => ({ ...s, status: 'done', output: `User answered: ${answer}` }));
+
+          // Generate response with the user's clarification as context
+          let clarifiedResponse = '';
+          const { signal: cls, cleanup: clc } = combinedSignal(abort.signal, 20_000);
+          try {
+            await ollamaService.generateStream(
+              historyStr + `\nUser: ${userMessage}\nUser clarified: ${answer}\nNeuro:`,
+              chatSystemPrompt,
+              {
+                model: chatModel, temperature: 0.5, num_predict: 300, signal: cls, think: false,
+                onChunk: (chunk) => { clarifiedResponse += chunk; },
+              },
+            );
+          } finally { clc(); }
+          clarifiedResponse = await neuroMemory.parseAndRemember(clarifiedResponse, computerId);
+          responseText = clarifiedResponse.replace(/^\[TOOL:[^\]]*\]\n?/, '').trim();
+        }
+
+        // ── Tool needed: sequential loop -- run tool FIRST, then LLM responds WITH data ──
+        // This is the OpenClaw pattern: tools execute before the LLM speaks, so the LLM
+        // always has real data when composing the answer. No more "I can't tell you the weather".
+        else {
+          let currentTool = toolClass;
+          let currentParam = toolParam;
+          const toolResults: string[] = [];
+          let iteration = 0;
+          const MAX_TOOL_ITERATIONS = 5;
+
+          while (currentTool !== 'none' && currentTool !== 'ask' && iteration < MAX_TOOL_ITERATIONS) {
+            iteration++;
+            const toolStepId = uid();
+            const toolLabel = currentTool === 'webfetch' ? `Searching: ${currentParam}`
+              : currentTool === 'research' ? `Researching: ${currentParam}`
+              : currentTool === 'computer' ? `Using computer: ${currentParam}`
+              : `Running: ${currentTool}`;
+            addStep(runId, { id: toolStepId, label: toolLabel, status: 'running' });
             scrollToBottom();
 
-            let context = '';
-            let resultCount = 0;
-            let sourceNames: string[] = [];
-            // SearXNG first (fast, reliable, returns snippets with data)
-            try {
-              // Proxy through Wayfarer to avoid CORS
-              const searxUrl = `${INFRASTRUCTURE.wayfarerUrl}/api/search?q=${encodeURIComponent(query)}&format=json`;
-              console.log('[webfetch] Fetching via proxy:', searxUrl);
-              const searxRes = await fetch(searxUrl, { signal: abort.signal }).then(r => { console.log('[webfetch] Response status:', r.status); return r.json(); });
-              const topResults = (searxRes.results || []).slice(0, 8);
-              resultCount = topResults.length;
-              context = topResults.map((r: { title?: string; content?: string; url?: string }) =>
-                `${r.title || ''}: ${r.content || ''}`
-              ).join('\n\n');
-              // Extract source names from URLs
-              sourceNames = topResults.map((r: { url?: string }) => {
-                try { return new URL(r.url || '').hostname.replace('www.', ''); } catch { return ''; }
-              }).filter(Boolean).filter((v: string, i: number, a: string[]) => a.indexOf(v) === i).slice(0, 4);
-              updateStep(runId, queryStepId, s => ({ ...s, status: 'done', output: `Found ${resultCount} results` }));
-            } catch (err) {
-              console.error('[webfetch] SearXNG failed:', err);
-              // Fallback: try Wayfarer research
-              try {
-                const wayfarerRes = await fetch(`${INFRASTRUCTURE.wayfarerUrl}/research`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ query, max_results: 3 }),
-                  signal: abort.signal,
-                }).then(r => r.json());
-                const pages = wayfarerRes.results || [];
-                resultCount = pages.length;
-                context = pages.map((r: { title?: string; text?: string }) =>
-                  `${r.title || 'Untitled'}: ${(r.text || '').slice(0, 500)}`
-                ).join('\n\n');
-                updateStep(runId, queryStepId, s => ({ ...s, status: 'done', output: `Fetched ${pages.length} pages` }));
-              } catch {
-                context = 'No search results available. SearXNG and Wayfarer are both unreachable.';
-                updateStep(runId, queryStepId, s => ({ ...s, status: 'error', output: 'Search unavailable' }));
-              }
-            }
+            let result = '';
 
-            // Step 2: Processing results
-            const processStepId = uid();
-            const processLabel = sourceNames.length > 0
-              ? `Processing ${resultCount} results from ${sourceNames.join(', ')}`
-              : `Processing ${resultCount} search results`;
-            addStep(runId, { id: processStepId, label: processLabel, status: 'running' });
-            scrollToBottom();
-
-            // Step 3: Summarize with small model
-            const sumStepId = uid();
-            let summary = '';
-            const { signal: ss, cleanup: sc } = combinedSignal(abort.signal, 20_000);
-            try {
-              updateStep(runId, processStepId, s => ({ ...s, status: 'done' }));
-              addStep(runId, { id: sumStepId, label: 'Summarizing findings', status: 'running' });
-              scrollToBottom();
-              await ollamaService.generateStream(
-                `Based on these search results, give a brief answer to: "${query}"\n\n${context}`,
-                'You are a concise assistant. Give a direct, factual answer. 2-4 sentences max. No preamble. Use Celsius for temperatures, metric for distances.',
-                {
-                  model: 'qwen3.5:2b', temperature: 0.3, num_predict: 200, signal: ss, think: false,
-                  onChunk: (c) => { summary += c; updateStep(runId, sumStepId, s => ({ ...s, output: summary })); scrollToBottom(); },
-                },
-              );
-            } finally { sc(); }
-
-            updateStep(runId, sumStepId, s => ({ ...s, status: 'done' }));
-            // Append summary to response
-            if (summary.trim()) responseText = (responseText ? responseText + '\n\n' : '') + summary.trim();
-            break;
-          }
-
-          case 'research': {
-            // Show conversational message first
-            if (conversationalMsg) responseText = conversationalMsg;
-
-            const researchQuery = param || userMessage;
-            const qId = uid(), sId = uid(), fId = uid(), sumId = uid(), synId = uid();
-            addStep(runId, { id: qId, label: 'Generating search queries', status: 'running' });
-            scrollToBottom();
-
-            const { signal: rs, cleanup: rc } = combinedSignal(abort.signal, 600_000);
-            try {
-              const result = await runMassResearch(researchQuery, {
-                maxSources: 20, maxSearchQueries: 5, signal: rs,
-                onProgress: (ev: ResearchProgressEvent) => {
-                  switch (ev.type) {
-                    case 'generating_queries': break;
-                    case 'searching': updateStep(runId, qId, s => ({ ...s, status: 'done', output: `Queries: ${ev.queries.join(', ')}` })); addStep(runId, { id: sId, label: 'Searching SearXNG', status: 'running' }); scrollToBottom(); break;
-                    case 'found_urls': updateStep(runId, sId, s => ({ ...s, status: 'done', output: `Found ${ev.count} unique URLs` })); addStep(runId, { id: fId, label: `Fetching ${ev.count} pages`, status: 'running' }); scrollToBottom(); break;
-                    case 'fetching': updateStep(runId, fId, s => ({ ...s, output: `Scraping ${ev.total} pages via Wayfarer...` })); break;
-                    case 'summarizing': updateStep(runId, fId, s => ({ ...s, status: 'done', output: `Fetched ${ev.total} pages` })); addStep(runId, { id: sumId, label: `Summarizing ${ev.total} pages`, status: 'running' }); scrollToBottom(); break;
-                    case 'summarizing_page': updateStep(runId, sumId, s => ({ ...s, output: `[${ev.index + 1}] ${ev.url.slice(0, 60)}...` })); break;
-                    case 'synthesizing': updateStep(runId, sumId, s => ({ ...s, status: 'done' })); addStep(runId, { id: synId, label: 'Synthesizing findings', status: 'running' }); scrollToBottom(); break;
-                    case 'done': updateStep(runId, synId, s => ({ ...s, status: 'done' })); break;
+            switch (currentTool) {
+              case 'webfetch': {
+                const query = currentParam || userMessage;
+                try {
+                  const searxUrl = `${INFRASTRUCTURE.wayfarerUrl}/api/search?q=${encodeURIComponent(query)}&format=json`;
+                  console.log('[webfetch] Fetching via proxy:', searxUrl);
+                  const searxRes = await fetch(searxUrl, { signal: abort.signal }).then(r => r.json());
+                  const topResults = (searxRes.results || []).slice(0, 8);
+                  result = topResults.map((r: { title?: string; content?: string; url?: string }) =>
+                    `${r.title || ''}: ${r.content || ''}`
+                  ).join('\n\n');
+                  if (!result) result = 'No search results found.';
+                  const sourceNames = topResults.map((r: { url?: string }) => {
+                    try { return new URL(r.url || '').hostname.replace('www.', ''); } catch { return ''; }
+                  }).filter(Boolean).filter((v: string, i: number, a: string[]) => a.indexOf(v) === i).slice(0, 4);
+                  updateStep(runId, toolStepId, s => ({ ...s, status: 'done', output: `Found ${topResults.length} results from ${sourceNames.join(', ')}` }));
+                } catch (err) {
+                  console.error('[webfetch] SearXNG failed:', err);
+                  try {
+                    const wayfarerRes = await fetch(`${INFRASTRUCTURE.wayfarerUrl}/research`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ query, max_results: 3 }),
+                      signal: abort.signal,
+                    }).then(r => r.json());
+                    const pages = wayfarerRes.results || [];
+                    result = pages.map((r: { title?: string; text?: string }) =>
+                      `${r.title || 'Untitled'}: ${(r.text || '').slice(0, 500)}`
+                    ).join('\n\n');
+                    if (!result) result = 'No results found.';
+                    updateStep(runId, toolStepId, s => ({ ...s, status: 'done', output: `Fetched ${pages.length} pages` }));
+                  } catch {
+                    result = 'No search results available. SearXNG and Wayfarer are both unreachable.';
+                    updateStep(runId, toolStepId, s => ({ ...s, status: 'error', output: 'Search unavailable' }));
                   }
-                },
-              });
-              responseText = result.synthesis;
-              try {
-                const sessionId = generateSessionId();
-                vfs.saveActivity(sessionId, computerId, `Research: ${researchQuery}`, JSON.stringify({
-                  query: result.query, totalSources: result.totalSources, elapsed: result.elapsed,
-                  sources: result.sources.map(s => ({ url: s.url, title: s.title, summary: s.summary })), synthesis: result.synthesis,
-                }));
-              } catch { /* silent */ }
-              updateRun(runId, r => ({ ...r, finalAnswer: result.synthesis }));
-            } finally { rc(); }
-            break;
-          }
+                }
+                neuroMemory.log(`Searched: ${query}`).catch(() => {});
+                break;
+              }
 
-          case 'computer': {
-            // Show conversational message first
-            if (conversationalMsg) responseText = conversationalMsg;
+              case 'research': {
+                const researchQuery = currentParam || userMessage;
+                const sId = uid(), fId = uid(), sumId = uid(), synId = uid();
+                updateStep(runId, toolStepId, s => ({ ...s, label: 'Generating search queries' }));
 
-            const actionStepId = uid();
-            addStep(runId, { id: actionStepId, label: 'Using Computer', status: 'running' });
+                const { signal: rs, cleanup: rc } = combinedSignal(abort.signal, 600_000);
+                try {
+                  const researchResult = await runMassResearch(researchQuery, {
+                    maxSources: 20, maxSearchQueries: 5, signal: rs,
+                    onProgress: (ev: ResearchProgressEvent) => {
+                      switch (ev.type) {
+                        case 'generating_queries': break;
+                        case 'searching': updateStep(runId, toolStepId, s => ({ ...s, status: 'done', output: `Queries: ${ev.queries.join(', ')}` })); addStep(runId, { id: sId, label: 'Searching SearXNG', status: 'running' }); scrollToBottom(); break;
+                        case 'found_urls': updateStep(runId, sId, s => ({ ...s, status: 'done', output: `Found ${ev.count} unique URLs` })); addStep(runId, { id: fId, label: `Fetching ${ev.count} pages`, status: 'running' }); scrollToBottom(); break;
+                        case 'fetching': updateStep(runId, fId, s => ({ ...s, output: `Scraping ${ev.total} pages via Wayfarer...` })); break;
+                        case 'summarizing': updateStep(runId, fId, s => ({ ...s, status: 'done', output: `Fetched ${ev.total} pages` })); addStep(runId, { id: sumId, label: `Summarizing ${ev.total} pages`, status: 'running' }); scrollToBottom(); break;
+                        case 'summarizing_page': updateStep(runId, sumId, s => ({ ...s, output: `[${ev.index + 1}] ${ev.url.slice(0, 60)}...` })); break;
+                        case 'synthesizing': updateStep(runId, sumId, s => ({ ...s, status: 'done' })); addStep(runId, { id: synId, label: 'Synthesizing findings', status: 'running' }); scrollToBottom(); break;
+                        case 'done': updateStep(runId, synId, s => ({ ...s, status: 'done' })); break;
+                      }
+                    },
+                  });
+                  result = researchResult.synthesis;
+                  try {
+                    const sessionId = generateSessionId();
+                    vfs.saveActivity(sessionId, computerId, `Research: ${researchQuery}`, JSON.stringify({
+                      query: researchResult.query, totalSources: researchResult.totalSources, elapsed: researchResult.elapsed,
+                      sources: researchResult.sources.map(s => ({ url: s.url, title: s.title, summary: s.summary })), synthesis: researchResult.synthesis,
+                    }));
+                  } catch { /* silent */ }
+                } finally { rc(); }
+                break;
+              }
+
+              case 'computer': {
+                const goal = currentParam || userMessage;
+                const actionStepId = uid();
+                updateStep(runId, toolStepId, s => ({ ...s, label: 'Using Computer' }));
+                addStep(runId, { id: actionStepId, label: goal, status: 'running' });
+                scrollToBottom();
+
+                desktopBus.emit({ type: 'open_window', app: 'chrome' });
+                setTimeout(() => desktopBus.emit({ type: 'run_goal', goal }), 800);
+                if (onComputerTask) onComputerTask(goal);
+                result = await waitForAgent(runId, actionStepId, abort);
+                updateStep(runId, toolStepId, s => ({ ...s, status: 'done' }));
+                break;
+              }
+
+              default:
+                updateStep(runId, toolStepId, s => ({ ...s, status: 'error', output: `Unknown tool: ${currentTool}` }));
+                result = '';
+                break;
+            }
+
+            toolResults.push(`[${currentTool}] ${result}`);
             scrollToBottom();
 
-            const goal = param || userMessage;
-            desktopBus.emit({ type: 'open_window', app: 'chrome' });
-            setTimeout(() => desktopBus.emit({ type: 'run_goal', goal }), 800);
-            if (onComputerTask) onComputerTask(goal);
-            const agentResult = await waitForAgent(runId, actionStepId, abort);
-            responseText = agentResult;
-            break;
-          }
+            // Now call LLM with tool results as context -- LLM responds WITH the data
+            const contextData = toolResults.join('\n---\n');
+            const contextualPrompt = `The user said: "${userMessage}"
 
-          case 'ask': {
-            // Show conversational message first
-            if (conversationalMsg) responseText = conversationalMsg;
+Here is data I found:
+${contextData}
 
-            const askEntryId = `ask_${runId}_${uid()}`;
-            const askQ = askQuestion || 'What would you like?';
-            const askOpts = askOptions?.length ? askOptions : ['Something else'];
+Based on this data, answer the user's question directly and conversationally. Be specific -- use actual numbers, names, and facts from the data. Use Celsius for temperatures, metric for distances. Be precise with data from the search results. Do not say you cannot access information -- you have it above. If the data does not contain what was asked, say so honestly.`;
 
-            // Add ask step (hidden from task block, visible in chat)
-            addStep(runId, { id: askEntryId, label: 'Asking user', status: 'running', hidden: true });
-
-            // Add the ask entry to chat via a temporary chatEntries injection
-            setRuns(prev => prev.map(r => {
-              if (r.id !== runId) return r;
-              return { ...r, _askEntry: { id: askEntryId, question: askQ, options: askOpts } } as AgentRun;
-            }));
+            const answerStepId = uid();
+            addStep(runId, { id: answerStepId, label: 'Composing answer', status: 'running' });
             scrollToBottom();
 
-            // Wait for user answer
-            const answer = await new Promise<string>((resolve) => {
-              neuroAskResolveRef.current = resolve;
-            });
-
-            // Mark the ask as answered in run metadata
-            setRuns(prev => prev.map(r => {
-              if (r.id !== runId) return r;
-              return { ...r, _askEntry: { ...(r as AgentRun & { _askEntry?: { id: string; question: string; options: string[] } })._askEntry!, answered: answer } } as AgentRun;
-            }));
-            updateStep(runId, askEntryId, s => ({ ...s, status: 'done', output: `User answered: ${answer}` }));
-
-            // Re-run the LLM with clarification context
-            const clarifiedMessage = `${userMessage}\n\nUser clarified: ${answer}`;
-            let clarifiedResponse = '';
-            const { signal: cs, cleanup: cc } = combinedSignal(abort.signal, 20_000);
+            let llmResponse = '';
+            const { signal: as2, cleanup: ac2 } = combinedSignal(abort.signal, 25_000);
             try {
               await ollamaService.generateStream(
-                [...history.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`), `User: ${clarifiedMessage}`].join('\n') + '\nAssistant:',
-                NEURO_SYSTEM,
+                historyStr + `\n\n${contextualPrompt}\nNeuro:`,
+                NEURO_SYSTEM + `\n\nYou have tool results above. Answer using that data. If you need MORE information to answer properly, output [TOOL:webfetch|query=your search] or [TOOL:research|query=topic] on its own line. Otherwise just answer naturally.\n\nIf you learn something important about the user, include [REMEMBER: content] in your response.\n\n${memoryContext}`,
                 {
-                  model: 'qwen3.5:4b', temperature: 0.5, num_predict: 300, signal: cs, think: false,
-                  onChunk: (chunk) => { clarifiedResponse += chunk; },
+                  model: chatModel, temperature: 0.3, num_predict: 400, signal: as2, think: false,
+                  onChunk: (chunk) => { llmResponse += chunk; },
                 },
               );
-            } finally { cc(); }
+            } finally { ac2(); }
 
-            const clarifiedParsed = parseToolDecision(clarifiedResponse);
-            // If the clarified response is a simple reply, use it directly
-            if (clarifiedParsed.tool === 'none' || clarifiedParsed.tool === 'ask') {
-              responseText = (responseText ? responseText + '\n\n' : '') + (clarifiedParsed.message || clarifiedResponse);
+            llmResponse = await neuroMemory.parseAndRemember(llmResponse, computerId);
+            updateStep(runId, answerStepId, s => ({ ...s, status: 'done' }));
+
+            // Check if LLM requested another tool
+            const nextToolMatch = llmResponse.match(/\[TOOL:(webfetch|research|computer)\|(?:query=)?([^\]]+)\]/);
+            if (nextToolMatch) {
+              currentTool = nextToolMatch[1];
+              currentParam = nextToolMatch[2].trim();
+              // Strip the tool tag -- keep any partial text the LLM wrote before the tag
+              const cleaned = llmResponse.replace(/\[TOOL:[^\]]+\]/g, '').trim();
+              if (cleaned) responseText = cleaned;
+              console.log(`[ToolLoop] LLM wants another tool: ${currentTool} -- ${currentParam}`);
             } else {
-              // For other tools, just use the conversational message -- the user can re-prompt
-              responseText = (responseText ? responseText + '\n\n' : '') + (clarifiedParsed.message || clarifiedResponse);
+              // No more tools needed -- this is the final answer
+              currentTool = 'none';
+              responseText = llmResponse.replace(/^\[TOOL:[^\]]*\]\n?/, '').trim();
             }
-            break;
           }
 
-          default: {
-            // Unknown tool -- treat as none
-            responseText = conversationalMsg || fullResponse;
-            break;
+          // If we exhausted iterations, use whatever we have
+          if (iteration >= MAX_TOOL_ITERATIONS && !responseText) {
+            responseText = 'I gathered some data but could not fully answer. Here is what I found:\n\n' + toolResults.join('\n\n');
           }
         }
       }
@@ -1404,6 +1438,12 @@ export function ActionSidebarCompact({ machineId: _machineId, onComputerTask, ag
         const fallback = !answer ? [...r.steps].reverse().find(s => s.output?.trim() && !s.hidden)?.output?.replace(/^Done:\s*/i, '').trim() : undefined;
         return { ...r, status: 'done', finalAnswer: answer || fallback };
       });
+
+      // Log to neuro memory daily log + session transcript
+      neuroMemory.log(`User: ${userMessage.slice(0, 100)}`).catch(() => {});
+      neuroMemory.log(`Neuro: ${responseText.slice(0, 100)}`).catch(() => {});
+      neuroMemory.appendTranscript(computerId, { role: 'user', content: userMessage, timestamp: new Date().toISOString() }).catch(() => {});
+      neuroMemory.appendTranscript(computerId, { role: 'assistant', content: responseText, timestamp: new Date().toISOString() }).catch(() => {});
     } catch (err) {
       const isAbort = err instanceof DOMException && err.name === 'AbortError';
       if (!isAbort) console.error('[ActionSidebar] Run error:', err);
