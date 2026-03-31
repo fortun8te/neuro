@@ -1,0 +1,31 @@
+{
+  "name": "neuro-shell-exec-server",
+  "version": "1.0.0",
+  "description": "Secure shell execution server for Neuro file operations",
+  "main": "shell-exec-server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node shell-exec-server.js",
+    "dev": "node shell-exec-server.js",
+    "dev:watch": "nodemon shell-exec-server.js"
+  },
+  "keywords": [
+    "neuro",
+    "shell",
+    "file-sync",
+    "cloud-sync"
+  ],
+  "author": "Neuro Team",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "express-rate-limit": "^7.1.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
