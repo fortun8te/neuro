@@ -1,0 +1,1108 @@
+import { useState, useCallback, useEffect, useRef } from 'react';
+import type { Campaign, Cycle, StageName, StageData, CycleMode, UserQuestion, QuestionCheckpoint } from '../types';
+import type { ResearchPauseEvent } from '../utils/researchAgents';
+import { useOllama } from './useOllama';
+import { useStorage } from './useStorage';
+import { useOrchestratedResearch } from './useOrchestratedResearch';
+import { getSystemPrompt, getCheckpointQuestionPrompt } from '../utils/prompts';
+import { getModelForStage } from '../utils/modelConfig';
+import { playSound, startSoundLoop, stopSoundLoop } from './useSoundEngine';
+import { generateResearchReport } from '../utils/reportGenerator';
+import { visualProgressStore } from '../utils/visualProgressStore';
+import { tokenTracker } from '../utils/tokenStats';
+import { ollamaService } from '../utils/ollama';
+import { getRelevantMemories, getCrystallizedMemories, touchMemory } from '../utils/memoryStore';
+import { set, get, del } from 'idb-keyval';
+import { storage } from '../utils/storage';
+
+
+const FULL_STAGE_ORDER: StageName[] = ['research', 'brand-dna', 'persona-dna', 'angles', 'strategy', 'copywriting', 'production', 'test'];
+const CONCEPTING_STAGE_ORDER: StageName[] = ['research', 'brand-dna', 'persona-dna', 'angles'];
+const STAGE_DELAY = 500; // 500ms delay between stages (snappy)
+
+/** Timeout for the Ollama preflight check (ms) */
+const OLLAMA_PREFLIGHT_TIMEOUT = 8000;
+
+function getStageOrder(mode: CycleMode): StageName[] {
+  return mode === 'concepting' ? CONCEPTING_STAGE_ORDER : FULL_STAGE_ORDER;
+}
+
+// Helper to create a cycle with new object references (important for React state updates)
+function refreshCycleReference(cycle: Cycle): Cycle {
+  return {
+    ...cycle,
+    stages: { ...cycle.stages },
+  };
+}
+
+function createEmptyStage(): StageData {
+  return {
+    status: 'pending',
+    agentOutput: '',
+    artifacts: [],
+    startedAt: null,
+    completedAt: null,
+    readyForNext: false,
+  };
+}
+
+function createCycle(campaignId: string, cycleNumber: number, mode: CycleMode = 'full'): Cycle {
+  const stageOrder = getStageOrder(mode);
+  const stages = {} as Record<StageName, StageData>;
+  for (const name of FULL_STAGE_ORDER) {
+    stages[name] = createEmptyStage();
+  }
+
+  // Fetch memories — decay-scored, best first (campaign tags not known yet; filtered at inject time)
+  const priorMemories = getRelevantMemories(15);
+
+  return {
+    id: `${campaignId}-cycle-${cycleNumber}`,
+    campaignId,
+    cycleNumber,
+    startedAt: Date.now(),
+    completedAt: null,
+    stages,
+    currentStage: stageOrder[0],
+    status: 'in-progress',
+    mode,
+    priorMemories: priorMemories.map(m => ({
+      id: m.id,
+      content: m.content,
+      tags: m.tags,
+    })),
+  };
+}
+
+/** Check if an error is an abort/cancel — not a real failure */
+function isAbortError(err: unknown): boolean {
+  if (err instanceof DOMException && err.name === 'AbortError') return true;
+  if (err instanceof Error) {
+    const msg = err.message.toLowerCase();
+    return msg.includes('aborted') || msg.includes('abort') || msg.includes('signal');
+  }
+  return false;
+}
+
+/** Preflight: verify Ollama is reachable before starting the pipeline.
+ *  Returns true if reachable, false otherwise. Uses a short timeout.
+ *  Note: ollamaService.checkConnection() already applies an internal
+ *  AbortSignal.timeout(8000), so no additional timer is needed here. */
+async function checkOllamaReachable(_timeoutMs = OLLAMA_PREFLIGHT_TIMEOUT): Promise<boolean> {
+  try {
+    return await ollamaService.checkConnection();
+  } catch (e) {
+    console.warn('[useCycleLoop] Preflight check failed:', e instanceof Error ? e.message : String(e));
+    return false;
+  }
+}
+
+// ── Stage checkpoint helpers (idb-keyval) ────────────────────────────────────
+// Checkpoints let the cycle survive a page reload. They are saved after each
+// stage completes and cleared when the full cycle finishes cleanly.
+
+interface CycleCheckpoint {
+  cycleId: string;
+  lastCompletedStage: string;
+  stageOutputs: Record<string, string>;
+  savedAt: number;
+}
+
+async function saveCheckpoint(
+  cycleId: string,
+  lastCompletedStage: string,
+  stageOutputs: Record<string, string>
+): Promise<void> {
+  try {
+    await set(`checkpoint:${cycleId}`, {
+      cycleId,
+      lastCompletedStage,
+      stageOutputs,
+      savedAt: Date.now(),
+    } satisfies CycleCheckpoint);
+  } catch (e) {
+    console.debug('[checkpoint] Save failed (non-critical):', e instanceof Error ? e.message : String(e));
+  }
+}
+
+async function clearCheckpoint(cycleId: string): Promise<void> {
+  try {
+    await del(`checkpoint:${cycleId}`);
+  } catch (e) {
+    console.debug('[checkpoint] Clear failed (non-critical):', e instanceof Error ? e.message : String(e));
+  }
+}
+
+async function loadCheckpoint(cycleId: string): Promise<CycleCheckpoint | null> {
+  try {
+    const cp = await get<CycleCheckpoint>(`checkpoint:${cycleId}`);
+    return cp ?? null;
+  } catch (e) {
+    console.debug('[checkpoint] Load failed:', e instanceof Error ? e.message : String(e));
+    return null;
+  }
+}
+
+export function useCycleLoop(askUser?: (question: UserQuestion) => Promise<string>) {
+  const { generate } = useOllama();
+  const { executeOrchestratedResearch } = useOrchestratedResearch();
+  const { saveCycle, updateCycle } = useStorage();
+
+  const [isRunning, setIsRunning] = useState(false);
+  const [currentCycle, setCurrentCycle] = useState<Cycle | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cycleRef = useRef<Cycle | null>(null);
+  const isRunningRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const userAnswersRef = useRef<Record<string, string>>({});
+  // Monotonically increasing counter — incremented each time a cycle starts or
+  // is aborted. Async callbacks close over `myGeneration` and bail early when
+  // this ref has moved on, preventing stale writes from a previous run.
+  const cycleGenerationRef = useRef(0);
+
+  // Throttle React state updates to prevent UI freeze from per-token re-renders
+  const lastUpdateRef = useRef<number>(0);
+  const pendingUpdateRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestCycleRef = useRef<Cycle | null>(null);
+  const throttledSetCycle = useCallback((cycle: Cycle) => {
+    latestCycleRef.current = cycle; // always store the latest
+    const now = Date.now();
+    // 80ms throttle — matches tokenStats for smooth live streaming
+    if (now - lastUpdateRef.current >= 80) {
+      lastUpdateRef.current = now;
+      if (pendingUpdateRef.current) {
+        clearTimeout(pendingUpdateRef.current);
+        pendingUpdateRef.current = null;
+      }
+      setCurrentCycle(refreshCycleReference(cycle));
+    } else if (!pendingUpdateRef.current) {
+      pendingUpdateRef.current = setTimeout(() => {
+        lastUpdateRef.current = Date.now();
+        pendingUpdateRef.current = null;
+        setCurrentCycle(refreshCycleReference(latestCycleRef.current!));
+      }, 80);
+    }
+  }, []);
+
+  // Check if interactive mode is enabled
+  const isInteractive = (): boolean => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('pipeline_mode') === 'interactive';
+    }
+    return false;
+  };
+
+  // Adapter: convert ResearchPauseEvent → askUser system for interactive research
+  const handleResearchPauseForInput = useCallback(async (event: ResearchPauseEvent): Promise<string> => {
+    if (!askUser) return 'Continue automatically';
+    const question: UserQuestion = {
+      id: `research-q-${Date.now()}`,
+      question: event.question,
+      options: event.suggestedAnswers || ['Continue automatically', 'Focus deeper on this area', 'Skip this angle'],
+      checkpoint: 'mid-pipeline' as QuestionCheckpoint,
+      context: event.context,
+    };
+    return askUser(question);
+  }, [askUser]);
+
+  // Generate a question using LLM and wait for user answer
+  const askCheckpointQuestion = useCallback(async (
+    checkpoint: QuestionCheckpoint,
+    campaign: Campaign,
+    stageOutputs: Record<string, string>
+  ): Promise<string | null> => {
+    if (!isInteractive() || !askUser) return null;
+
+    try {
+      const brief = `Brand: ${campaign.brand}\nAudience: ${campaign.targetAudience}\nGoal: ${campaign.marketingGoal}\nProduct: ${campaign.productDescription}\nFeatures: ${campaign.productFeatures.join(', ')}\nPrice: ${campaign.productPrice || 'N/A'}`;
+
+      const { system, prompt } = getCheckpointQuestionPrompt(checkpoint, brief, stageOutputs);
+
+      // Generate question using LLM
+      const response = await generate(prompt, system, {
+        model: getModelForStage('research'),
+        signal: abortControllerRef.current?.signal,
+      });
+
+      // Parse JSON response
+      const cleaned = response.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      const parsed = JSON.parse(cleaned);
+
+      if (!parsed.question || !Array.isArray(parsed.options) || parsed.options.length < 3) {
+        console.warn('Invalid question format from LLM:', parsed);
+        return null;
+      }
+
+      // Create the question object
+      const question: UserQuestion = {
+        id: `q-${checkpoint}-${Date.now()}`,
+        question: parsed.question,
+        options: parsed.options.slice(0, 3),
+        checkpoint,
+        context: parsed.context || undefined,
+      };
+
+      // Show question and wait for answer
+      const answer = await askUser(question);
+      userAnswersRef.current[checkpoint] = answer;
+      return answer;
+    } catch (err) {
+      console.warn('Question generation failed, continuing without input:', err);
+      return null;
+    }
+  }, [askUser, generate]);
+
+  // Execute a single stage
+  const executeStage = useCallback(
+    async (cycle: Cycle, stageName: StageName, campaign: Campaign, signal: AbortSignal) => {
+      // Check abort before starting
+      if (signal.aborted) {
+        throw new DOMException('Stage aborted before start', 'AbortError');
+      }
+
+      try {
+        const stage = cycle.stages[stageName];
+
+        // If resuming a previously stopped/aborted stage, clear partial output to avoid duplicates
+        if ((stage.status === 'in-progress' || stage.status === 'stopped') && stage.agentOutput) {
+          stage.agentOutput = '';
+        }
+
+        stage.status = 'in-progress';
+        stage.startedAt = Date.now();
+
+        // Start thinking sound loop
+        startSoundLoop('thinking');
+
+        setCurrentCycle(refreshCycleReference(cycle));
+
+        // Build prompt based on stage and previous outputs
+        let result = '';
+        const systemPrompt = getSystemPrompt(stageName);
+
+        if (stageName === 'research') {
+          // Orchestrated research: Desire-Driven Analysis + Web Search Researchers
+          const RESEARCH_OUTPUT_CAP = 2_000_000; // 2MB rolling cap — avoids O(n²) concat on MX preset
+
+          // Dual-hook before inject: pull campaign-relevant memories + crystallized learnings
+          // Filter by campaign tags for mem0-style relevance scoring
+          const campaignTags = [
+            campaign.brand?.toLowerCase(),
+            ...(campaign.productDescription?.toLowerCase().split(/\s+/).slice(0, 5) || []),
+          ].filter(Boolean) as string[];
+          const relevantMems = getRelevantMemories(12, campaignTags);
+          const crystallized = getCrystallizedMemories();
+
+          // Touch (reinforce) each injected memory so frequently-used ones score higher
+          relevantMems.forEach(m => touchMemory(m.id));
+
+          if (crystallized.length > 0 || relevantMems.length > 0) {
+            let memBlock = '\n[MEMORY INPUT] Learnings from previous cycles:\n';
+            if (crystallized.length > 0) {
+              memBlock += '  [Crystallized patterns — high confidence]\n';
+              crystallized.forEach(m => { memBlock += `  ★ ${m.content}\n`; });
+            }
+            relevantMems.forEach(m => { memBlock += `  • ${m.content} [${m.tags.join(', ')}]\n`; });
+            stage.agentOutput = memBlock + stage.agentOutput;
+            // Update cycle.priorMemories to reflect the filtered set actually used
+            cycle.priorMemories = relevantMems.map(m => ({ id: m.id, content: m.content, tags: m.tags }));
+            throttledSetCycle(cycle);
+          }
+
+          const researchResult = await executeOrchestratedResearch(
+            campaign,
+            (msg) => {
+              const next = stage.agentOutput + msg + '\n';
+              stage.agentOutput = next.length > RESEARCH_OUTPUT_CAP ? next.slice(-RESEARCH_OUTPUT_CAP) : next;
+              throttledSetCycle(cycle);
+            },
+            true, // Enable web search orchestration
+            campaign.researchMode === 'interactive' ? handleResearchPauseForInput : undefined,
+            signal,
+            cycle.priorMemories // Pass memories to research agents
+          );
+
+          result = researchResult.processedOutput;
+          stage.rawOutput = researchResult.rawOutput;
+          stage.model = researchResult.model;
+          stage.processingTime = researchResult.processingTime;
+
+          // Capture research findings for downstream stages
+          cycle.researchFindings = researchResult.researchFindings;
+
+          // Generate research report (mini research paper)
+          if (!signal.aborted) {
+            try {
+              const report = await generateResearchReport(
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                cycle.researchFindings || ({} as any),
+                cycle.researchFindings?.auditTrail,
+                researchResult.rawOutput?.slice(0, 12000) || '',
+                signal,
+                (msg) => {
+                  const next = stage.agentOutput + msg;
+                  stage.agentOutput = next.length > RESEARCH_OUTPUT_CAP ? next.slice(-RESEARCH_OUTPUT_CAP) : next;
+                  throttledSetCycle(cycle);
+                }
+              );
+              if (cycle.researchFindings) {
+                cycle.researchFindings.researchReport = report;
+              }
+            } catch (reportErr) {
+              if (isAbortError(reportErr)) throw reportErr;
+              // Report generation is non-critical — don't fail the pipeline
+              console.warn('Report generation failed:', reportErr);
+              stage.agentOutput += '\n[REPORT] Generation failed — continuing pipeline\n';
+            }
+          }
+        } else {
+          // ── All non-research stages: generate with stage-specific prompt ──
+          const modelForStage = getModelForStage(stageName);
+          let prompt = '';
+
+          if (stageName === 'brand-dna') {
+            // Brand DNA: LLM drafts brand identity from research findings
+            const findings = cycle.researchFindings;
+            const hasFindings = findings && (findings.deepDesires?.length > 0 || findings.competitorWeaknesses?.length > 0);
+            prompt = `You are a brand strategist. Based on the research findings below, draft a comprehensive Brand DNA document for ${campaign.brand}.
+
+RESEARCH CONTEXT:
+${hasFindings ? `Deep Desires: ${(findings.deepDesires || []).map(d => `${d.targetSegment}: "${d.deepestDesire}"`).join(', ') || 'Not yet identified'}
+Competitor Weaknesses: ${(findings.competitorWeaknesses || []).join(', ') || 'Not yet identified'}
+Market Sophistication: Level ${findings.marketSophistication || 3}` : cycle.stages.research.agentOutput?.slice(0, 2000) || 'Research produced limited findings. Generate based on campaign brief.'}
+
+Product: ${campaign.productDescription}
+Features: ${campaign.productFeatures.join(', ')}
+
+Draft the Brand DNA:
+§ BRAND IDENTITY
+Name, tagline, mission, core values
+
+§ VOICE & PERSONALITY
+Tone of voice, personality traits, how the brand speaks
+
+§ POSITIONING
+Where this brand sits vs competitors, what gap it owns
+
+§ VISUAL IDENTITY
+Recommended colors (hex), fonts, mood keywords, logo direction
+
+§ DIFFERENTIATORS
+What makes this brand impossible to copy
+
+Be specific and strategic. Every choice should connect back to the research insights.`;
+
+          } else if (stageName === 'persona-dna') {
+            // Persona DNA: LLM drafts detailed customer personas
+            const findings = cycle.researchFindings;
+            const hasFindings = findings && (findings.deepDesires?.length > 0 || findings.objections?.length > 0);
+            prompt = `You are a customer research specialist. Based on the research findings, create 2-3 detailed customer personas for ${campaign.brand}.
+
+RESEARCH CONTEXT:
+${hasFindings ? `Deep Desires: ${(findings.deepDesires || []).map(d => `${d.targetSegment}: "${d.deepestDesire}" (${d.desireIntensity})`).join('\n') || 'Not yet identified'}
+Objections: ${(findings.objections || []).map(o => o.objection).join(', ') || 'Not yet identified'}
+Avatar Language: ${findings.avatarLanguage?.slice(0, 5).join(', ') || 'N/A'}
+What They Tried Before: ${findings.whatTheyTriedBefore?.join(', ') || 'N/A'}` : cycle.stages.research.agentOutput?.slice(0, 2000) || 'Research produced limited findings. Generate based on campaign brief.'}
+
+${cycle.brandDNA ? `Brand DNA: ${cycle.brandDNA.name} — ${cycle.brandDNA.positioning}` : ''}
+
+For EACH persona, provide:
+§ PERSONA [number]: [Name, age, role]
+Demographics, psychographics, pain points, desires, language they use, objections, media habits, buying triggers, and a "day in the life" narrative.
+
+Make them feel like REAL people, not marketing abstractions. Use specific details and actual language patterns from the research.`;
+
+          } else if (stageName === 'angles') {
+            // Angles: Tiered brainstorm — generate many, then rank
+            const findings = cycle.researchFindings;
+            const hasFindings = findings && (findings.deepDesires?.length > 0 || findings.objections?.length > 0);
+            prompt = `You are a creative director brainstorming ad angles for ${campaign.brand}.
+
+RESEARCH CONTEXT:
+${hasFindings ? `Deep Desires: ${(findings.deepDesires || []).map(d => `- ${d.targetSegment}: "${d.deepestDesire}"`).join('\n') || 'Not yet identified'}
+Root Cause: ${findings.rootCauseMechanism?.rootCause || 'N/A'}
+Mechanism: ${findings.rootCauseMechanism?.mechanism || 'N/A'}
+AHA Insight: "${findings.rootCauseMechanism?.ahaInsight || 'N/A'}"
+Objections: ${(findings.objections || []).map(o => o.objection).join(', ') || 'Not yet identified'}` : 'Research produced limited findings. Generate creative angles based on campaign brief.'}
+
+${cycle.brandDNA ? `Brand: ${cycle.brandDNA.name} — ${cycle.brandDNA.positioning}\nVoice: ${cycle.brandDNA.voiceTone}` : ''}
+${cycle.personas ? `Personas: ${cycle.personas.map(p => p.name).join(', ')}` : ''}
+
+Generate 30+ ad angle ideas. For each:
+- HOOK: 1-line angle summary (the ad concept in one sentence)
+- TYPE: desire / objection / social-proof / mechanism / contrast / story / urgency / identity
+- TARGET PERSONA: which persona this targets
+- EMOTIONAL LEVER: what emotion drives this angle
+- RATIONALE: why this angle will work
+- STRENGTH: 1-10 rating
+
+Then RANK the top 15 by strength. Be creative, be bold, think from the customer's perspective — not the brand's.`;
+
+          } else if (stageName === 'strategy') {
+            // Strategy: Creative Strategy — Bridge Framework
+            const findings = cycle.researchFindings;
+            prompt = `You are a creative strategist building a comprehensive Creative Strategy for ${campaign.brand}.
+
+Your job: synthesize ALL research into the "Bridge Framework" — mapping the customer's CURRENT STATE through the PRODUCT (bridge) to their DESIRED STATE and IDEAL LIFE.
+
+=== RESEARCH INPUT ===
+${findings?.deepDesires?.length ? `DEEP DESIRES:\n${findings.deepDesires.map(d => `- Surface: "${d.surfaceProblem}" → Deepest: "${d.deepestDesire}" (${d.desireIntensity}) [${d.targetSegment}]`).join('\n')}` : ''}
+${findings?.objections?.length ? `\nOBJECTIONS:\n${findings.objections.map(o => `- "${o.objection}" (${o.frequency}, ${o.impact} impact)`).join('\n')}` : ''}
+${findings?.whatTheyTriedBefore ? `\nWHAT THEY TRIED BEFORE:\n${findings.whatTheyTriedBefore.map(t => `- ${t}`).join('\n')}` : ''}
+${findings?.rootCauseMechanism ? `\nROOT CAUSE MECHANISM:\n- AHA: "${findings.rootCauseMechanism.ahaInsight}"\n- Mechanism: "${findings.rootCauseMechanism.mechanism}"` : ''}
+${findings?.verbatimQuotes ? `\nVERBATIM QUOTES:\n${findings.verbatimQuotes.slice(0, 8).map(q => `- "${q}"`).join('\n')}` : ''}
+${findings?.avatarLanguage ? `\nAUDIENCE LANGUAGE:\n${findings.avatarLanguage.slice(0, 10).map(l => `- "${l}"`).join('\n')}` : ''}
+${findings ? `\nMARKET SOPHISTICATION: Level ${findings.marketSophistication || 3}` : ''}
+${cycle.brandDNA ? `\nBRAND: ${cycle.brandDNA.name} — ${cycle.brandDNA.positioning}\nVoice: ${cycle.brandDNA.voiceTone}` : ''}
+${cycle.personas ? `\nPERSONAS:\n${cycle.personas.map(p => `- ${p.name}: desires [${p.desires.slice(0, 2).join(', ')}], pains [${p.painPoints.slice(0, 2).join(', ')}]`).join('\n')}` : ''}
+${cycle.angles ? `\nTOP ANGLES:\n${cycle.angles.filter(a => a.selected || a.strength >= 7).slice(0, 8).map(a => `- "${a.hook}" (${a.type}, strength: ${a.strength})`).join('\n')}` : ''}
+
+PRODUCT: ${campaign.productDescription}
+FEATURES: ${campaign.productFeatures.join(', ')}
+
+=== OUTPUT FORMAT ===
+Respond with ONLY valid JSON matching this exact structure:
+{
+  "currentState": {
+    "painPoints": ["specific pain 1", "specific pain 2", ...],
+    "frustrations": ["frustration 1", "frustration 2", ...],
+    "triedBefore": ["solution 1", "solution 2", ...],
+    "emotionalState": "one sentence describing their emotional reality"
+  },
+  "bridge": {
+    "mechanism": "the unique mechanism that makes this product work",
+    "uniqueAngle": "what makes this product different from everything else",
+    "proofPoints": ["proof 1", "proof 2", ...]
+  },
+  "desiredState": {
+    "desires": ["desire 1", "desire 2", ...],
+    "transformation": "the before→after transformation story in 2-3 sentences",
+    "turningPoints": ["turning point 1", "turning point 2", ...]
+  },
+  "idealLife": {
+    "vision": "what their life looks like when the desire is fully satisfied",
+    "identity": "who they become — the identity shift"
+  },
+  "messaging": {
+    "headlines": ["headline 1", "headline 2", "headline 3", "headline 4", "headline 5"],
+    "proofHierarchy": ["strongest proof first", "second strongest", ...],
+    "conversationStarters": ["hook 1", "hook 2", "hook 3"],
+    "toneAndVoice": "describe the exact tone and voice to use"
+  },
+  "awarenessLevel": "unaware|problem-aware|solution-aware|product-aware|most-aware",
+  "positioningStatement": "one powerful positioning statement"
+}
+
+Be specific. Use the customer's actual language from the research. No generic marketing speak.`;
+
+          } else if (stageName === 'copywriting') {
+            // Copywriting: Create messaging per angle
+            const findings = cycle.researchFindings;
+            prompt = `You are a direct response copywriter creating ad messaging for ${campaign.brand}.
+
+${cycle.strategies ? `APPROVED ANGLES:\n${cycle.strategies.filter(s => s.feasibility !== 'low').map(s => `- Angle: ${s.angleId}\n  Plan: ${s.executionPlan}\n  Format: ${s.recommendedFormats.join(', ')}`).join('\n')}` : `STRATEGY:\n${cycle.stages.strategy.agentOutput?.slice(0, 2000) || 'No strategy available'}`}
+
+${findings ? `Audience Language: ${findings.avatarLanguage?.slice(0, 5).map(l => `"${l}"`).join(', ') || 'N/A'}
+Verbatim Quotes: ${findings.verbatimQuotes?.slice(0, 3).map(q => `"${q}"`).join(', ') || 'N/A'}` : ''}
+${cycle.brandDNA ? `Brand Voice: ${cycle.brandDNA.voiceTone}\nPersonality: ${cycle.brandDNA.personality}` : ''}
+${cycle.personas ? `Personas: ${cycle.personas.map(p => `${p.name} — desires: ${p.desires.slice(0, 2).join(', ')}`).join('; ')}` : ''}
+
+For EACH approved angle, create 3 copy variations:
+§ ANGLE: [angle name]
+  VARIATION 1:
+    Headline: [5-10 words, scroll-stopping]
+    Subtext: [1-2 sentences expanding the hook]
+    CTA: [action-oriented, desire-connected]
+    Callouts: [3-4 bullet points of proof/benefits]
+  VARIATION 2: [different emotional angle]
+  VARIATION 3: [different format/tone]
+
+Use THEIR language — not brand speak. Every word should feel like it came from the customer's mouth.`;
+
+          } else if (stageName === 'production') {
+            // Production (Make): Two-pass FSM — Plan then Execute
+            // Pass 1: LLM outputs structured JSON brief (spec) for 3 ad concepts
+            // Pass 2: LLM generates actual ad copy constrained by each spec
+
+            const copyContext = cycle.stages.copywriting.agentOutput?.slice(0, 1500) || 'No copy blocks available yet.';
+            const strategyContext = cycle.creativeStrategy
+              ? `Positioning: ${cycle.creativeStrategy.positioningStatement || 'N/A'}\nAwareness: ${cycle.creativeStrategy.awarenessLevel || 'N/A'}\nTone: ${cycle.creativeStrategy.messaging?.toneAndVoice || 'N/A'}`
+              : cycle.stages.strategy.agentOutput?.slice(0, 800) || 'No strategy available.';
+            const brandContext = cycle.brandDNA ? `Brand: ${cycle.brandDNA.name}\nVoice: ${cycle.brandDNA.voiceTone}\nPositioning: ${cycle.brandDNA.positioning}` : `Brand: ${campaign.brand}`;
+            const desireContext = cycle.researchFindings?.deepDesires?.length
+              ? cycle.researchFindings.deepDesires.map(d => `- ${d.targetSegment}: "${d.deepestDesire}"`).join('\n')
+              : 'N/A';
+
+            // -- PASS 1: Plan (JSON spec brief) --
+            const planPrompt = `You are a creative director planning 3 ad concepts for ${campaign.brand}.
+
+${brandContext}
+
+STRATEGY:
+${strategyContext}
+
+COPY BLOCKS AVAILABLE:
+${copyContext}
+
+DEEP DESIRES:
+${desireContext}
+
+Output ONLY a valid JSON array of exactly 3 concept specs. No markdown fences, no explanation — pure JSON.
+Each spec must follow this schema:
+[
+  {
+    "concept": 1,
+    "angle": "the core persuasion angle (desire / objection / social-proof)",
+    "hook": "the opening hook line — what stops the scroll",
+    "proof_point": "the single most compelling proof or mechanism to include",
+    "tone": "the emotional tone and voice (e.g. urgent, warm, bold, conversational)",
+    "cta": "the call-to-action — action verb + desire-connected outcome"
+  },
+  ...
+]`;
+
+            const planSystemPrompt = `You are a senior creative director. Output ONLY valid JSON — no preamble, no explanation, no markdown. Do not use em dashes.`;
+
+            // Stream Pass 1 tokens into agentOutput under a [BRIEF] header
+            stage.agentOutput = '[BRIEF]\n';
+            throttledSetCycle(cycle);
+
+            let planRaw = '';
+            try {
+              planRaw = await generate(planPrompt, planSystemPrompt, {
+                model: modelForStage,
+                signal,
+                onChunk: (chunk) => {
+                  stage.agentOutput += chunk;
+                  throttledSetCycle(cycle);
+                },
+              });
+            } catch (planErr) {
+              if (isAbortError(planErr)) throw planErr;
+              console.warn('Make stage plan pass failed, falling back to single-pass:', planErr);
+            }
+
+            // Parse specs from Pass 1
+            type ConceptSpec = {
+              concept: number;
+              angle: string;
+              hook: string;
+              proof_point: string;
+              tone: string;
+              cta: string;
+            };
+            let specs: ConceptSpec[] = [];
+            try {
+              const jsonMatch = planRaw.match(/\[[\s\S]*\]/);
+              if (jsonMatch) {
+                const parsed = JSON.parse(jsonMatch[0]);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  specs = parsed.slice(0, 3);
+                }
+              }
+            } catch {
+              console.warn('Make stage: failed to parse concept specs JSON, proceeding without spec constraints');
+            }
+
+            // -- PASS 2: Execute (actual ad copy, constrained by specs) --
+            const specsBlock = specs.length > 0
+              ? `\nYOU MUST FOLLOW THESE CONCEPT SPECS EXACTLY:\n${specs.map(s =>
+                  `CONCEPT ${s.concept}:\n  Angle: ${s.angle}\n  Hook: ${s.hook}\n  Proof Point: ${s.proof_point}\n  Tone: ${s.tone}\n  CTA: ${s.cta}`
+                ).join('\n\n')}\n`
+              : '';
+
+            prompt = `You are a direct response copywriter generating 3 complete ad concepts for ${campaign.brand}.
+${specsBlock}
+${brandContext}
+
+COPY BLOCKS:
+${copyContext}
+
+DEEP DESIRES:
+${desireContext}
+
+Generate all 3 concepts. For each concept produce:
+§ CONCEPT [number]: [angle name]
+  HEADLINE: [scroll-stopping, 5-10 words, uses audience language]
+  SUBTEXT: [1-2 sentences expanding the hook]
+  BODY: [3-5 sentences of persuasion — mechanism, proof, transformation]
+  CALLOUTS: [3-4 bullet points]
+  CTA: [action-oriented button copy]
+
+Do not deviate from the specs above. Every element must serve the specified angle, tone, and proof point. Do not use em dashes.`;
+
+            // Append separator and stream Pass 2 into agentOutput
+            stage.agentOutput += '\n\n[CONCEPTS]\n';
+            throttledSetCycle(cycle);
+
+          } else if (stageName === 'test') {
+            // Test: Evaluate produced ads
+            const findings = cycle.researchFindings;
+            const productionOutput = cycle.stages.production.agentOutput;
+
+            prompt = `You are a direct response ad strategist evaluating creative effectiveness for ${campaign.brand}.
+
+${findings ? `TARGET DESIRES:\n${(findings.deepDesires || []).map(d => `- ${d.targetSegment}: "${d.deepestDesire}" (${d.desireIntensity})`).join('\n') || 'Not yet identified'}
+
+ROOT CAUSE: "${findings.rootCauseMechanism?.ahaInsight || 'N/A'}"
+MARKET SOPHISTICATION: Level ${findings.marketSophistication || 3}` : ''}
+
+CREATIVE ASSETS TO EVALUATE:
+${productionOutput || 'No production output available'}
+
+Score each concept on these 5 dimensions (1-10 scale):
+1. desireActivation — does it tap deep desire or just surface?
+2. rootCauseReveal — does it explain the "aha" mechanism?
+3. emotionalLogical — emotional hook (System 1) AND logical proof (System 2)?
+4. audienceLanguage — uses their actual words or generic brand speak?
+5. competitiveDiff — owns a gap competitors can't claim?
+
+For each concept assign a verdict: "lead" (run as primary), "test" (run as A/B variant), or "skip" (not worth testing).
+
+Output your evaluation as ONLY a valid JSON object with this exact structure (no markdown, no explanation outside JSON):
+{
+  "concepts": [
+    {
+      "name": "concept name or identifier",
+      "scores": {
+        "desireActivation": 7,
+        "rootCauseReveal": 5,
+        "emotionalLogical": 8,
+        "audienceLanguage": 6,
+        "competitiveDiff": 9
+      },
+      "totalScore": 35,
+      "verdict": "lead",
+      "notes": "brief evaluation notes"
+    }
+  ],
+  "winner": "name of the winning concept",
+  "nextCycleImprovement": "key improvement recommendation for next cycle"
+}`;
+          }
+
+          // Generate using Ollama with stage-specific model — stream chunks live into agentOutput
+          const stageStartTime = Date.now();
+          result = await generate(prompt, systemPrompt, {
+            model: modelForStage,
+            signal,
+            onChunk: (chunk) => {
+              stage.agentOutput += chunk;
+              throttledSetCycle(cycle);
+            },
+          });
+
+          // Capture metadata for this stage
+          stage.model = modelForStage;
+          stage.processingTime = Date.now() - stageStartTime;
+          stage.rawOutput = result;
+        }
+
+        // For research and production stages, keep the progressive output (agent thought process)
+        // instead of overwriting with final synthesis
+        if (stageName !== 'research' && stageName !== 'production') {
+          stage.agentOutput = result;
+        }
+        // Store processedOutput separately for downstream stages
+        stage.processedOutput = result;
+
+        // Parse strategy stage JSON into structured CreativeStrategy
+        if (stageName === 'strategy' && result) {
+          try {
+            const jsonMatch = result.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              const parsed = JSON.parse(jsonMatch[0]);
+              cycle.creativeStrategy = parsed;
+            }
+          } catch {
+            // Strategy output wasn't valid JSON — keep raw text
+            console.warn('Failed to parse creative strategy JSON');
+          }
+        }
+
+        // Parse test stage JSON into structured TestVerdict
+        if (stageName === 'test' && result) {
+          try {
+            const jsonMatch = result.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              const parsed = JSON.parse(jsonMatch[0]);
+              if (parsed.concepts && Array.isArray(parsed.concepts)) {
+                cycle.testVerdict = parsed;
+              }
+            }
+          } catch {
+            // Test output wasn't valid JSON — keep raw text
+            console.warn('Failed to parse test verdict JSON');
+          }
+        }
+
+        stage.status = 'complete';
+        stage.completedAt = Date.now();
+        stage.readyForNext = true;
+
+        // Stop thinking sound, play stage complete AHA
+        stopSoundLoop('thinking');
+        playSound('stageComplete');
+
+        // Use refreshed reference to ensure React detects the change
+        setCurrentCycle(refreshCycleReference(cycle));
+
+        return stage;
+      } catch (err) {
+        stopSoundLoop('thinking');
+
+        // On abort, mark stage as stopped (not error) — this is user-initiated
+        if (isAbortError(err)) {
+          const stage = cycle.stages[stageName];
+          stage.status = 'stopped';
+          stage.completedAt = Date.now();
+          setCurrentCycle(refreshCycleReference(cycle));
+          throw err; // re-throw so runCycle's catch handles it
+        }
+
+        playSound('error');
+        const errMsg = err instanceof Error ? err.message : 'Stage execution failed';
+        const msg = errMsg.includes('No response from model') || errMsg.includes('Failed to fetch') || errMsg.includes('ECONNREFUSED') || errMsg.includes('fetch')
+          ? "Can't reach Ollama — make sure it's running and check Settings > Connection"
+          : errMsg;
+        setError(msg);
+        throw err;
+      }
+    },
+    [generate, executeOrchestratedResearch, handleResearchPauseForInput, throttledSetCycle]
+  );
+
+  // Advance to next stage
+  const advanceToNextStage = useCallback(
+    (cycle: Cycle): { cycle: Cycle; done: boolean } => {
+      const stageOrder = getStageOrder(cycle.mode);
+      const currentIndex = stageOrder.indexOf(cycle.currentStage);
+      const nextIndex = currentIndex + 1;
+
+      if (nextIndex >= stageOrder.length) {
+        // Cycle complete
+        cycle.status = 'complete';
+        cycle.completedAt = Date.now();
+        return { cycle, done: true };
+      }
+
+      cycle.currentStage = stageOrder[nextIndex];
+      // Reset token state between stages to prevent thinking text bleed
+      tokenTracker.resetSession();
+      return { cycle, done: false };
+    },
+    []
+  );
+
+  // Abortable delay — resolves normally OR rejects if abort fires during the wait
+  const abortableDelay = useCallback((ms: number, signal: AbortSignal): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if (signal.aborted) {
+        reject(new DOMException('Delay aborted', 'AbortError'));
+        return;
+      }
+      const timer = setTimeout(() => {
+        signal.removeEventListener('abort', onAbort);
+        resolve();
+      }, ms);
+      timeoutRef.current = timer;
+      function onAbort() {
+        clearTimeout(timer);
+        timeoutRef.current = null;
+        reject(new DOMException('Delay aborted', 'AbortError'));
+      }
+      signal.addEventListener('abort', onAbort, { once: true });
+    });
+  }, []);
+
+  // Main cycle loop
+  const runCycle = useCallback(
+    async (campaign: Campaign, startCycleNumber: number = 1, mode: CycleMode = 'full') => {
+      // ── Increment generation counter — invalidates stale async callbacks ──
+      cycleGenerationRef.current += 1;
+      const myGeneration = cycleGenerationRef.current;
+
+      // ── Preflight: check Ollama is reachable ──
+      setError(null);
+      setIsRunning(true); // Show immediate feedback
+      isRunningRef.current = true;
+
+      const reachable = await checkOllamaReachable();
+      if (!reachable) {
+        setError('Cannot reach Ollama. Check that Wayfarer proxy (port 8889) and Ollama are running.');
+        setIsRunning(false);
+        isRunningRef.current = false;
+        return;
+      }
+
+      // ── Create a single AbortController for the entire run ──
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      const signal = controller.signal;
+
+      let cycleNumber = startCycleNumber;
+      let cycle = createCycle(campaign.id, cycleNumber, mode);
+      cycleRef.current = cycle;
+      setCurrentCycle(refreshCycleReference(cycle));
+
+      // Reset per-run stores
+      userAnswersRef.current = {};
+      visualProgressStore.reset();
+      tokenTracker.resetSession();
+
+      // ── Check for an existing checkpoint (e.g. from a previous page reload) ──
+      const existingCheckpoint = await loadCheckpoint(cycle.id);
+      if (existingCheckpoint && Date.now() - existingCheckpoint.savedAt < 24 * 60 * 60 * 1000) {
+        console.log(`[useCycleLoop] Found checkpoint at stage: ${existingCheckpoint.lastCompletedStage} — clearing and restarting`);
+        // TODO: offer UI resume — for now, clear and restart to avoid partial-state bugs
+        await clearCheckpoint(cycle.id);
+      }
+
+      // Pre-research checkpoint
+      const stageOutputs: Record<string, string> = {};
+      const preResearchAnswer = await askCheckpointQuestion('pre-research', campaign, stageOutputs);
+      // Guard: if the generation advanced while waiting for user input, bail out
+      if (cycleGenerationRef.current !== myGeneration) return;
+      if (preResearchAnswer) {
+        // Inject user direction into campaign context for research
+        campaign = { ...campaign, productFeatures: [...campaign.productFeatures, `[User direction: ${preResearchAnswer}]`] };
+      }
+
+      while (isRunningRef.current && !signal.aborted) {
+        try {
+          // Execute current stage — pass the shared signal
+          await executeStage(cycle, cycle.currentStage, campaign, signal);
+
+          // Generation guard: if the cycle was restarted/aborted while this
+          // stage was executing, discard the result and stop this run.
+          if (cycleGenerationRef.current !== myGeneration) return;
+
+          // State already updated in executeStage, but refresh again to be sure
+          setCurrentCycle(refreshCycleReference(cycle));
+
+          // Capture stage output for checkpoint questions
+          const completedStage = cycle.currentStage;
+          stageOutputs[completedStage] = cycle.stages[completedStage]?.processedOutput || cycle.stages[completedStage]?.agentOutput || '';
+
+          // Save cycle progress to IndexedDB
+          await updateCycle(cycle);
+
+          // ── Persist checkpoint so a reload can detect where we left off ──
+          await saveCheckpoint(cycle.id, completedStage, stageOutputs);
+
+          // Mid-pipeline checkpoint: after angles, before strategy
+          if (completedStage === 'angles') {
+            const midAnswer = await askCheckpointQuestion('mid-pipeline', campaign, stageOutputs);
+            if (cycleGenerationRef.current !== myGeneration) return;
+            if (midAnswer) {
+              stageOutputs['user_creative_direction'] = midAnswer;
+            }
+          }
+
+          // Pre-production checkpoint: after copywriting, before production
+          if (completedStage === 'copywriting') {
+            const preMakeAnswer = await askCheckpointQuestion('pre-make', campaign, stageOutputs);
+            if (cycleGenerationRef.current !== myGeneration) return;
+            if (preMakeAnswer) {
+              stageOutputs['user_make_direction'] = preMakeAnswer;
+            }
+          }
+
+          // Delay before next stage (abortable)
+          await abortableDelay(STAGE_DELAY, signal);
+
+          // Advance to next stage
+          const { cycle: updatedCycle, done } = advanceToNextStage(cycle);
+          cycle = updatedCycle;
+          cycleRef.current = cycle;
+
+          if (done) {
+            // Cycle fully complete — clear checkpoint and start a new one
+            await clearCheckpoint(cycle.id);
+            cycleNumber++;
+            cycle = createCycle(campaign.id, cycleNumber);
+            cycleRef.current = cycle;
+            await saveCycle(cycle);
+          }
+
+          setCurrentCycle(refreshCycleReference(cycle));
+        } catch (err) {
+          if (isAbortError(err)) {
+            // User-initiated stop — mark cycle as stopped and exit loop cleanly
+            cycle.status = 'stopped';
+            setCurrentCycle(refreshCycleReference(cycle));
+            break;
+          }
+
+          // Real error — retry up to 2 times with exponential backoff
+          const stage = cycle.stages[cycle.currentStage];
+          const retryCount = (stage as any)._retryCount ?? 0;
+          const MAX_STAGE_RETRIES = 2;
+
+          if (retryCount < MAX_STAGE_RETRIES && !signal.aborted) {
+            const backoffMs = 2000 * Math.pow(2, retryCount); // 2s, 4s
+            const errMsg = err instanceof Error ? err.message : 'unknown';
+            console.warn(`[useCycleLoop] Stage "${cycle.currentStage}" failed (attempt ${retryCount + 1}/${MAX_STAGE_RETRIES + 1}): ${errMsg}. Retrying in ${backoffMs}ms...`);
+
+            // Mark stage for retry (preserve partial output)
+            (stage as any)._retryCount = retryCount + 1;
+            stage.status = 'pending';
+            stage.agentOutput = ''; // Clear partial output to avoid corruption
+            setCurrentCycle(refreshCycleReference(cycle));
+            setError(`Stage "${cycle.currentStage}" failed — retrying (${retryCount + 1}/${MAX_STAGE_RETRIES})...`);
+
+            try {
+              await abortableDelay(backoffMs, signal);
+              setError(null); // Clear retry message before re-attempt
+              continue; // Re-enter loop — will re-execute the same stage
+            } catch {
+              // Abort during retry wait — stop cleanly
+              cycle.status = 'stopped';
+              setCurrentCycle(refreshCycleReference(cycle));
+              break;
+            }
+          }
+
+          // Exhausted retries — set error and stop
+          const msg = err instanceof Error ? err.message : 'Cycle error';
+          setError(msg);
+          isRunningRef.current = false;
+          break;
+        }
+      }
+
+      // ── Final cleanup ──
+      isRunningRef.current = false;
+      setIsRunning(false);
+      stopSoundLoop('thinking');
+
+      // Flush any pending throttled update
+      if (pendingUpdateRef.current) {
+        clearTimeout(pendingUpdateRef.current);
+        pendingUpdateRef.current = null;
+      }
+
+      // Final state push
+      setCurrentCycle(refreshCycleReference(cycle));
+    },
+    [executeStage, advanceToNextStage, updateCycle, saveCycle, askCheckpointQuestion, abortableDelay]
+  );
+
+  const start = useCallback(
+    async (campaign: Campaign, cycleNumber: number = 1, mode: CycleMode = 'full') => {
+      if (isRunningRef.current) return; // prevent double-start (use ref, not state — state lags)
+      await runCycle(campaign, cycleNumber, mode);
+    },
+    [runCycle]
+  );
+
+  const stop = useCallback(() => {
+    // Advance generation so any in-flight async callbacks from the aborted run
+    // will bail when they check cycleGenerationRef.current !== myGeneration.
+    cycleGenerationRef.current += 1;
+
+    isRunningRef.current = false;
+
+    // Stop thinking sound
+    stopSoundLoop('thinking');
+
+    // Clear all pending timeouts
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+
+    // Abort all in-progress requests (single controller for entire run)
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+
+    // Mark current stage as 'stopped' so UI shows clear state
+    const cycle = cycleRef.current;
+    if (cycle) {
+      const stage = cycle.stages[cycle.currentStage];
+      if (stage && stage.status === 'in-progress') {
+        stage.status = 'stopped';
+        stage.completedAt = Date.now();
+      }
+      cycle.status = 'stopped';
+      setCurrentCycle(refreshCycleReference(cycle));
+    }
+
+    // Flush any pending throttled update
+    if (pendingUpdateRef.current) {
+      clearTimeout(pendingUpdateRef.current);
+      pendingUpdateRef.current = null;
+    }
+
+    // Set state last — triggers re-render with all the above mutations visible
+    setIsRunning(false);
+    setError(null);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      // Cleanup on unmount
+      isRunningRef.current = false;
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      if (pendingUpdateRef.current) {
+        clearTimeout(pendingUpdateRef.current);
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
+  // ── HEARTBEAT — periodic idle check every 30 minutes ─────────────────────
+  // When no cycle is running, scan for orphaned checkpoints that were never
+  // resumed. This is best-effort; failures are silently ignored.
+  useEffect(() => {
+    const HEARTBEAT_INTERVAL = 30 * 60 * 1000; // 30 minutes
+
+    const heartbeat = async () => {
+      // Only run when no cycle is active
+      if (isRunningRef.current) return;
+
+      console.log('[Heartbeat] Idle check at', new Date().toISOString());
+
+      try {
+        const campaigns = await storage.getAllCampaigns();
+        for (const campaign of campaigns) {
+          // Derive the cycleId that checkpoints would be stored under.
+          // Cycles are keyed as `${campaignId}-cycle-${cycleNumber}`, and
+          // currentCycle on the campaign tracks the next cycle to run.
+          // Check the most-recently-run cycle (currentCycle - 1, minimum 1).
+          const lastCycleNumber = Math.max(1, (campaign.currentCycle || 1) - 1);
+          const lastCycleId = `${campaign.id}-cycle-${lastCycleNumber}`;
+          const checkpoint = await loadCheckpoint(lastCycleId);
+          if (checkpoint && Date.now() - checkpoint.savedAt < 48 * 60 * 60 * 1000) {
+            console.log(
+              `[Heartbeat] Orphaned checkpoint found for campaign "${campaign.brand}", ` +
+              `stage: ${checkpoint.lastCompletedStage}`
+            );
+            // Future: emit a UI notification or badge here
+          }
+        }
+      } catch {
+        // Heartbeat is best-effort — never throw
+      }
+    };
+
+    const interval = setInterval(heartbeat, HEARTBEAT_INTERVAL);
+    return () => clearInterval(interval);
+  }, []); // isRunning checked via ref, so no dep needed
+
+  return {
+    isRunning,
+    currentCycle,
+    error,
+    start,
+    stop,
+  };
+}

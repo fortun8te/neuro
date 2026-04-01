@@ -1,0 +1,1957 @@
+// @ts-nocheck
+import { ollamaService } from './ollama';
+import { wayfarerService, screenshotService, searchReddit, formatRedditResults } from './wayfarer';
+import { getResearchModelConfig, getResearchLimits, getThinkMode } from './modelConfig';
+import { getMethodologySummary, METHODOLOGY_STEPS } from './researchMethodology';
+import { recordResearchSource } from './researchAudit';
+import { loadPromptBody } from './promptLoader';
+import { tokenTracker } from './tokenStats';
+import { orchestratorRouter } from './orchestratorRouter';
+import { createLogger } from './logger';
+import { context1Service, isContext1Available } from './context1Service';
+import { scoreResearchDepth, generateFollowupQueries, mergeResearchResults, type DepthScore } from './depthScorer';
+import { ResearchWatchdog, type WatchdogStatus } from './researchWatchdog';
+import { compressionCache, compressionKey } from './searchCache';
+
+/** Small sleep helper for staggered dispatch */
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+import type { Campaign } from '../types';
+
+const log = createLogger('researchAgents');
+
+// Orchestrator system message — loaded from /prompts/research/orchestrator.md if available
+// Falls back to the inline string if the prompt file is not found (e.g. during tests).
+const ORCHESTRATOR_SYSTEM_MSG = loadPromptBody('research/orchestrator.txt')
+  || 'Output RESEARCH: [query] lines or COMPLETE: true. No filler.';
+
+// ─────────────────────────────────────────────────────────────
+// Tool integration — direct tool functions for orchestrator use
+// Mirrors agentEngine tools but callable without the ReAct loop.
+// ─────────────────────────────────────────────────────────────
+
+export interface ToolResult {
+  success: boolean;
+  output: string;
+  sources?: string[];
+}
+
+/** Direct web search via Wayfarer — same as agentEngine web_search tool */
+export async function toolWebSearch(query: string, maxResults = 10, signal?: AbortSignal): Promise<ToolResult> {
+  try {
+    const results = await wayfarerService.research(query, maxResults, signal);
+    const text = results.text?.slice(0, 8000) || 'No results found.';
+    const sources = results.sources?.map((s: { url: string }) => s.url) || [];
+    // Record sources in audit trail
+    results.sources?.forEach((src: { url: string; snippet?: string }) => {
+      recordResearchSource({
+        url: src.url,
+        query,
+        source: 'web',
+        contentLength: src.snippet?.length || 0,
+        extractedSnippet: src.snippet,
+      });
+    });
+    return { success: true, output: text, sources };
+  } catch (err) {
+    return { success: false, output: `Search failed: ${err instanceof Error ? err.message : err}` };
+  }
+}
+
+/** Direct page analysis via Wayfarer — same as agentEngine analyze_page tool */
+export async function toolAnalyzePage(url: string): Promise<ToolResult> {
+  try {
+    const result = await screenshotService.analyzePage(url);
+    const text = typeof result.page_text === 'object'
+      ? Object.values(result.page_text).join('\n').slice(0, 6000)
+      : String(result.page_text || '').slice(0, 6000);
+    recordResearchSource({
+      url,
+      query: 'analyze_page',
+      source: 'visual',
+      contentLength: text.length,
+    });
+    return { success: !result.error, output: text || 'No content.', sources: [url] };
+  } catch (err) {
+    return { success: false, output: `Analysis failed: ${err instanceof Error ? err.message : err}` };
+  }
+}
+
+/** Build a compact brand context block from preset + reference images */
+function buildOrchestratorBrandContext(campaign: Campaign): string {
+  const parts: string[] = [];
+  const p = campaign.presetData;
+  if (p?.brand) {
+    const b = p.brand;
+    if (b.name) parts.push(`Brand: ${b.name}`);
+    if (b.positioning) parts.push(`Positioning: ${b.positioning}`);
+    if (b.packagingDesign) parts.push(`Packaging: ${b.packagingDesign}`);
+    if (b.toneOfVoice) parts.push(`Tone: ${b.toneOfVoice}`);
+  }
+  if (p?.product) {
+    if (p.product.name) parts.push(`Product: ${p.product.name}`);
+    if (p.product.ingredients) parts.push(`Ingredients: ${p.product.ingredients}`);
+  }
+  const imgs = campaign.referenceImages;
+  if (imgs?.length) {
+    const descs = imgs
+      .filter(img => img.description)
+      .map(img => `  ${img.label}: ${img.description}`)
+      .slice(0, 3);
+    if (descs.length) parts.push(`Ref Images:\n${descs.join('\n')}`);
+  }
+  return parts.length ? `\nBrand Context:\n${parts.join('\n')}\n` : '';
+}
+
+export interface ResearchQuery {
+  topic: string;
+  context: string;
+  depth: 'quick' | 'thorough';
+}
+
+export interface ResearchResult {
+  query: string;
+  findings: string;
+  sources: string[];
+  coverage_graph: Record<string, boolean>; // Dimensional coverage tracking
+}
+
+export interface CoverageGraph {
+  market_size_trends: boolean;
+  competitor_analysis: boolean;
+  customer_objections: boolean;
+  emerging_trends: boolean;
+  regional_differences: boolean;
+  pricing_strategies: boolean;
+  channel_effectiveness: boolean;
+  brand_positioning_gaps: boolean;
+  psychological_triggers: boolean;
+  media_consumption_patterns: boolean;
+  // Methodology-driven dimensions (9-step framework)
+  amazon_research: boolean;
+  reddit_research: boolean;
+  identity_markers: boolean;
+  ad_style_analysis: boolean;
+  market_sophistication: boolean;
+  visual_competitive_analysis: boolean;
+  [key: string]: boolean; // Allow additional dimensions
+}
+
+export interface OrchestratorState {
+  campaign: Campaign;
+  researchGoals: string[];
+  completedResearch: ResearchResult[];
+  coverageThreshold: number; // Percentage of dimensions that must be covered (0.0 - 1.0)
+  userProvidedContext?: Record<string, string>; // Answers to questions orchestrator asked
+  reflectionSuggestedTopics?: string[]; // Gaps found by reflection agent
+  _visualFindings?: unknown; // Visual scout results, set during orchestration
+  _visualBatchesUsed?: number; // Track visual batch consumption across iterations
+  _visualUrlsUsed?: number; // Track visual URL consumption across iterations
+}
+
+export interface ResearchPauseEvent {
+  type: 'pause_for_input';
+  question: string;
+  context: string; // Why is the orchestrator asking?
+  suggestedAnswers?: string[]; // Optional suggestions
+}
+
+// ─────────────────────────────────────────────────────────────
+// Knowledge State — structured summary of what we've learned
+// ─────────────────────────────────────────────────────────────
+
+interface KnowledgeState {
+  competitors: string[];      // Named competitors we've identified
+  pricePoints: string[];      // Specific prices/ranges found
+  verbatimQuotes: string[];   // Real customer language (max 10)
+  objections: string[];       // Identified purchase objections
+  communities: string[];      // Platforms/communities where audience lives
+  statistics: string[];       // Key numbers (market size, growth, etc.)
+  turningPoints: string[];    // Moments that trigger purchase
+  failedSolutions: string[];  // What they tried that didn't work
+  summary: string;            // Compact text version for prompts
+}
+
+function buildKnowledgeState(results: ResearchResult[]): KnowledgeState {
+  const state: KnowledgeState = {
+    competitors: [], pricePoints: [], verbatimQuotes: [], objections: [],
+    communities: [], statistics: [], turningPoints: [], failedSolutions: [],
+    summary: '',
+  };
+
+  const allFindings = results.map(r => r.findings).join('\n');
+  if (!allFindings) return state;
+
+  // Extract named competitors (capitalized words near "competitor", "vs", "brand", "company")
+  const compPatterns = [
+    /(?:competitor|brand|company|versus|vs\.?)\s*:?\s*([A-Z][a-zA-Z]+(?:\s[A-Z][a-zA-Z]+)?)/gi,
+    /([A-Z][a-zA-Z]+(?:\s[A-Z][a-zA-Z]+)?)\s+(?:offers?|sells?|charges?|positions?|claims?|advertises?)/g,
+  ];
+  for (const pattern of compPatterns) {
+    const matches = allFindings.matchAll(pattern);
+    for (const m of matches) {
+      const name = m[1]?.trim();
+      if (name && name.length > 2 && name.length < 40 && !/^(The|This|That|They|Their|These|Our|But|And|For|With|From|Into|What|Which|Where|When|How|Who|Why)$/.test(name)) {
+        state.competitors.push(name);
+      }
+    }
+  }
+  state.competitors = [...new Set(state.competitors)].slice(0, 30);
+
+  // Extract price points ($XX, $XX.XX, $XX-$XX, XX% off)
+  const priceMatches = allFindings.match(/\$\d+(?:\.\d{2})?(?:\s*[-–to]+\s*\$\d+(?:\.\d{2})?)?|\d+%\s+(?:off|discount|cheaper)/gi) || [];
+  state.pricePoints = [...new Set(priceMatches)].slice(0, 10);
+
+  // Extract verbatim quotes (text in quotation marks that sounds like a real person)
+  const quoteMatches = allFindings.match(/"([^"]{20,200})"/g) || [];
+  state.verbatimQuotes = quoteMatches
+    .map(q => q.replace(/^"|"$/g, ''))
+    .filter(q => /\b(I|my|me|we|our|feel|tried|hate|love|wish|bought|stopped|switched)\b/i.test(q))
+    .slice(0, 25);
+
+  // Extract objections (lines mentioning complaints, reasons not to buy)
+  const objLines = allFindings.split('\n').filter(l =>
+    /(?:objection|complaint|concern|reason not|hesitat|worry|afraid|too expensive|doesn't work|waste|scam|skeptic)/i.test(l)
+  );
+  state.objections = objLines.map(l => l.trim().slice(0, 150)).slice(0, 20);
+
+  // Extract communities/platforms
+  const communityPatterns = /\b(r\/\w+|Reddit|TikTok|Instagram|Facebook|YouTube|Amazon|Trustpilot|Twitter|X\.com|Pinterest|LinkedIn|Quora|forums?)\b/gi;
+  const commMatches = allFindings.match(communityPatterns) || [];
+  state.communities = [...new Set(commMatches.map(c => c.trim()))].slice(0, 20);
+
+  // Extract key statistics (numbers with context)
+  const statLines = allFindings.split('\n').filter(l =>
+    /\$?\d+(?:\.\d+)?(?:\s*(?:billion|million|%|percent|users?|customers?))/i.test(l) && l.trim().length > 15
+  );
+  state.statistics = statLines.map(l => l.trim().slice(0, 150)).slice(0, 20);
+
+  // Extract turning points / triggers
+  const triggerLines = allFindings.split('\n').filter(l =>
+    /(?:turning point|trigger|moment|finally|last straw|breaking point|tipping|when I|realized|enough)/i.test(l)
+  );
+  state.turningPoints = triggerLines.map(l => l.trim().slice(0, 150)).slice(0, 15);
+
+  // Extract failed solutions
+  const failLines = allFindings.split('\n').filter(l =>
+    /(?:tried|failed|didn't work|gave up|switched from|stopped using|waste of|disappointed)/i.test(l)
+  );
+  state.failedSolutions = failLines.map(l => l.trim().slice(0, 150)).slice(0, 20);
+
+  // Build compact summary for injection into prompts
+  const parts: string[] = [];
+  if (state.competitors.length) parts.push(`COMPETITORS FOUND: ${state.competitors.join(', ')}`);
+  if (state.pricePoints.length) parts.push(`PRICES FOUND: ${state.pricePoints.join(', ')}`);
+  if (state.statistics.length) parts.push(`KEY STATS:\n${state.statistics.slice(0, 5).map(s => `  - ${s}`).join('\n')}`);
+  if (state.verbatimQuotes.length) parts.push(`VERBATIM QUOTES (${state.verbatimQuotes.length}):\n${state.verbatimQuotes.slice(0, 5).map(q => `  "${q}"`).join('\n')}`);
+  if (state.objections.length) parts.push(`OBJECTIONS IDENTIFIED:\n${state.objections.slice(0, 5).map(o => `  - ${o}`).join('\n')}`);
+  if (state.communities.length) parts.push(`AUDIENCE FOUND ON: ${state.communities.join(', ')}`);
+  if (state.turningPoints.length) parts.push(`TURNING POINTS:\n${state.turningPoints.slice(0, 3).map(t => `  - ${t}`).join('\n')}`);
+  if (state.failedSolutions.length) parts.push(`FAILED SOLUTIONS:\n${state.failedSolutions.slice(0, 5).map(f => `  - ${f}`).join('\n')}`);
+
+  state.summary = parts.join('\n\n');
+  return state;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Compression — reduce raw page content to relevant facts
+// ─────────────────────────────────────────────────────────────
+
+async function compressPage(
+  pageContent: string,
+  pageTitle: string,
+  pageUrl: string,
+  researchQuery: string,
+  signal?: AbortSignal,
+  knowledgeSummary?: string,
+): Promise<string> {
+  if (!pageContent || pageContent.length < 200) return '';
+
+  // Check cache — skip re-compression if we already compressed this URL for this query
+  const cacheKey = compressionKey(pageUrl, researchQuery);
+  const cached = compressionCache.get(cacheKey);
+  if (cached) return cached;
+
+  // Truncate very long pages — keep enough for meaningful extraction
+  // Qwen 3.5 models have 32K context, so 24K content + prompt is safe
+  const truncated = pageContent.slice(0, 24000);
+
+  // Tell compressor what we already know so it focuses on NEW information
+  const knowledgeBlock = knowledgeSummary
+    ? `\nWE ALREADY KNOW (skip repeating these — extract NEW info only):\n${knowledgeSummary.slice(0, 1500)}\n`
+    : '';
+
+  const prompt = `Extract facts about: "${researchQuery}"
+${knowledgeBlock}
+Page: ${pageTitle}
+URL: ${pageUrl}
+
+${truncated}
+
+RULES:
+- End every fact with [Source: ${pageUrl}]
+- Copy exact quotes in "quotation marks"
+- MUST preserve: numbers ($, %, units), dates, study names, sample sizes, URLs
+- MUST preserve: competitor names, pricing, product names, feature lists
+- NEW info only — skip anything from WE ALREADY KNOW block above
+- Strip: navigation, ads, boilerplate, SEO filler, author bios
+- Max 350 words. If nothing relevant: NO_RELEVANT_CONTENT
+
+FACTS:`;
+
+  try {
+    const compressed = await ollamaService.generateStream(
+      prompt,
+      'Extract facts as bullet points. Never drop numbers, URLs, or quotes. No commentary.',
+      { model: getResearchModelConfig().compressionModel, temperature: 0.2, num_predict: 500, think: getThinkMode('compression'), signal }
+    );
+
+    if (compressed.includes('NO_RELEVANT_CONTENT')) return '';
+    const result = `[${pageTitle}](${pageUrl}):\n${compressed}`;
+    // Cache for future iterations
+    compressionCache.set(cacheKey, result);
+    return result;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Compress findings using Context-1 intelligent retrieval.
+ * Extracts the most relevant chunks from all fetched pages using
+ * Chroma's Context-1 model with query decomposition and smart dedup.
+ */
+async function compressFindingsWithContext1(
+  pages: Array<{ content: string; title: string; url: string; source: string }>,
+  researchQuery: string,
+  onChunk?: (chunk: string) => void,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  try {
+    // Check if Context-1 is available
+    const available = await isContext1Available();
+    if (!available) {
+      onChunk?.(`[Context-1 not available, falling back to standard compression]\n`);
+      return null;
+    }
+
+    const validPages = pages.filter(
+      (p) => p.source !== 'failed' && p.content && p.content.length >= 200
+    );
+
+    if (validPages.length === 0) return '';
+
+    onChunk?.(`[Context-1] Extracting key chunks from ${validPages.length} pages...\n`);
+
+    // Concatenate all page content for Context-1 to analyze
+    const corpusText = validPages
+      .map((p) => `[Source: ${p.url}]\n[Title: ${p.title}]\n${p.content}`)
+      .join('\n\n---PAGE_BREAK---\n\n');
+
+    // Run Context-1 retrieval with query decomposition
+    const result = await context1Service.retrieve(researchQuery, {
+      maxChunks: 15,
+      maxSteps: 10,
+      tokenBudget: 16_384, // Use half budget for research context
+      signal,
+      decomposeQuery: true, // Break down complex queries
+      config: {
+        chunkSizeWords: 150, // Slightly smaller chunks for research
+        maxParallelTools: 3,
+      },
+      onEvent: (event) => {
+        // Optionally surface events to the caller
+        if (event.type === 'observation' && event.chunksFound) {
+          onChunk?.(`[Context-1] Found ${event.chunksFound} relevant chunks\n`);
+        } else if (event.type === 'done') {
+          onChunk?.(`[Context-1] Extraction complete (${event.tokensUsed} tokens used)\n`);
+        }
+      },
+    });
+
+    // Format extracted chunks with source references
+    const formatted = result.chunks
+      .map(
+        (chunk) =>
+          `[Chunk ${chunk.chunkId}]\n${chunk.content}\n[Source: ${chunk.metadata?.url || 'Unknown'}]`
+      )
+      .join('\n\n');
+
+    return formatted;
+  } catch (err) {
+    log.warn('Context-1 compression failed, falling back', {}, err);
+    return null;
+  }
+}
+
+async function compressFindings(
+  pages: Array<{ content: string; title: string; url: string; source: string }>,
+  researchQuery: string,
+  onChunk?: (chunk: string) => void,
+  signal?: AbortSignal,
+  knowledgeSummary?: string,
+): Promise<string> {
+  // Filter out failed pages
+  const validPages = pages.filter(
+    (p) => p.source !== 'failed' && p.content && p.content.length >= 200
+  );
+
+  if (validPages.length === 0) return '';
+
+  // ── Pipeline: Run Context-1 async alongside standard compression ──
+  // Context-1 runs in background; standard compression runs immediately.
+  // If Context-1 finishes with good results, merge them in.
+  // This eliminates the blocking wait that added 10-15s.
+
+  let context1Promise: Promise<string | null> | null = null;
+  try {
+    const available = await isContext1Available();
+    if (available) {
+      onChunk?.(`[Context-1] Starting async retrieval (non-blocking)...\n`);
+      context1Promise = compressFindingsWithContext1(validPages, researchQuery, onChunk, signal)
+        .catch(() => null); // Never let Context-1 failure block the pipeline
+    }
+  } catch {
+    // Context-1 check failed, skip it
+  }
+
+  // ── Standard compression: pipeline with concurrency ──
+  const concurrency = Math.max(getResearchLimits().parallelCompressionCount, 4); // Min 4 for throughput
+  onChunk?.(`Compressing ${validPages.length} pages (concurrency: ${concurrency})...\n`);
+
+  const compressed: string[] = [];
+  for (let batchStart = 0; batchStart < validPages.length; batchStart += concurrency) {
+    if (signal?.aborted) break;
+    const batch = validPages.slice(batchStart, batchStart + concurrency);
+    const batchResults = await Promise.all(
+      batch.map(p => compressPage(p.content, p.title, p.url, researchQuery, signal, knowledgeSummary))
+    );
+    for (const result of batchResults) {
+      if (result) compressed.push(result);
+    }
+    const done = Math.min(batchStart + concurrency, validPages.length);
+    onChunk?.(`  Compressed ${done}/${validPages.length} pages\n`);
+  }
+
+  const standardResult = compressed.join('\n\n');
+
+  // ── Merge Context-1 results if available ──
+  if (context1Promise) {
+    const context1Result = await context1Promise;
+    if (context1Result && context1Result.length > 200) {
+      onChunk?.(`[Context-1] Merging ${context1Result.length} chars of extracted chunks\n`);
+      // Context-1 provides deduplicated high-relevance chunks; prepend them
+      return `--- CONTEXT-1 EXTRACTED CHUNKS ---\n${context1Result}\n\n--- COMPRESSED PAGES ---\n${standardResult}`;
+    }
+  }
+
+  return standardResult;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Researcher Agent — web search + compress + synthesize
+// ─────────────────────────────────────────────────────────────
+
+export const researcherAgent = {
+  async research(query: ResearchQuery, onChunk?: (chunk: string) => void, signal?: AbortSignal, knowledgeSummary?: string): Promise<ResearchResult> {
+    try {
+      onChunk?.(`Searching: "${query.topic}"...\n`);
+
+      // Step 1: Fetch full page content via Wayfayer
+      const wayfarerResult = await wayfarerService.research(query.topic, 20, signal);
+      const meta = wayfarerResult.meta;
+      onChunk?.(`Fetched ${meta.success}/${meta.total} pages (${meta.elapsed}s)\n`);
+
+      // Record all fetched sources in audit trail
+      wayfarerResult.sources.forEach((src) => {
+        recordResearchSource({
+          url: src.url,
+          query: query.topic,
+          source: 'text', // text-only wayfarer
+          contentLength: src.snippet?.length || 0,
+          extractedSnippet: src.snippet,
+        });
+      });
+
+      // Step 1b: Reddit supplement — auto-triggered for audience/social/objection queries
+      const REDDIT_TRIGGER_PATTERN = /reddit|review|complaint|social proof|what people say|audience language|hate about|love about|problem with|worst thing|best thing|honest opinion|people think|customer feedback/i;
+      let redditBlock = '';
+      if (REDDIT_TRIGGER_PATTERN.test(query.topic)) {
+        onChunk?.(`Reddit: supplementing "${query.topic}"...\n`);
+        const rdResult = await searchReddit(query.topic, { size: 10, minScore: 5, signal });
+        if (rdResult.posts.length > 0) {
+          redditBlock = formatRedditResults(rdResult);
+          onChunk?.(`Reddit: ${rdResult.posts.length} posts found\n`);
+          // Record Reddit posts as research sources
+          rdResult.posts.forEach((post) => {
+            recordResearchSource({
+              url: post.url,
+              query: query.topic,
+              source: 'text',
+              contentLength: post.selftext?.length || 0,
+              extractedSnippet: post.title,
+            });
+          });
+        } else {
+          onChunk?.(`Reddit: no results\n`);
+        }
+      }
+
+      // Step 2: Compress each page to relevant facts (context-aware: skip what we already know)
+      let compressedContent: string;
+
+      if (meta.success > 0) {
+        compressedContent = await compressFindings(wayfarerResult.pages, query.topic, onChunk, signal, knowledgeSummary);
+      } else {
+        // Wayfayer returned nothing — fall back to LLM-only
+        onChunk?.('No web results, using LLM knowledge only\n');
+        compressedContent = '';
+      }
+
+      // Append Reddit data to compressed content if available
+      if (redditBlock) {
+        compressedContent = compressedContent
+          ? `${compressedContent}\n\n--- REDDIT SIGNALS ---\n${redditBlock}`
+          : `--- REDDIT SIGNALS ---\n${redditBlock}`;
+      }
+
+      // Step 3: Synthesize compressed findings with LLM (context-aware)
+      const hasWebData = compressedContent.length > 100;
+
+      // Build knowledge-aware synthesis context
+      const knowledgeHint = knowledgeSummary
+        ? `\nWE ALREADY KNOW (don't repeat — focus on NEW insights):\n${knowledgeSummary.slice(0, 800)}\n`
+        : '';
+
+      const synthesisPrompt = `Synthesize research: ${query.topic}
+${query.context}
+${hasWebData ? `\nData:\n${compressedContent}` : '(No web data — use general knowledge)'}
+${knowledgeHint}
+Write each section below. Tag every claim [Source: URL] or [Source: LLM]. Skip empty sections.
+
+FINDINGS:
+- [fact with number or name] [Source: URL]
+
+VERBATIM:
+- "[exact customer quote]" [Source: URL]
+
+COMPETITORS:
+- [Name]: [price], [positioning] [Source: URL]
+
+EVIDENCE:
+- [statistic or study result] [Source: URL]
+
+CONFIDENCE: high/medium/low (based on source count and agreement)
+COVERAGE: market_size, competitors, objections, trends, regional, pricing, channels, positioning, psychology, media [covered/uncovered]`;
+
+      const response = await ollamaService.generateStream(
+        synthesisPrompt,
+        'Synthesize research. Tag claims with sources. Be specific.',
+        {
+          model: getResearchModelConfig().researcherSynthesisModel,
+          temperature: 0.3,
+          num_predict: 600,
+          think: getThinkMode('synthesis'),
+          onChunk,
+          signal,
+        }
+      );
+
+      // Ground all claims with source tags (tag naked claims as [LLM inference])
+      const grounded = groundSources(response);
+      const coverage_graph = buildCoverageGraph(grounded);
+      const allSources = [
+        ...wayfarerResult.sources.map((s) => s.url),
+        ...extractSources(grounded),
+      ];
+
+      // Score research depth for potential follow-ups
+      const depthScore = scoreResearchDepth(grounded, coverage_graph, allSources.length);
+      if (depthScore.isIncomplete) {
+        onChunk?.(`[Depth Score] ${depthScore.score}% complete — gaps in: ${depthScore.gaps.slice(0, 3).join(', ')}\n`);
+      }
+
+      return {
+        query: query.topic,
+        findings: grounded,
+        sources: allSources,
+        coverage_graph,
+        _depthScore: depthScore, // Metadata for orchestrator follow-ups
+      } as any;
+    } catch (error) {
+      // Re-throw abort errors immediately — don't fall back
+      if (signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) throw error;
+      console.error('Research agent error:', error);
+      // Fallback to LLM-only research
+      try {
+        onChunk?.('Web search failed, using LLM knowledge only\n');
+        const fallbackPrompt = `Research: ${query.topic} | Context: ${query.context}
+Cover: market size, competitors, objections, pricing, positioning.
+Tag all claims [Source: LLM]. No web data available.`;
+
+        const response = await ollamaService.generateStream(
+          fallbackPrompt,
+          'Research insights. Tag claims [Source: LLM]. Be specific.',
+          { model: getResearchModelConfig().researcherSynthesisModel, temperature: 0.3, num_predict: 600, think: getThinkMode('synthesis'), onChunk, signal }
+        );
+
+        return {
+          query: query.topic,
+          findings: response,
+          sources: [],
+          coverage_graph: buildCoverageGraph(response),
+        };
+      } catch (fallbackError) {
+        console.error('Research fallback error:', fallbackError);
+        throw fallbackError;
+      }
+    }
+  },
+};
+
+// ─────────────────────────────────────────────────────────────
+// Source Grounding — tag ungrounded claims as [LLM inference]
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Post-process research findings to ensure every claim has a source.
+ * Lines that contain factual claims but no [Source: ...] tag get
+ * marked as [LLM inference]. This prevents naked claims from
+ * leaking into downstream stages.
+ */
+export function groundSources(text: string): string {
+  if (!text) return text;
+
+  const lines = text.split('\n');
+  const grounded = lines.map(line => {
+    // Skip empty lines, headers, separators, labels
+    if (!line.trim()) return line;
+    if (/^[─═#\-\*]{3,}/.test(line.trim())) return line;
+    if (/^(FINDINGS|VERBATIM|COMPETITORS|EVIDENCE|COVERAGE|CONFIDENCE|UNSOURCED|WE ALREADY|WHAT'S|RESEARCH|BLIND|BIAS|CONTRADICTION):/.test(line.trim())) return line;
+    if (/^\s*[-•*]\s*$/.test(line)) return line;
+
+    // Already has a source tag — leave it
+    if (/\[Source:\s*[^\]]+\]/.test(line)) return line;
+
+    // Check if this line contains a factual claim (numbers, names, assertions)
+    const isFactualClaim =
+      /\$\d/.test(line) ||                           // dollar amounts
+      /\d+%/.test(line) ||                            // percentages
+      /\d+\s*(billion|million|thousand)/i.test(line) || // large numbers
+      /(?:market|revenue|growth|price|cost)\s/i.test(line) || // market data
+      /(?:studies?|research|report|survey|found that)/i.test(line); // research references
+
+    if (isFactualClaim) {
+      return `${line} [Source: LLM inference]`;
+    }
+
+    return line;
+  });
+
+  return grounded.join('\n');
+}
+
+// ─────────────────────────────────────────────────────────────
+// Orchestrator — manages researchers + reflection agent
+// ─────────────────────────────────────────────────────────────
+
+export const orchestrator = {
+  async orchestrateResearch(
+    state: OrchestratorState,
+    onProgressUpdate?: (message: string) => void,
+    onPauseForInput?: (event: ResearchPauseEvent) => Promise<string>,
+    signal?: AbortSignal
+  ): Promise<ResearchResult[]> {
+    const allResults: ResearchResult[] = [...state.completedResearch];
+    let iteration = 0;
+    const limits = getResearchLimits();
+    const maxIterations = limits.maxIterations;
+    const maxTimeMs = limits.maxTimeMinutes * 60 * 1000;
+    const startTime = Date.now();
+
+    // Initialize watchdog for timeout monitoring
+    const watchdog = new ResearchWatchdog(
+      {
+        siteTimeoutMs: 60_000, // 60s per site
+        siteWarnThresholdMs: 30_000, // warn at 30s
+        overallTimeoutMs: 300_000, // 5min overall
+        minCoveragePercentage: 50,
+        enableReplans: true,
+      },
+      {
+        onWarning: (url, durationMs) => {
+          onProgressUpdate?.(`[Watchdog] ⚠️  Site slow (${Math.round(durationMs / 1000)}s): ${url.slice(0, 50)}\n`);
+        },
+        onTimeout: (url) => {
+          onProgressUpdate?.(`[Watchdog] ⏱️  Site timeout (60s): ${url.slice(0, 50)} — skipping\n`);
+        },
+        onReplanNeeded: (reason) => {
+          onProgressUpdate?.(`[Watchdog] 🔄 ${reason}\n`);
+        },
+      }
+    );
+    watchdog.startChecking(5_000, (status) => {
+      if (status.warningThresholdHits.length > 0 || status.timeoutHits.length > 0) {
+        const report = watchdog.formatReport(status);
+        onProgressUpdate?.(`[Watchdog] ${report}\n`);
+      }
+    }, () => {
+      const coverageStatus = evaluateCoverage(allResults);
+      const covered = Object.values(coverageStatus).filter(Boolean).length;
+      return (covered / Object.keys(coverageStatus).length) * 100;
+    });
+
+    while (iteration < maxIterations) {
+      // Check abort signal
+      if (signal?.aborted) {
+        onProgressUpdate?.('\nResearch aborted by user');
+        break;
+      }
+
+      // Check time limit
+      const elapsed = Date.now() - startTime;
+      if (elapsed >= maxTimeMs) {
+        const elapsedMin = (elapsed / 60000).toFixed(1);
+        onProgressUpdate?.(`\nTime limit reached (${elapsedMin}min / ${limits.maxTimeMinutes}min) — wrapping up research`);
+        break;
+      }
+
+      iteration++;
+      const elapsedSec = Math.round((Date.now() - startTime) / 1000);
+      onProgressUpdate?.(`\n[Orchestrator] Iteration ${iteration}/${maxIterations} — evaluating gaps... (${elapsedSec}s elapsed)`);
+
+      // Build knowledge state — structured summary of WHAT we actually know
+      const knowledge = buildKnowledgeState(allResults);
+      if (iteration === 1 || iteration % 3 === 0) {
+        // Show knowledge snapshot periodically so user sees intelligence building
+        const knownCount = [knowledge.competitors, knowledge.pricePoints, knowledge.verbatimQuotes, knowledge.objections, knowledge.statistics].reduce((sum, arr) => sum + arr.length, 0);
+        if (knownCount > 0) {
+          onProgressUpdate?.(`[Knowledge] ${knowledge.competitors.length} competitors, ${knowledge.pricePoints.length} prices, ${knowledge.verbatimQuotes.length} quotes, ${knowledge.objections.length} objections, ${knowledge.statistics.length} stats\n`);
+        }
+      }
+
+      // Build evaluation prompt (includes knowledge state + reflection suggestions)
+      const evaluationPrompt = buildEvaluationPrompt(state, allResults, state.campaign.researchMode, knowledge);
+
+      try {
+        // Stream orchestrator thinking live — throttled to avoid UI overload
+        let decisionBuffer = '';
+        let lastThinkEmit = 0;
+        const decision = await orchestratorRouter.generateOrchestratorDecision(
+          evaluationPrompt,
+          ORCHESTRATOR_SYSTEM_MSG,
+          {
+            temperature: 0.5,
+            numPredict: 400,
+            think: getThinkMode('orchestrator'),
+            signal,
+            onChunk: (c) => {
+              decisionBuffer += c;
+              // Emit thinking tokens every 200ms so user sees live reasoning
+              const now = Date.now();
+              if (now - lastThinkEmit >= 200 && decisionBuffer.length > 0) {
+                // Emit accumulated buffer as thinking
+                const chunk = decisionBuffer.replace(/\n/g, ' ').trim();
+                if (chunk.length > 5) {
+                  onProgressUpdate?.(`[Orchestrator thinking] ${chunk}\n`);
+                }
+                decisionBuffer = '';
+                lastThinkEmit = now;
+              }
+            },
+          }
+        );
+        // Flush any remaining buffer
+        if (decisionBuffer.trim().length > 5) {
+          onProgressUpdate?.(`[Orchestrator thinking] ${decisionBuffer.replace(/\n/g, ' ').trim()}\n`);
+        }
+
+        // Log which orchestrator was used
+        const orchestratorSource = orchestratorRouter.getLastOrchestratorSource();
+        if (orchestratorSource) {
+          log.info(`Orchestrator: ${orchestratorSource.model} (${orchestratorSource.latencyMs}ms)`);
+          onProgressUpdate?.(`[Orchestrator: ${orchestratorSource.model} — ${orchestratorSource.latencyMs}ms]\n`);
+        }
+
+        const nextTopics = parseOrchestratorDecision(decision);
+
+        // Apply quality filter to reject trend-chasing and BS queries
+        const filteredTopics = nextTopics.filter((topic) => {
+          if (!topic.query) return true; // Keep empty (COMPLETE, QUESTION)
+          if (!isQualityQuery(topic.query)) {
+            onProgressUpdate?.(`  [Filter] Rejected low-quality query: "${topic.query}"\n`);
+            return false;
+          }
+          return true;
+        });
+
+        // Force-inject reflection-suggested topics if orchestrator didn't include them
+        if (state.reflectionSuggestedTopics?.length && filteredTopics.length > 0 && filteredTopics[0].shouldContinue) {
+          const existingQueries = new Set(filteredTopics.map(t => t.query.toLowerCase()));
+          const forcedTopics = state.reflectionSuggestedTopics
+            .filter(t => !existingQueries.has(t.toLowerCase()))
+            .slice(0, 2)
+            .map(t => ({ query: t, context: 'Forced from reflection agent gap analysis', depth: 'thorough' as const, shouldContinue: true }));
+          if (forcedTopics.length > 0) {
+            filteredTopics.push(...forcedTopics);
+            onProgressUpdate?.(`  [Orchestrator] Injecting ${forcedTopics.length} reflection-forced queries\n`);
+          }
+          // Clear after use
+          state.reflectionSuggestedTopics = undefined;
+        }
+
+        // Handle questions in interactive mode
+        if (filteredTopics[0]?.question && state.campaign.researchMode === 'interactive' && onPauseForInput) {
+          onProgressUpdate?.(`\n[Orchestrator] Pausing for user input...\n`);
+          const userAnswer = await onPauseForInput({
+            type: 'pause_for_input',
+            question: filteredTopics[0].question,
+            context: filteredTopics[0].questionContext || 'Clarification needed',
+            suggestedAnswers: Array.isArray(state.campaign.productFeatures) ? state.campaign.productFeatures : undefined,
+          });
+
+          if (!state.userProvidedContext) state.userProvidedContext = {};
+          state.userProvidedContext[filteredTopics[0].question] = userAnswer;
+          onProgressUpdate?.(`User provided: ${userAnswer}\n`);
+          continue;
+        }
+
+        // Skip question topics in autonomous mode
+        if (filteredTopics[0]?.question && state.campaign.researchMode === 'autonomous') {
+          onProgressUpdate?.(`[Orchestrator] Skipping clarification question in autonomous mode\n`);
+          continue;
+        }
+
+        if (filteredTopics.length === 0 || !filteredTopics[0].shouldContinue) {
+          onProgressUpdate?.('Orchestrator satisfied with coverage — research complete');
+          break;
+        }
+
+        // Deploy researchers (up to N per iteration) — dedup against already-run queries
+        const existingQueries = allResults.map(r => r.query);
+        const dedupedTopics = filteredTopics.slice(0, limits.maxResearchersPerIteration).filter((t) => {
+          if (t.query.length === 0) return false;
+          if (isDuplicateQuery(t.query, existingQueries)) {
+            onProgressUpdate?.(`  [Dedup] Skipping "${t.query}" — too similar to previous query\n`);
+            return false;
+          }
+          return true;
+        });
+        const researchTopics = dedupedTopics;
+        if (researchTopics.length === 0) {
+          onProgressUpdate?.('All proposed queries are duplicates of previous research — wrapping up\n');
+          break;
+        }
+        onProgressUpdate?.(`Deploying ${researchTopics.length} researcher agents...\n`);
+        researchTopics.forEach((t) => {
+          const gapNote = t.context && t.context !== 'Marketing research for campaign optimization'
+            ? ` (filling: ${t.context})`
+            : '';
+          onProgressUpdate?.(`  [Orchestrator] → "${t.query}"${gapNote}\n`);
+        });
+
+        if (limits.useSubagents) {
+          // ── Subagent path (NR / EX / MX) ──────────────────────────────────────
+          // Each topic gets a dedicated SubagentManager worker with its own AbortController
+          // that mirrors the parent signal. Workers run in parallel (Wayfarer fetches)
+          // then sequential LLM synthesis (avoids GPU thrashing on remote Ollama).
+          const { createSubagentManager } = await import('./subagentManager');
+          const subMgr = createSubagentManager();
+
+          onProgressUpdate?.(`  [Subagents] Spawning ${researchTopics.length} researcher subagents...\n`);
+
+          const subagentPromises = researchTopics.map((topic, idx) => {
+            if (signal?.aborted) return Promise.resolve(null);
+            const subId = `researcher-${iteration}-${idx}`;
+            const campaignCtx = `Brand: ${state.campaign.brand || 'Unknown'} | Product: ${state.campaign.productDescription || ''} | Audience: ${state.campaign.targetAudience || ''}`;
+            onProgressUpdate?.(`  [Subagent ${idx + 1}/${researchTopics.length}] → "${topic.query}"\n`);
+            // Stagger by 250ms per researcher to avoid SearXNG burst overload
+            const staggerMs = idx * 250;
+            return sleep(staggerMs).then(() => {
+              if (signal?.aborted) return null;
+              return subMgr.spawn({
+              id: subId,
+              role: 'researcher',
+              task: topic.query,
+              context: `${campaignCtx}\nResearch goal: ${topic.context}`,
+              input: knowledge.summary || undefined,
+              signal,
+            }).then((subResult) => {
+              if (subResult.status === 'cancelled' || subResult.status === 'failed') {
+                onProgressUpdate?.(`  [Subagent] ${subId} ${subResult.status}: ${subResult.error || ''}\n`);
+                return null;
+              }
+              // Wrap subagent output as ResearchResult
+              const coverage_graph = buildCoverageGraph(subResult.output);
+              const sources = extractSources(subResult.output);
+              onProgressUpdate?.(`  [Subagent] Done "${topic.query}" — ${sources.length} sources (${subResult.durationMs}ms)\n`);
+              return {
+                query: topic.query,
+                findings: groundSources(subResult.output),
+                sources,
+                coverage_graph,
+              } as ResearchResult;
+            }).catch((err) => {
+              onProgressUpdate?.(`  [Subagent] Error "${topic.query}": ${err instanceof Error ? err.message : err}\n`);
+              return null;
+            });
+            }); // end sleep stagger
+          });
+
+          const subResults = await Promise.all(subagentPromises);
+          for (const r of subResults) {
+            if (r) allResults.push(r);
+          }
+        } else {
+          // ── Sequential path (SQ / QK) ───────────────────────────────────────
+          // Run researchers SEQUENTIALLY — each one does compress + synthesize (LLM calls)
+          // On local GPU, parallel LLM calls cause thrashing and garbled output
+          for (let seqIdx = 0; seqIdx < researchTopics.length; seqIdx++) {
+            const topic = researchTopics[seqIdx];
+            if (signal?.aborted) break;
+            // Stagger: first researcher has 0ms delay, subsequent ones get 250ms gaps
+            if (seqIdx > 0) await sleep(seqIdx * 250);
+            onProgressUpdate?.(`\n  [Researcher] Starting: "${topic.query}"\n`);
+
+            // Monitor site operations via watchdog
+            watchdog.startMonitoring(topic.query);
+
+            let synthesisBuffer = '';
+            let isSynthesizing = false;
+            let lastSynthEmit = 0;
+
+            const result = await researcherAgent.research(
+              { topic: topic.query, context: topic.context, depth: topic.depth },
+              (chunk) => {
+                // Track phases for watchdog
+                if (chunk.includes('Searching:')) {
+                  watchdog.recordActivity(topic.query, 'fetching');
+                } else if (chunk.includes('Compress')) {
+                  watchdog.recordActivity(topic.query, 'compressing');
+                } else if (chunk.includes('[Depth') || chunk.includes('synthesizing') || chunk.includes('Synthesize')) {
+                  watchdog.recordActivity(topic.query, 'synthesizing');
+                }
+
+                // Structured messages — emit directly
+                if (chunk.includes('Searching:') || chunk.includes('Fetched') || chunk.includes('Compress') || chunk.includes('No web results') || chunk.includes('Web search failed') || chunk.includes('LLM knowledge')) {
+                  if (isSynthesizing && synthesisBuffer.length > 0) {
+                    onProgressUpdate?.(`  [Researcher] ${synthesisBuffer.replace(/\n/g, ' ').trim()}\n`);
+                    synthesisBuffer = '';
+                    isSynthesizing = false;
+                  }
+                  onProgressUpdate?.(`  [Researcher] ${chunk}`);
+                } else {
+                  // Synthesis tokens — stream live with throttling
+                  isSynthesizing = true;
+                  synthesisBuffer += chunk;
+                  const now = Date.now();
+                  if (now - lastSynthEmit >= 300 && synthesisBuffer.trim().length > 10) {
+                    onProgressUpdate?.(`  [Researcher] ${synthesisBuffer.replace(/\n/g, ' ').trim()}\n`);
+                    synthesisBuffer = '';
+                    lastSynthEmit = now;
+                  }
+                }
+              },
+              signal,
+              knowledge.summary, // Context-aware: compressor skips what we already know
+            );
+
+            // Flush remaining synthesis buffer
+            if (synthesisBuffer.trim().length > 0) {
+              onProgressUpdate?.(`  [Researcher] ${synthesisBuffer.replace(/\n/g, ' ').trim()}\n`);
+            }
+
+            // Mark research as done in watchdog
+            watchdog.markDone(topic.query);
+
+            // Check depth score and potentially do follow-up
+            const depthScore = (result as any)._depthScore as DepthScore | undefined;
+            if (depthScore && depthScore.isIncomplete && depthScore.recommendation !== 'sufficient') {
+              const followupQueries = generateFollowupQueries(
+                topic.query,
+                depthScore.gaps,
+                depthScore.depthMetrics,
+                result.findings,
+              );
+
+              if (followupQueries.length > 0 && allResults.filter(r => r.query.toLowerCase().includes('follow')).length < 3) {
+                onProgressUpdate?.(`  [Deep Research] Score ${depthScore.score}% — running follow-up on: ${followupQueries[0]}\n`);
+
+                try {
+                  const followupResult = await researcherAgent.research(
+                    {
+                      topic: followupQueries[0],
+                      context: `Deep follow-up to: "${topic.query}" (filling gaps: ${depthScore.gaps.slice(0, 2).join(', ')})`,
+                      depth: 'thorough',
+                    },
+                    (chunk) => {
+                      if (chunk.includes('[Depth Score]') || chunk.includes('Follow')) {
+                        onProgressUpdate?.(`  [Follow-up] ${chunk}`);
+                      }
+                    },
+                    signal,
+                    knowledge.summary,
+                  );
+
+                  // Merge follow-up findings with original
+                  const mergedFindings = mergeResearchResults(result.findings, followupResult.findings);
+                  result.findings = mergedFindings;
+                  result.sources = [...new Set([...result.sources, ...followupResult.sources])];
+                  result.coverage_graph = { ...result.coverage_graph, ...followupResult.coverage_graph };
+
+                  onProgressUpdate?.(`  [Follow-up] Merged ${followupResult.sources.length} new sources, coverage now ${Object.values(result.coverage_graph).filter(Boolean).length} dimensions\n`);
+                } catch (followupErr) {
+                  onProgressUpdate?.(`  [Follow-up] Error: ${followupErr instanceof Error ? followupErr.message : followupErr}\n`);
+                }
+              }
+            }
+
+            allResults.push(result);
+            onProgressUpdate?.(`  [Researcher] Done: "${topic.query}" — ${result.sources.length} sources\n`);
+          }
+        }
+
+        // Track total unique sources across all research
+        const totalSources = new Set(allResults.flatMap(r => r.sources)).size;
+        onProgressUpdate?.(`Total unique sources: ${totalSources}\n`);
+
+        // Visual Scout: if orchestrator requested VISUAL_SCOUT, dispatch visual analysis
+        const visualScoutUrls = researchTopics
+          .flatMap(t => t.visualScoutUrls || [])
+          .filter(Boolean);
+
+        // Enforce visual batch limits from preset
+        const visualBudgetUsed = state._visualBatchesUsed || 0;
+        const visualBudgetRemaining = limits.maxVisualBatches - visualBudgetUsed;
+        const maxVisualUrlsRemaining = limits.maxVisualUrls - (state._visualUrlsUsed || 0);
+
+        if (visualScoutUrls.length > 0 && !state._visualFindings && visualBudgetRemaining > 0 && maxVisualUrlsRemaining > 0) {
+          const cappedCount = Math.min(visualScoutUrls.length, maxVisualUrlsRemaining, 5);
+          onProgressUpdate?.(`\n[Visual Scout] Orchestrator requested visual analysis of ${visualScoutUrls.length} URLs (budget: ${visualBudgetRemaining} batches, ${maxVisualUrlsRemaining} URLs remaining)\n`);
+          try {
+            const { visualScoutAgent } = await import('./visualScoutAgent');
+            const { visualProgressStore } = await import('./visualProgressStore');
+            const cappedUrls = visualScoutUrls.slice(0, cappedCount);
+            const visualFindings = await visualScoutAgent.analyzeCompetitorVisuals(
+              cappedUrls,
+              state.campaign,
+              onProgressUpdate,
+              signal,
+              // Structured progress events → text chunks + visual store
+              (event) => {
+                switch (event.type) {
+                  case 'screenshot_batch_start':
+                    visualProgressStore.startBatch(event.urls);
+                    break;
+                  case 'screenshot_start':
+                    onProgressUpdate?.(`[Visual Scout] Capturing ${event.index + 1}/${event.total}: ${event.url}\n`);
+                    visualProgressStore.setCapturing(event.url);
+                    break;
+                  case 'screenshot_done':
+                    onProgressUpdate?.(`[Visual Scout] ${event.error ? 'Failed' : 'Captured'} ${event.index + 1}/${event.total}: ${event.url.slice(0, 60)}${event.error ? ` — ${event.error}` : ''}\n`);
+                    visualProgressStore.setCaptured(event.url, event.thumbnail, event.error);
+                    break;
+                  case 'analysis_start':
+                    onProgressUpdate?.(`[Visual Scout] Analyzing visual ${event.index + 1}/${event.total}: ${event.url.slice(0, 50)}...\n`);
+                    visualProgressStore.setAnalyzing(event.url);
+                    break;
+                  case 'analysis_done':
+                    if (event.findings) {
+                      onProgressUpdate?.(`[Visual Scout] → ${event.url.slice(0, 40)}: tone=${event.findings.tone || '?'}, colors=${(event.findings.colors || []).slice(0, 2).join(', ') || '?'}\n`);
+                      visualProgressStore.setAnalyzed(event.url, event.findings);
+                    }
+                    break;
+                  case 'synthesis_start':
+                    onProgressUpdate?.(`[Visual Scout] Synthesizing patterns across ${event.count} sites...\n`);
+                    visualProgressStore.setSynthesisStatus('running');
+                    break;
+                  case 'synthesis_done':
+                    if (event.patterns.length) onProgressUpdate?.(`[Visual Scout] Patterns: ${event.patterns.slice(0, 2).join('; ')}\n`);
+                    if (event.gaps.length) onProgressUpdate?.(`[Visual Scout] Gaps: ${event.gaps.slice(0, 2).join('; ')}\n`);
+                    visualProgressStore.setSynthesisStatus('done', event.patterns, event.gaps);
+                    break;
+                }
+              }
+            );
+            state._visualFindings = visualFindings;
+            state._visualBatchesUsed = visualBudgetUsed + 1;
+            state._visualUrlsUsed = (state._visualUrlsUsed || 0) + cappedUrls.length;
+            onProgressUpdate?.(`[Visual Scout] Visual analysis complete — ${visualFindings.totalAnalyzed} sites analyzed\n`);
+          } catch (err) {
+            onProgressUpdate?.(`[Visual Scout] Visual analysis failed: ${err}\n`);
+          }
+        } else if (visualScoutUrls.length > 0 && visualBudgetRemaining <= 0) {
+          onProgressUpdate?.(`[Visual Scout] Skipped — visual budget exhausted (${limits.maxVisualBatches} batches used)\n`);
+        }
+
+        // Evaluate coverage
+        const coverageStatus = evaluateCoverage(allResults);
+        const coveredDimensions = Object.values(coverageStatus).filter(Boolean).length;
+        const totalDimensions = Object.keys(coverageStatus).length;
+        const coveragePercentage = (coveredDimensions / totalDimensions) * 100;
+
+        onProgressUpdate?.(
+          `Coverage: ${coveragePercentage.toFixed(0)}% (${coveredDimensions}/${totalDimensions} dimensions, threshold: ${(state.coverageThreshold * 100).toFixed(0)}%)`
+        );
+
+        // REPLAN on low coverage: if below 50% after 5min, do targeted follow-ups
+        const elapsedMin = (Date.now() - startTime) / 60000;
+        if (coveragePercentage < 50 && elapsedMin > 5 && iteration < maxIterations - 2) {
+          onProgressUpdate?.(`\n[Replan] Coverage low (${coveragePercentage.toFixed(0)}%) after ${elapsedMin.toFixed(1)}min — searching for missing dimensions...\n`);
+
+          const uncoveredDimensions = Object.entries(coverageStatus)
+            .filter(([, covered]) => !covered)
+            .map(([dim]) => dim)
+            .slice(0, 3);
+
+          if (uncoveredDimensions.length > 0) {
+            const replanQuery = `${state.campaign.productDescription || 'product'} ${uncoveredDimensions.join(' ')} comprehensive review detailed`;
+            onProgressUpdate?.(`  [Replan] → Targeted query: "${replanQuery}"\n`);
+
+            try {
+              const replanResult = await researcherAgent.research(
+                {
+                  topic: replanQuery,
+                  context: `Replan fill missing dimensions: ${uncoveredDimensions.join(', ')}`,
+                  depth: 'thorough',
+                },
+                (chunk) => {
+                  if (chunk.includes('Searching') || chunk.includes('[Depth')) {
+                    onProgressUpdate?.(`  [Replan] ${chunk}`);
+                  }
+                },
+                signal,
+                knowledge.summary,
+              );
+
+              allResults.push(replanResult);
+              const newCoverageStatus = evaluateCoverage(allResults);
+              const newCoveredDimensions = Object.values(newCoverageStatus).filter(Boolean).length;
+              onProgressUpdate?.(`  [Replan] Coverage improved: ${newCoveredDimensions}/${totalDimensions} dimensions\n`);
+            } catch (replanErr) {
+              onProgressUpdate?.(`  [Replan] Error: ${replanErr instanceof Error ? replanErr.message : replanErr}\n`);
+            }
+          }
+        }
+
+        // Emit structured metrics for UI display
+        const iterEndSec = Math.round((Date.now() - startTime) / 1000);
+        const sourcesNow = new Set(allResults.flatMap(r => r.sources)).size;
+        onProgressUpdate?.(`[METRICS] ${JSON.stringify({
+          iteration,
+          maxIterations,
+          elapsedSec: iterEndSec,
+          coveragePct: coveragePercentage.toFixed(0),
+          coveredDims: coveredDimensions,
+          totalDims: totalDimensions,
+          totalSources: sourcesNow,
+          queriesThisIteration: researchTopics.length,
+          totalQueries: allResults.length,
+        })}\n`);
+
+        // Run reflection agents unless preset says to skip (SQ mode)
+        const MIN_ITERATIONS_BEFORE_EXIT = limits.minIterations;
+        if (!limits.skipReflection && iteration >= 1 && iteration < maxIterations) {
+          onProgressUpdate?.(`\nRunning reflection agents (Devil's Advocate → Depth Auditor → Coverage Checker)...\n`);
+
+          const reflectionAngles = await reflectionAgent.evaluateGaps(
+            state,
+            allResults,
+            (chunk) => {
+              // Structured messages — emit directly to UI
+              if (chunk.includes('[150% BAR]') || chunk.includes('[Reflection') || chunk.includes('angles') || chunk.includes('Visual Scout')) {
+                onProgressUpdate?.(chunk);
+              }
+              // Skip raw LLM tokens from reflection — too noisy
+            },
+            signal
+          );
+
+          if (reflectionAngles.length > 0) {
+            state.reflectionSuggestedTopics = reflectionAngles.slice(0, 8);
+            onProgressUpdate?.(
+              `\nReflection found ${reflectionAngles.length} gaps — feeding top ${Math.min(reflectionAngles.length, 8)} into next iteration\n`
+            );
+          }
+        }
+
+        // Single-pass mode (SQ): exit after first iteration
+        if (limits.singlePassResearch && iteration >= 1) {
+          onProgressUpdate?.(`Single-pass mode — research complete after ${iteration} iteration(s)`);
+          break;
+        }
+
+        // Require minimum iterations AND minimum sources before allowing exit
+        const MIN_SOURCES = limits.minSources;
+        const currentSources = new Set(allResults.flatMap(r => r.sources)).size;
+        if (iteration >= MIN_ITERATIONS_BEFORE_EXIT && coveragePercentage / 100 >= state.coverageThreshold && currentSources >= MIN_SOURCES) {
+          onProgressUpdate?.(`Coverage threshold reached with ${currentSources} sources — research complete`);
+          break;
+        } else if (iteration < MIN_ITERATIONS_BEFORE_EXIT) {
+          onProgressUpdate?.(`Iteration ${iteration} of minimum ${MIN_ITERATIONS_BEFORE_EXIT} — continuing research for depth`);
+        } else if (currentSources < MIN_SOURCES) {
+          onProgressUpdate?.(`Only ${currentSources}/${MIN_SOURCES} sources — continuing research for depth`);
+        }
+      } catch (error) {
+        console.error('Orchestrator error:', error);
+        throw error;
+      }
+    }
+
+    // Cleanup watchdog
+    watchdog.stopChecking();
+    const finalStatus = watchdog.getStatus();
+    onProgressUpdate?.(`\n[Watchdog Final] ${finalStatus.sitesCompleted}/${finalStatus.sitesCompleted + finalStatus.sitesFailed} sites completed — ${finalStatus.timeoutHits.length} timeouts\n`);
+
+    return allResults;
+  },
+};
+
+// ─────────────────────────────────────────────────────────────
+// Reflection Agent — 150% bar gap detection
+// ─────────────────────────────────────────────────────────────
+
+export const reflectionAgent = {
+  /**
+   * 3 reflection perspectives — sequential, each builds on the previous.
+   * 1. Devil's Advocate — find where research is WRONG, biased, based on assumptions
+   * 2. Depth Auditor — demand specific numbers, named sources, exact quotes, verifiable claims
+   * 3. Coverage Checker — count data points per dimension, find geographic/temporal gaps
+   * Each contributes gap suggestions. Dedup across all 3 → up to 8 topics injected into next iteration.
+   */
+  async evaluateGaps(
+    state: OrchestratorState,
+    completedResults: ResearchResult[],
+    onChunk?: (chunk: string) => void,
+    signal?: AbortSignal
+  ): Promise<string[]> {
+    try {
+      const coverage = evaluateCoverage(completedResults);
+      const gaps = Object.entries(coverage)
+        .filter(([, covered]) => !covered)
+        .map(([dimension]) => dimension);
+
+      const totalDims = Object.keys(coverage).length;
+      onChunk?.(`[150% BAR] Covered: ${totalDims - gaps.length}/${totalDims}. Missing: ${gaps.join(', ') || 'none declared'}\n`);
+
+      const knowledge = buildKnowledgeState(completedResults);
+      const reflectionModel = getResearchModelConfig().reflectionModel;
+
+      // Shared context block for all 3 perspectives
+      const sharedContext = `Campaign: ${state.campaign.brand} | ${state.campaign.productDescription} | Target: ${state.campaign.targetAudience}
+${buildOrchestratorBrandContext(state.campaign)}
+
+${'═'.repeat(50)}
+WHAT WE ACTUALLY KNOW (extracted facts):
+${knowledge.summary || '(Nothing extracted yet — very early stage)'}
+${'═'.repeat(50)}
+
+RESEARCH COMPLETED (${completedResults.length} queries):
+${completedResults.map((r, i) => `${i + 1}. "${r.query}" → ${Object.values(r.coverage_graph).filter(Boolean).length}/10 dimensions`).join('\n')}
+
+FACTUAL INVENTORY:
+- Competitors: ${knowledge.competitors.length > 0 ? `${knowledge.competitors.length} (${knowledge.competitors.slice(0, 5).join(', ')})` : 'ZERO — CRITICAL'}
+- Price points: ${knowledge.pricePoints.length > 0 ? knowledge.pricePoints.slice(0, 5).join(', ') : 'ZERO'}
+- Verbatim quotes: ${knowledge.verbatimQuotes.length > 0 ? `${knowledge.verbatimQuotes.length}` : 'ZERO'}
+- Objections: ${knowledge.objections.length > 0 ? `${knowledge.objections.length}` : 'ZERO'}
+- Turning points: ${knowledge.turningPoints.length > 0 ? `${knowledge.turningPoints.length}` : 'ZERO'}
+- Failed solutions: ${knowledge.failedSolutions.length > 0 ? `${knowledge.failedSolutions.length}` : 'ZERO'}
+- Communities: ${knowledge.communities.length > 0 ? knowledge.communities.join(', ') : 'ZERO'}
+- Statistics: ${knowledge.statistics.length > 0 ? `${knowledge.statistics.length}` : 'ZERO'}
+
+DIMENSIONAL GAPS: ${gaps.length > 0 ? gaps.join(', ') : 'NONE DECLARED — OVERCONFIDENCE RISK!'}`;
+
+      const allAngles: string[] = [];
+
+      // ── Perspective 1: Devil's Advocate ──
+      onChunk?.(`\n[Reflection: Devil's Advocate] Finding where research is WRONG...\n`);
+      if (!signal?.aborted) {
+        const devilPrompt = `Find where research is WRONG or based on assumptions.
+
+${sharedContext}
+
+Check: assumptions without evidence, confirmation bias, contradictions, missing explanations.
+
+RESEARCH TO VERIFY:
+1. [specific search query]
+2. [specific search query]
+3. [specific search query]`;
+
+        try {
+          const response = await ollamaService.generateStream(devilPrompt, 'Find bias. Output specific search queries.', { model: reflectionModel, temperature: 0.5, num_predict: 400, think: getThinkMode('reflection'), onChunk, signal });
+          const angles = extractResearchAngles(response);
+          allAngles.push(...angles);
+          onChunk?.(`  [Devil's Advocate] Found ${angles.length} angles\n`);
+        } catch (err) {
+          if (signal?.aborted) throw err;
+          onChunk?.(`  [Devil's Advocate] Failed: ${err}\n`);
+        }
+      }
+
+      // ── Perspective 2: Depth Auditor ──
+      onChunk?.(`\n[Reflection: Depth Auditor] Demanding specifics...\n`);
+      if (!signal?.aborted) {
+        const depthPrompt = `Audit for specificity. Fail vague claims.
+
+${sharedContext}
+
+Need: real names, $X.XX prices, exact quotes, specific subreddits. Not "various" or "growing."
+
+RESEARCH TO GET SPECIFICS:
+1. [specific query]
+2. [specific query]
+3. [specific query]`;
+
+        try {
+          const response = await ollamaService.generateStream(depthPrompt, 'Audit specificity. Output search queries.', { model: reflectionModel, temperature: 0.5, num_predict: 400, think: getThinkMode('reflection'), onChunk, signal });
+          const angles = extractResearchAngles(response);
+          allAngles.push(...angles);
+          onChunk?.(`  [Depth Auditor] Found ${angles.length} angles\n`);
+        } catch (err) {
+          if (signal?.aborted) throw err;
+          onChunk?.(`  [Depth Auditor] Failed: ${err}\n`);
+        }
+      }
+
+      // ── Perspective 3: Coverage Checker ──
+      onChunk?.(`\n[Reflection: Coverage Checker] Counting data points per dimension...\n`);
+      if (!signal?.aborted) {
+        const coveragePrompt = `Count data points per dimension. Find blind spots.
+
+${sharedContext}
+
+Dimensions (need 3+ each): market size, competitors, objections, behaviors, regional, pricing, channels, positioning, psychology, media, purchase journey.
+Score: [Dimension]: [X] points — PASS/FAIL
+
+RESEARCH TO FILL GAPS:
+1. [query for worst dimension]
+2. [query for geographic/temporal gap]
+3. [query for missing segment]
+${getResearchLimits().maxVisualBatches > 0 ? `VISUAL_SCOUT: [competitor URLs if visual analysis lacking]
+AD_SCOUT: [ad library URLs if ad creative analysis missing]` : ''}`;
+
+        try {
+          const response = await ollamaService.generateStream(coveragePrompt, 'Count data points. Find gaps. Output search queries.', { model: reflectionModel, temperature: 0.5, num_predict: 400, think: getThinkMode('reflection'), onChunk, signal });
+          const angles = extractResearchAngles(response);
+          allAngles.push(...angles);
+          onChunk?.(`  [Coverage Checker] Found ${angles.length} angles\n`);
+
+          // Check if coverage checker requested visual scouting (VISUAL_SCOUT or AD_SCOUT)
+          // Enforce visual budget from preset limits
+          const reflVisualBudgetUsed = state._visualBatchesUsed || 0;
+          const reflVisualBudgetRemaining = getResearchLimits().maxVisualBatches - reflVisualBudgetUsed;
+          const scoutDirective = response.includes('VISUAL_SCOUT:') || response.includes('AD_SCOUT:');
+          if (scoutDirective && !state._visualFindings && reflVisualBudgetRemaining > 0) {
+            // Collect URLs from both VISUAL_SCOUT and AD_SCOUT directives
+            const allScoutUrls: string[] = [];
+            for (const directive of ['VISUAL_SCOUT', 'AD_SCOUT']) {
+              const match = response.match(new RegExp(`${directive}:\\s*(.+)`, 'i'));
+              if (match) {
+                const urls = match[1]
+                  .split(/[,\s]+/)
+                  .map(u => u.trim().replace(/[\[\]]/g, ''))
+                  .filter(u => u.startsWith('http'));
+                allScoutUrls.push(...urls);
+              }
+            }
+            const dedupedUrls = [...new Set(allScoutUrls)];
+            const reflMaxUrls = getResearchLimits().maxVisualUrls - (state._visualUrlsUsed || 0);
+            const reflCappedCount = Math.min(dedupedUrls.length, reflMaxUrls, 5);
+            if (dedupedUrls.length > 0 && reflCappedCount > 0) {
+              const hasAdScout = response.includes('AD_SCOUT:');
+              const label = hasAdScout ? 'Ad Scout' : 'Visual Scout';
+              onChunk?.(`\n[${label}] Coverage Checker requested visual analysis of ${dedupedUrls.length} URLs (capped to ${reflCappedCount})\n`);
+              try {
+                const { visualScoutAgent } = await import('./visualScoutAgent');
+                const { visualProgressStore } = await import('./visualProgressStore');
+                const visualFindings = await visualScoutAgent.analyzeCompetitorVisuals(
+                  dedupedUrls.slice(0, reflCappedCount),
+                  state.campaign,
+                  onChunk ? (msg: string | undefined) => onChunk(msg || '') : undefined,
+                  signal,
+                  // Rich progress events → text chunks + visual store
+                  (event) => {
+                    if (event.type === 'screenshot_batch_start') { visualProgressStore.startBatch(event.urls); }
+                    if (event.type === 'screenshot_start') { onChunk?.(`[${label}] Capturing ${event.index + 1}/${event.total}: ${event.url}\n`); visualProgressStore.setCapturing(event.url); }
+                    if (event.type === 'screenshot_done') { onChunk?.(`[${label}] ${event.error ? 'Failed' : 'Captured'} ${event.index + 1}/${event.total}\n`); visualProgressStore.setCaptured(event.url, event.thumbnail, event.error); }
+                    if (event.type === 'analysis_start') { onChunk?.(`[${label}] Analyzing visual ${event.index + 1}/${event.total}...\n`); visualProgressStore.setAnalyzing(event.url); }
+                    if (event.type === 'analysis_done' && event.findings) { onChunk?.(`[${label}] → tone=${event.findings.tone || '?'}, colors=${(event.findings.colors || []).slice(0, 2).join(', ') || '?'}\n`); visualProgressStore.setAnalyzed(event.url, event.findings); }
+                    if (event.type === 'synthesis_start') { onChunk?.(`[${label}] Synthesizing ${event.count} sites...\n`); visualProgressStore.setSynthesisStatus('running'); }
+                    if (event.type === 'synthesis_done') { visualProgressStore.setSynthesisStatus('done', event.patterns, event.gaps); }
+                  }
+                );
+                state._visualFindings = visualFindings;
+                state._visualBatchesUsed = (state._visualBatchesUsed || 0) + 1;
+                state._visualUrlsUsed = (state._visualUrlsUsed || 0) + reflCappedCount;
+                onChunk?.(`[${label}] Visual analysis complete — ${visualFindings.totalAnalyzed} sites analyzed\n`);
+              } catch (err) {
+                onChunk?.(`[${label}] Visual analysis failed: ${err}\n`);
+              }
+            }
+          }
+        } catch (err) {
+          if (signal?.aborted) throw err;
+          onChunk?.(`  [Coverage Checker] Failed: ${err}\n`);
+        }
+      }
+
+      // Dedup angles across all 3 perspectives
+      const seen = new Set<string>();
+      const deduped = allAngles.filter(angle => {
+        const key = angle.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      onChunk?.(`\n[Reflection] 3 perspectives found ${allAngles.length} total angles → ${deduped.length} after dedup\n`);
+      return deduped.slice(0, 8);
+    } catch (error) {
+      console.error('Reflection agent error:', error);
+      return [];
+    }
+  },
+};
+
+/** Extract numbered research angles from reflection agent output */
+function extractResearchAngles(response: string): string[] {
+  const anglesMatch = response.match(/RESEARCH\s+TO\s+(?:VERIFY|GET\s+SPECIFICS|FILL\s+GAPS):\s*([\s\S]*?)(?=\n\n[A-Z]|\n*$)/i)
+    || response.match(/AGGRESSIVE\s+NEW\s+RESEARCH\s+ANGLES:\s*([\s\S]*?)$/i)
+    || response.match(/(?:^|\n)\d+\.\s+["']?[a-z]/im);
+
+  if (!anglesMatch) {
+    // Fallback: try to find any numbered list items that look like queries
+    const lines = response.split('\n');
+    return lines
+      .filter(line => /^\s*\d+[\.\)]\s+/.test(line))
+      .map(line => line.replace(/^\s*\d+[\.\)]\s+/, '').trim())
+      .filter(line => line.length > 15 && line.length < 200 && !line.startsWith('What') && !line.startsWith('Where') && !line.startsWith('Do '))
+      .slice(0, 4);
+  }
+
+  const section = anglesMatch[1] || anglesMatch[0];
+  return section
+    .split('\n')
+    .filter((line: string) => /^\s*\d+[\.\)]\s+/.test(line))
+    .map((line: string) => line.replace(/^\s*\d+[\.\)]\s+/, '').trim())
+    .filter((angle: string) => angle.length > 5 && !angle.startsWith('['))
+    .slice(0, 4);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+function extractSources(text: string): string[] {
+  const urlRegex = /https?:\/\/[^\s)]+/g;
+  const urls = text.match(urlRegex) || [];
+  return [...new Set(urls)].slice(0, 10);
+}
+
+/**
+ * Quality filter — reject obvious noise but DON'T require specific platform mentions.
+ * Previous version was too aggressive — rejected valid queries like
+ * "collagen supplement absorption mechanisms clinical studies" because
+ * it didn't contain reddit/trustpilot/etc. Now we only reject known-bad patterns.
+ */
+function isQualityQuery(query: string): boolean {
+  const lower = query.toLowerCase();
+  // REJECT: Aesthetic trend-chasing (no business signal)
+  const badPatterns = [/aesthetic\s+trend/i, /clean\s+girl/i, /viral\s+trend/i, /tiktok.*aesthetic/i, /trending.*hashtag/i];
+  if (badPatterns.some(p => p.test(query))) return false;
+  // REJECT: Celebrity, unrelated noise
+  if (/celebrity|kardashian|elon/.test(lower)) return false;
+  // REJECT: too short to be meaningful
+  if (lower.split(/\s+/).length < 3) return false;
+  // ACCEPT: anything that isn't explicitly rejected — let the research run
+  return true;
+}
+
+interface OrchestratorDecision {
+  query: string;
+  context: string;
+  depth: 'quick' | 'thorough';
+  shouldContinue: boolean;
+  question?: string;
+  questionContext?: string;
+  visualScoutUrls?: string[]; // URLs for visual analysis via vision model
+}
+
+function parseOrchestratorDecision(decision: string): OrchestratorDecision[] {
+  const topics: OrchestratorDecision[] = [];
+
+  // Check for QUESTION
+  const questionMatch = decision.match(/QUESTION:\s*(.+?)(?=\n|$)/i);
+  if (questionMatch) {
+    return [{
+      query: '',
+      context: '',
+      depth: 'quick',
+      shouldContinue: true,
+      question: questionMatch[1].trim(),
+      questionContext: 'Orchestrator needs clarification',
+    }];
+  }
+
+  // Check for COMPLETE
+  if (decision.toLowerCase().includes('complete') && decision.toLowerCase().includes('true')) {
+    return [{ query: '', context: '', depth: 'quick', shouldContinue: false }];
+  }
+
+  const lines = decision.split('\n');
+
+  // ── Strategy 1: Explicit RESEARCH: / INVESTIGATE: prefix ──
+  // Now supports "RESEARCH: [query] — fills [gap]" format for gap-aware queries
+  for (const line of lines) {
+    if (line.includes('RESEARCH:') || line.includes('INVESTIGATE:')) {
+      const raw = line.replace(/.*(?:RESEARCH|INVESTIGATE):\s*/i, '').trim();
+      // Split on " — fills " or " - fills " to extract gap context
+      const gapSplit = raw.split(/\s*[—–-]+\s*fills?\s*/i);
+      const topic = gapSplit[0]?.trim();
+      const gapContext = gapSplit[1]?.trim();
+      if (topic && topic.length >= 10 && isViableQuery(topic)) {
+        topics.push({
+          query: topic,
+          context: gapContext || 'Marketing research for campaign optimization',
+          depth: 'thorough',
+          shouldContinue: true,
+        });
+      }
+    }
+  }
+
+  // ── Strategy 2: Numbered lists (1. ... / 1) ... ) ──
+  if (topics.length === 0) {
+    for (const line of lines) {
+      const numberedMatch = line.match(/^\s*\d+[\.\)]\s+(.+)/);
+      if (numberedMatch) {
+        let topic = numberedMatch[1]
+          .replace(/^["']|["']$/g, '')  // strip wrapping quotes
+          .replace(/\s*\(.*?\)\s*$/, '') // strip trailing parenthetical
+          .trim();
+        // Skip lines that are clearly explanations, not queries
+        if (topic.length >= 10 && topic.length <= 200 && !topic.startsWith('This ') && !topic.startsWith('The ') && !topic.startsWith('We ') && isViableQuery(topic)) {
+          topics.push({
+            query: topic,
+            context: 'Marketing research for campaign optimization',
+            depth: 'thorough',
+            shouldContinue: true,
+          });
+        }
+      }
+    }
+  }
+
+  // ── Strategy 3: Bullet points (- ... / • ... / * ...) ──
+  if (topics.length === 0) {
+    for (const line of lines) {
+      const bulletMatch = line.match(/^\s*[-•*]\s+(.+)/);
+      if (bulletMatch) {
+        let topic = bulletMatch[1]
+          .replace(/^["']|["']$/g, '')
+          .replace(/\s*\(.*?\)\s*$/, '')
+          .trim();
+        if (topic.length >= 10 && topic.length <= 200 && !topic.startsWith('This ') && !topic.startsWith('The ') && !topic.startsWith('We ') && isViableQuery(topic)) {
+          topics.push({
+            query: topic,
+            context: 'Marketing research for campaign optimization',
+            depth: 'thorough',
+            shouldContinue: true,
+          });
+        }
+      }
+    }
+  }
+
+  // ── Strategy 4: Quoted strings anywhere in the text ──
+  if (topics.length === 0) {
+    const quotedMatches = decision.match(/"([^"]{15,150})"/g);
+    if (quotedMatches) {
+      for (const match of quotedMatches.slice(0, 5)) {
+        const topic = match.replace(/^"|"$/g, '').trim();
+        if (isViableQuery(topic)) {
+          topics.push({
+            query: topic,
+            context: 'Marketing research for campaign optimization',
+            depth: 'thorough',
+            shouldContinue: true,
+          });
+        }
+      }
+    }
+  }
+
+  // Parse VISUAL_SCOUT: directive for screenshot analysis
+  const visualLines = lines.filter(l => l.includes('VISUAL_SCOUT:'));
+  if (visualLines.length > 0) {
+    const urls: string[] = [];
+    for (const vl of visualLines) {
+      const urlPart = vl.replace(/.*VISUAL_SCOUT:\s*/i, '').trim();
+      const extracted = urlPart
+        .split(/[,\s]+/)
+        .map(u => u.trim().replace(/[\[\]]/g, ''))
+        .filter(u => u.startsWith('http'));
+      urls.push(...extracted);
+    }
+    if (urls.length > 0) {
+      if (topics.length > 0) {
+        topics[0].visualScoutUrls = urls;
+      } else {
+        topics.push({
+          query: '',
+          context: 'Visual analysis of competitor pages',
+          depth: 'thorough',
+          shouldContinue: true,
+          visualScoutUrls: urls,
+        });
+      }
+    }
+  }
+
+  // Parse AD_SCOUT: directive for ad creative / marketing page screenshot analysis
+  const adScoutLines = lines.filter(l => l.includes('AD_SCOUT:'));
+  if (adScoutLines.length > 0) {
+    const adUrls: string[] = [];
+    for (const al of adScoutLines) {
+      const urlPart = al.replace(/.*AD_SCOUT:\s*/i, '').trim();
+      const extracted = urlPart
+        .split(/[,\s]+/)
+        .map(u => u.trim().replace(/[\[\]]/g, ''))
+        .filter(u => u.startsWith('http'));
+      adUrls.push(...extracted);
+    }
+    if (adUrls.length > 0) {
+      // Merge into existing visualScoutUrls (same pipeline, different source directive)
+      if (topics.length > 0) {
+        const existing = topics[0].visualScoutUrls || [];
+        topics[0].visualScoutUrls = [...existing, ...adUrls];
+      } else {
+        topics.push({
+          query: '',
+          context: 'Visual analysis of ad creatives and marketing pages',
+          depth: 'thorough',
+          shouldContinue: true,
+          visualScoutUrls: adUrls,
+        });
+      }
+    }
+  }
+
+  // No parseable queries found — end research
+  if (topics.length === 0) {
+    topics.push({
+      query: '',
+      context: '',
+      depth: 'quick',
+      shouldContinue: false,
+    });
+  }
+
+  return topics;
+}
+
+/**
+ * Check if a new query is too similar to one we already ran.
+ * Uses token overlap (Jaccard similarity) on lowercased words.
+ * Threshold: 0.6 (60%+ word overlap = too similar, skip it).
+ */
+function isDuplicateQuery(newQuery: string, existingQueries: string[]): boolean {
+  const newTokens = new Set(newQuery.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(t => t.length > 2));
+  if (newTokens.size === 0) return false;
+
+  for (const existing of existingQueries) {
+    const existTokens = new Set(existing.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(t => t.length > 2));
+    if (existTokens.size === 0) continue;
+
+    // Jaccard similarity: |intersection| / |union|
+    let intersection = 0;
+    for (const t of newTokens) {
+      if (existTokens.has(t)) intersection++;
+    }
+    const union = new Set([...newTokens, ...existTokens]).size;
+    const similarity = intersection / union;
+    if (similarity >= 0.6) return true;
+  }
+  return false;
+}
+
+/** Lightweight query viability check — rejects obviously bad queries but doesn't require specific platforms */
+function isViableQuery(topic: string): boolean {
+  // REJECT: truncated queries ending in comma/paren
+  if (/[,)]$/.test(topic) && !/\bOR\b|\bAND\b/.test(topic)) return false;
+  // REJECT: too vague
+  if (/^trends?\s|^insights?\s|^social media sentiment$|^general interest$|^what people$/i.test(topic)) return false;
+  // REJECT: just a single word
+  if (topic.split(/\s+/).length < 3) return false;
+  return true;
+}
+
+function buildEvaluationPrompt(
+  state: OrchestratorState,
+  results: ResearchResult[],
+  researchMode: 'interactive' | 'autonomous' = 'autonomous',
+  knowledge?: KnowledgeState
+): string {
+  const reflectionNote = state.reflectionSuggestedTopics?.length
+    ? `\n\nREFLECTION AGENT FLAGGED THESE GAPS (high-priority):
+${state.reflectionSuggestedTopics.map((t, i) => `${i + 1}. ${t}`).join('\n')}
+Consider these angles for next research deployment.`
+    : '';
+
+  // Build a structured "what we know" section from knowledge state
+  const knowledgeSection = knowledge?.summary
+    ? `\n${'─'.repeat(50)}
+WHAT WE KNOW SO FAR (structured facts extracted from ${results.length} queries):
+${knowledge.summary}
+${'─'.repeat(50)}
+
+WHAT'S STILL MISSING? Look at the gaps:
+${!knowledge.competitors.length ? '- NO named competitors found yet — CRITICAL gap' : ''}
+${!knowledge.pricePoints.length ? '- NO specific price points found — need pricing data' : ''}
+${!knowledge.verbatimQuotes.length ? '- NO verbatim customer quotes — need real language' : ''}
+${!knowledge.objections.length ? '- NO purchase objections identified — need friction points' : ''}
+${!knowledge.turningPoints.length ? '- NO turning points found — need trigger moments' : ''}
+${!knowledge.failedSolutions.length ? '- NO failed solutions mapped — need "tried X, didn\'t work"' : ''}
+${!knowledge.communities.length ? '- NO audience communities found — where do they talk?' : ''}
+`.replace(/\n{3,}/g, '\n\n')
+    : '';
+
+  const limits = getResearchLimits();
+
+  // Adapt prompt verbosity based on preset tier
+  const isFast = limits.maxIterations <= 10; // SQ or QK
+  const isDeep = limits.maxIterations >= 40; // EX or MX
+
+  // For fast presets, use a shorter, more direct prompt
+  const dimensionsList = isFast
+    ? `10 Dimensions to check:
+1. Market size/trends 2. Competitors (named) 3. Customer objections
+4. Pricing 5. Positioning gaps 6. Verbatim quotes
+7. Purchase triggers 8. Failed solutions 9. Communities
+10. Channel effectiveness`
+    : `16 Dimensions (need ${isDeep ? '5+' : '3+'} data points each):
+1. Market size & trends  2. Competitor analysis  3. Customer sentiment
+4. Emerging behaviors  5. Regional differences  6. Pricing strategies
+7. Channel effectiveness  8. Positioning gaps  9. Psychological triggers
+10. Media consumption  11. Amazon reviews  12. Reddit/forum research
+13. Identity markers  14. Ad style analysis  15. Market sophistication
+16. Visual competitive analysis`;
+
+  const methodologyBlock = isFast
+    ? '' // SQ/QK: skip verbose methodology
+    : `
+${METHODOLOGY_STEPS.map((s, i) => `Step ${i + 1}: ${s.name} — ${s.goals.slice(0, 2).join(' | ')}
+  Queries: ${s.queryTemplates.slice(0, 2).join(' | ')}`).join('\n')}`;
+
+  const platformHints = `Query patterns:
+- Amazon: "site:amazon.com {product} reviews" | "amazon {product} 1 star complaints"
+- Reddit: "site:reddit.com {product}" | "reddit r/{subreddit} honest review"
+- Competitor: "[competitor] meta ad library ads" | "[competitor] trustpilot reviews"`;
+
+  // Coverage tracking
+  const covGraph = evaluateCoverage(results);
+  const coveredDims = Object.entries(covGraph).filter(([, v]) => v).map(([k]) => k);
+  const methodSummary = isFast ? '' : getMethodologySummary(
+    coveredDims,
+    results.length,
+    knowledge?.verbatimQuotes?.length || 0,
+    knowledge?.competitors?.length || 0
+  );
+
+  // Visual scout availability based on preset limits
+  const visualNote = limits.maxVisualBatches > 0
+    ? `\nVISUAL_SCOUT: [URLs] — screenshot competitor pages (max ${limits.maxVisualUrls} URLs total)
+AD_SCOUT: [URLs] — screenshot ad creatives/landing pages`
+    : '';
+
+  // Build a compact list showing what each past query actually found
+  const queryResults = results.map((r) => {
+    const covered = Object.values(r.coverage_graph).filter(Boolean).length;
+    const total = Object.keys(r.coverage_graph).length;
+    // Show first concrete sourced finding so orchestrator sees what was learned
+    const sourcedLine = r.findings.split('\n')
+      .find(l => l.trim().length > 20 && /\[Source:/.test(l));
+    const found = sourcedLine ? ` → ${sourcedLine.trim().slice(0, 80)}` : '';
+    return `- "${r.query}" (${covered}/${total})${found}`;
+  }).join('\n');
+
+  // Token budget pressure: estimate used vs capacity
+  // Capacity ~ maxIterations * maxResearchersPerIteration * 600 tokens per synthesis
+  const estimatedBudget = limits.maxIterations * limits.maxResearchersPerIteration * 600;
+  const sessionTokensUsed = tokenTracker.getSnapshot().sessionTotal;
+  const budgetPct = estimatedBudget > 0
+    ? Math.round((sessionTokensUsed / estimatedBudget) * 100)
+    : 0;
+  const budgetNote = budgetPct >= 80
+    ? `\nBUDGET NOTE: You've used ${budgetPct}% of your research budget. Prioritize the highest-value remaining queries and consider wrapping up soon.\n`
+    : '';
+
+  return `You are a research orchestrator. Identify the MOST IMPORTANT gap and write search queries to fill it.
+
+CAMPAIGN:
+Brand: ${state.campaign.brand} | Product: ${state.campaign.productDescription}
+Features: ${Array.isArray(state.campaign.productFeatures) ? state.campaign.productFeatures.join(', ') : (state.campaign.productFeatures || 'N/A')}
+Target: ${state.campaign.targetAudience} | Goal: ${state.campaign.marketingGoal}
+${buildOrchestratorBrandContext(state.campaign)}${state.userProvidedContext ? `\nUser context: ${Object.entries(state.userProvidedContext).map(([k, v]) => `${k}: ${v}`).join(', ')}` : ''}
+${knowledgeSection}
+Queries completed (${results.length}):
+${queryResults}
+
+${dimensionsList}
+${methodologyBlock}
+${platformHints}
+${methodSummary}
+${reflectionNote}
+${budgetNote}
+DECISION PROCESS:
+1. Which gap in WHAT'S STILL MISSING above would hurt the ad campaign most if left unfilled?
+2. What did past queries FAIL to find? Write queries that approach the topic differently.
+3. Target SPECIFIC sources: site:reddit.com, site:amazon.com, "[competitor name] reviews", "[product] complaints"
+4. Prefer concrete nouns and platform names over abstract concepts.
+
+RULES:
+- Need ${limits.minSources}+ sources before stopping
+- ${isFast ? 'Focus on highest-impact gaps only' : 'Every claim needs a source URL'}
+- DO NOT write queries that overlap >50% words with past queries
+- Each query must name the gap it fills: RESEARCH: [query] — fills [gap]
+
+${isFast
+  ? `List 1-3 specific queries, or COMPLETE: true if key gaps are covered.`
+  : `List 3-5 SPECIFIC queries:
+RESEARCH: [query] — fills [gap]
+RESEARCH: [query] — fills [gap]
+
+STOP ONLY when: ${limits.minSources}+ sources AND all major dimensions covered.`}
+${visualNote}
+${researchMode === 'interactive' ? '\nQUESTION: [question] — if you need user clarification' : ''}
+COMPLETE: true — ONLY when research targets met`;
+}
+
+function buildCoverageGraph(response: string): CoverageGraph {
+  const defaultGraph: CoverageGraph = {
+    market_size_trends: false,
+    competitor_analysis: false,
+    customer_objections: false,
+    emerging_trends: false,
+    regional_differences: false,
+    pricing_strategies: false,
+    channel_effectiveness: false,
+    brand_positioning_gaps: false,
+    psychological_triggers: false,
+    media_consumption_patterns: false,
+    visual_competitive_analysis: false,
+    amazon_research: false,
+    reddit_research: false,
+    identity_markers: false,
+    ad_style_analysis: false,
+    market_sophistication: false,
+  };
+
+  const lower = response.toLowerCase();
+
+  // First try structured COVERAGE: section
+  const coverageMatch = response.match(/COVERAGE:\s*([^\n]+(?:\n[^\n]*)*)/i);
+  if (coverageMatch) {
+    const coverageText = coverageMatch[1];
+    const dimensionMap: Record<string, keyof CoverageGraph> = {
+      'market size': 'market_size_trends',
+      'competitor': 'competitor_analysis',
+      'objection': 'customer_objections',
+      'trend': 'emerging_trends',
+      'regional': 'regional_differences',
+      'pricing': 'pricing_strategies',
+      'channel': 'channel_effectiveness',
+      'positioning': 'brand_positioning_gaps',
+      'psychological': 'psychological_triggers',
+      'media': 'media_consumption_patterns',
+      'amazon': 'amazon_research',
+      'reddit': 'reddit_research',
+      'identity': 'identity_markers',
+      'ad style': 'ad_style_analysis',
+      'sophistication': 'market_sophistication',
+      'visual': 'visual_competitive_analysis',
+    };
+
+    Object.entries(dimensionMap).forEach(([keyword, dimension]) => {
+      const regex = new RegExp(`${keyword}[^,]*covered`, 'i');
+      if (regex.test(coverageText)) {
+        defaultGraph[dimension] = true;
+      }
+    });
+  }
+
+  // Fallback: scan full text for dimension keywords
+  // Require 3+ different keyword matches AND substantial surrounding content — brief mentions don't count
+  const heuristicMap: Array<{ keywords: string[]; dimension: keyof CoverageGraph; minMatches: number }> = [
+    { keywords: ['market size', 'tam ', 'total addressable', 'market worth', 'billion', 'million dollar', 'market growth', 'market value'], dimension: 'market_size_trends', minMatches: 4 },
+    { keywords: ['competitor', 'competing brand', 'rival', 'vs ', 'compared to', 'market leader', 'alternative brand'], dimension: 'competitor_analysis', minMatches: 4 },
+    { keywords: ['objection', 'skeptic', 'doubt', 'concern about', 'hesitat', 'barrier to purchase', 'why they don\'t buy', 'reluctan'], dimension: 'customer_objections', minMatches: 4 },
+    { keywords: ['emerging trend', 'growing trend', 'new trend', 'trending', 'rise of', 'shift toward', 'increasingly'], dimension: 'emerging_trends', minMatches: 4 },
+    { keywords: ['region', 'country', 'geographic', 'local market', 'europe', 'asia', 'north america', 'urban', 'rural'], dimension: 'regional_differences', minMatches: 4 },
+    { keywords: ['pricing', 'price point', 'price range', 'cost of', 'premium pric', 'affordable', 'budget', 'value for money', 'willingness to pay'], dimension: 'pricing_strategies', minMatches: 4 },
+    { keywords: ['channel', 'distribution', 'retail', 'e-commerce', 'online store', 'marketplace', 'direct-to-consumer', 'dtc', 'wholesale'], dimension: 'channel_effectiveness', minMatches: 4 },
+    { keywords: ['positioning', 'brand position', 'unique selling', 'usp', 'differentiat', 'brand identity', 'brand perception', 'gap in market'], dimension: 'brand_positioning_gaps', minMatches: 4 },
+    { keywords: ['psycholog', 'emotional', 'trigger', 'fear of', 'desire for', 'motivation', 'cognitive', 'bias', 'persuasion', 'social proof'], dimension: 'psychological_triggers', minMatches: 4 },
+    { keywords: ['media consumption', 'social media', 'instagram', 'tiktok', 'youtube', 'podcast', 'influencer', 'content consumption', 'advertising channel'], dimension: 'media_consumption_patterns', minMatches: 4 },
+    { keywords: ['visual', 'screenshot', 'layout', 'color palette', 'visual tone', 'design style', 'visual approach', 'cta design', 'visual gap'], dimension: 'visual_competitive_analysis', minMatches: 4 },
+    // Methodology-driven dimensions
+    { keywords: ['amazon', 'amazon review', 'amazon.com', '1-star', '5-star', 'amazon q&a', 'verified purchase', 'amazon rating', 'amazon best seller'], dimension: 'amazon_research', minMatches: 3 },
+    { keywords: ['reddit', 'subreddit', 'r/', 'redditor', 'upvote', 'reddit thread', 'reddit post', 'holy grail', 'reddit recommendation'], dimension: 'reddit_research', minMatches: 3 },
+    { keywords: ['identity', 'tribe', 'tribal', 'belonging', 'identity marker', 'status signal', 'values', 'cultural', 'aspirational', 'influencer they follow', 'community identity'], dimension: 'identity_markers', minMatches: 3 },
+    { keywords: ['ad style', 'ugc', 'user generated', 'professional ad', 'hook pattern', 'ad format', 'video ad', 'creative approach', 'ad creative', 'bright side', 'dark side', 'emotional appeal', 'logical appeal'], dimension: 'ad_style_analysis', minMatches: 3 },
+    { keywords: ['sophistication level', 'market sophistication', 'level 1', 'level 2', 'level 3', 'level 4', 'level 5', 'saturated market', 'disillusioned', 'skeptical market', 'new mechanism', 'depositioning'], dimension: 'market_sophistication', minMatches: 3 },
+  ];
+
+  heuristicMap.forEach(({ keywords, dimension, minMatches }) => {
+    if (!defaultGraph[dimension]) {
+      const matches = keywords.filter((kw) => lower.includes(kw));
+      // Require 3+ keyword matches AND at least 200 chars of content around matches
+      // This prevents superficial mentions from marking a dimension as covered
+      if (matches.length >= minMatches) {
+        let contentChars = 0;
+        for (const kw of matches) {
+          const idx = lower.indexOf(kw);
+          if (idx >= 0) {
+            // Count chars in a 300-char window around each match
+            contentChars += Math.min(lower.slice(Math.max(0, idx - 50), idx + 250).length, 300);
+          }
+        }
+        if (contentChars >= 300) {
+          defaultGraph[dimension] = true;
+        }
+      }
+    }
+  });
+
+  return defaultGraph;
+}
+
+function evaluateCoverage(results: ResearchResult[]): CoverageGraph {
+  const merged: CoverageGraph = {
+    market_size_trends: false,
+    competitor_analysis: false,
+    customer_objections: false,
+    emerging_trends: false,
+    regional_differences: false,
+    pricing_strategies: false,
+    channel_effectiveness: false,
+    brand_positioning_gaps: false,
+    psychological_triggers: false,
+    media_consumption_patterns: false,
+    visual_competitive_analysis: false,
+    amazon_research: false,
+    reddit_research: false,
+    identity_markers: false,
+    ad_style_analysis: false,
+    market_sophistication: false,
+  };
+
+  results.forEach((result) => {
+    Object.keys(merged).forEach((key) => {
+      if (result.coverage_graph[key]) {
+        merged[key as keyof CoverageGraph] = true;
+      }
+    });
+  });
+
+  return merged;
+}

@@ -1,0 +1,71 @@
+/**
+ * ShineText — Animated shimmer/shine effect on text.
+ * Inspired by uiverse.io/neerajbaniwal/hungry-mule-59
+ *
+ * Use for all status messages: "Thinking...", "Researching...", "Generating..."
+ * Adapts to light and dark backgrounds via the `variant` prop.
+ */
+
+import type { ReactNode, CSSProperties } from 'react';
+
+interface ShineTextProps {
+  children: ReactNode;
+  /** 'light' = dark text on light bg, 'dark' = light text on dark bg */
+  variant?: 'light' | 'dark';
+  /** Additional CSS classes */
+  className?: string;
+  /** Animation speed in seconds (default 3) */
+  speed?: number;
+  /** Set false to disable animation (shows static text) */
+  animate?: boolean;
+}
+
+// Inject keyframes once (ID-gated to survive HMR)
+function injectKeyframes() {
+  if (typeof document === 'undefined') return;
+  const id = 'nomad-shine-keyframes';
+  if (document.getElementById(id)) return;
+  const style = document.createElement('style');
+  style.id = id;
+  style.textContent = `
+    @keyframes nomad-shine {
+      0% { background-position: 0; }
+      60% { background-position: 250px; }
+      100% { background-position: 250px; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+export function ShineText({
+  children,
+  variant = 'light',
+  className = '',
+  speed = 3,
+  animate = true,
+}: ShineTextProps) {
+  injectKeyframes();
+
+  const gradient =
+    variant === 'light'
+      ? 'linear-gradient(to right, #a1a1aa 0, #18181b 15%, #a1a1aa 30%)'
+      : 'linear-gradient(to right, rgba(255,255,255,0.3) 0, rgba(255,255,255,0.85) 15%, rgba(255,255,255,0.3) 30%)';
+
+  const style: CSSProperties = animate
+    ? {
+        background: gradient,
+        backgroundPosition: 0,
+        WebkitBackgroundClip: 'text',
+        WebkitTextFillColor: 'transparent',
+        backgroundClip: 'text',
+        animation: `nomad-shine ${speed}s infinite linear`,
+        animationFillMode: 'forwards',
+      }
+    : {};
+
+  return (
+    <span className={`whitespace-nowrap ${className}`} style={style}>
+      {children}
+    </span>
+  );
+}

@@ -1,0 +1,44 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "types": ["vite/client", "node"],
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* Path aliases */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
+
+    /* Linting — relaxed for shipping, tighten incrementally */
+    "strict": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": false,
+    "noImplicitAny": false
+  },
+  "include": ["src"],
+  "exclude": [
+    "src/utils/__tests__/**/*",
+    "src/utils/memory.test.ts",
+    "src/utils/memoryExample.ts",
+    "src/components/ui/button.tsx",
+    "src/components/ui/separator.tsx",
+    "src/components/ui/tooltip.tsx",
+    "src/components/ui/file-tree-1.tsx"
+  ]
+}
