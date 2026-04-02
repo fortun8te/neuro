@@ -63,7 +63,7 @@ export async function isEmbeddingAvailable(): Promise<boolean> {
   if (_embedAvailable !== null) return _embedAvailable;
   try {
     const endpoint = getOllamaEndpoint();
-    const resp = await fetch(`${endpoint}/api/tags`, { signal: AbortSignal.timeout(5000) });
+    const resp = await fetch(`${endpoint}/api/tags`, { signal: AbortSignal.timeout(30000) });
     if (!resp.ok) { _embedAvailable = false; return false; }
     const data = await resp.json() as { models?: Array<{ name: string }> };
     _embedAvailable = (data.models ?? []).some(m => m.name.includes('nomic-embed') || m.name.includes('embed'));
@@ -94,7 +94,7 @@ export async function embed(text: string, signal?: AbortSignal): Promise<Float32
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: EMBED_MODEL, input: text }),
-      signal: signal ?? AbortSignal.timeout(10000),
+      signal: signal ?? AbortSignal.timeout(30000),
     });
 
     if (!resp.ok) {

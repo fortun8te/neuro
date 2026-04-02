@@ -172,6 +172,32 @@ export function extractSourcesFromMessage(text: string): Source[] {
 }
 
 /**
+ * Remove full URLs from message text
+ * Keeps structured patterns like [Source: example.com] but removes bare URLs
+ */
+export function removeUrlsFromText(text: string): string {
+  if (!text) return '';
+
+  // Remove raw URLs but keep structured source references like [Source: domain]
+  // This regex removes https://... or www.... when they appear as standalone text
+  return text
+    .split('\n')
+    .map(line => {
+      // Skip lines that are purely source metadata
+      if (/^\[Source:\s*https?:\/\/.+?\]$/.test(line.trim())) {
+        return '';
+      }
+      // Remove inline full URLs and clean up extra spaces
+      return line
+        .replace(/https?:\/\/[^\s\]]+/g, '')
+        .replace(/\s+/g, ' ')  // collapse multiple spaces
+        .trim();
+    })
+    .filter(line => line.length > 0)
+    .join('\n');
+}
+
+/**
  * Merge multiple source arrays with deduplication
  */
 export function mergeSources(...sourceLists: Source[][]): Source[] {

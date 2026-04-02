@@ -1,0 +1,14 @@
+Neuro persistent memory -- cross-session facts, preferences, decisions.
+
+About Michael:
+- Direct, no-BS communication preferred
+- Casual Dutch-English mix is normal
+- Builds AI tools and creative systems
+
+Preferences:
+- No emojis unless asked
+- No em dashes in output
+- Terse by default, expand when asked
+
+Decisions:
+(Neuro appends learned decisions here)

@@ -1,0 +1,297 @@
+/* Network Diagram Styles */
+
+.network-diagram {
+  width: 100%;
+  position: relative;
+}
+
+.network-container {
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+}
+
+.network-container.dark {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.network-container.light {
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* Vis.js Network Styles */
+.vis-network {
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.vis-network canvas {
+  display: block;
+}
+
+/* Navigation buttons */
+.vis-button {
+  background-color: rgba(200, 200, 200, 0.9);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  height: 36px;
+  width: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 12px;
+  color: #333;
+  transition: all 200ms ease-out;
+  user-select: none;
+}
+
+.vis-button:hover {
+  background-color: rgba(220, 220, 220, 0.95);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.vis-button:active {
+  background-color: rgba(180, 180, 180, 0.95);
+}
+
+.dark .vis-button {
+  background-color: rgba(50, 50, 50, 0.9);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.dark .vis-button:hover {
+  background-color: rgba(70, 70, 70, 0.95);
+}
+
+/* Tooltips */
+.vis-tooltip {
+  background-color: rgba(0, 0, 0, 0.8);
+  border-radius: 4px;
+  padding: 8px 12px;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 11px;
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.dark .vis-tooltip {
+  background-color: rgba(0, 0, 0, 0.95);
+}
+
+.light .vis-tooltip {
+  background-color: rgba(255, 255, 255, 0.95);
+  color: rgba(0, 0, 0, 0.87);
+  border-color: rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Context menu */
+.vis-menu {
+  background-color: rgba(240, 240, 240, 0.95);
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 4px 0;
+  font-size: 12px;
+  z-index: 1000;
+}
+
+.vis-menu-item {
+  padding: 8px 16px;
+  cursor: pointer;
+  color: rgba(0, 0, 0, 0.87);
+  transition: background-color 150ms ease-out;
+}
+
+.vis-menu-item:hover {
+  background-color: rgba(0, 0, 0, 0.08);
+}
+
+.dark .vis-menu {
+  background-color: rgba(30, 30, 30, 0.95);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.dark .vis-menu-item {
+  color: rgba(255, 255, 255, 0.87);
+}
+
+.dark .vis-menu-item:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Node styles */
+.vis-node {
+  border: 2px solid;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 200ms ease-out;
+}
+
+.vis-node:hover {
+  box-shadow: 0 0 16px rgba(0, 0, 0, 0.2);
+}
+
+.vis-node.vis-selected {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+  border-color: #3b82f6 !important;
+}
+
+/* Edge styles */
+.vis-edge {
+  pointer-events: auto;
+}
+
+.vis-edge.vis-selected {
+  z-index: 10;
+}
+
+.vis-edge.vis-highlight {
+  z-index: 9;
+}
+
+/* Animation */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.network-loading {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .vis-button {
+    height: 32px;
+    width: 32px;
+    font-size: 11px;
+  }
+
+  .vis-menu {
+    font-size: 11px;
+  }
+
+  .vis-menu-item {
+    padding: 6px 12px;
+  }
+}
+
+/* Legend */
+.network-legend {
+  margin-top: 12px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  font-size: 12px;
+}
+
+.dark .network-legend {
+  background: rgba(0, 0, 0, 0.2);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.87);
+}
+
+.network-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.network-legend-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.dark .network-legend-color {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Info panel */
+.network-info-panel {
+  margin-top: 12px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  font-size: 12px;
+  animation: slideIn 200ms ease-out;
+}
+
+.dark .network-info-panel {
+  background: rgba(0, 0, 0, 0.2);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.87);
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Stats */
+.network-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.network-stat {
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  text-align: center;
+  font-size: 12px;
+}
+
+.dark .network-stat {
+  background: rgba(0, 0, 0, 0.2);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.87);
+}
+
+.network-stat-value {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.network-stat-label {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* Print styles */
+@media print {
+  .vis-button,
+  .network-controls {
+    display: none;
+  }
+
+  .network-container {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}

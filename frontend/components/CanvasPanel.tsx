@@ -13,6 +13,7 @@ import { useTheme } from '../context/ThemeContext';
 import { FONT_FAMILY } from '../constants/ui';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import DOMPurify from 'dompurify';
 
 interface Version {
   id: string;
@@ -216,7 +217,7 @@ function renderContent(content: CanvasContent, isDarkMode: boolean) {
     case 'html':
       return (
         <div
-          dangerouslySetInnerHTML={{ __html: text }}
+          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(text) }}
           style={{ color: isDarkMode ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.8)' }}
         />
       );
@@ -493,7 +494,8 @@ export function CanvasPanel({ content, onClose, onDownload, onEditModeChange, is
 
             {!isEditMode && !isAIWriting && (
               <button
-                onClick={() => setIsEditMode(true)}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsEditMode(true); }}
+                onMouseDown={(e) => e.preventDefault()}
                 style={{
                   background: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
                   border: 'none',

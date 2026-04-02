@@ -8,6 +8,7 @@
  */
 
 import React, { useMemo } from 'react';
+import DOMPurify from 'dompurify';
 
 // ── PRNG (mulberry32) ──
 const mb32 = (s: number) => () => {
@@ -331,7 +332,7 @@ export default function BlobAvatar({ seed, color, size = 40, initials, animated 
       }}
     >
       <div
-        dangerouslySetInnerHTML={{ __html: uniqueSvg }}
+        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(uniqueSvg) }}
         style={{ width: '100%', height: '100%', contain: 'layout style' }}
       />
       {initials && (

@@ -5,7 +5,7 @@ import { useStorage } from '../hooks/useStorage';
 import { storage } from '../utils/storage';
 import { addMemory } from '../utils/memoryStore';
 
-const CampaignContext = createContext<CampaignContextType | undefined>(undefined);
+export const CampaignContext = createContext<CampaignContextType | undefined>(undefined);
 
 // ── BroadcastChannel cross-tab sync ──────────────────────────────────────────
 // Call this from useCycleLoop (or anywhere) to notify other open tabs.
@@ -307,6 +307,21 @@ export function CampaignProvider({ children }: { children: React.ReactNode }) {
     }
   }, [stop, getCyclesByCampaign]);
 
+  // Phase 1: Build variable context from campaign state
+  const variableContext = useMemo(() => ({
+    context: {
+      MODEL: localStorage.getItem('selected_model') || 'qwen3.5:4b',
+      STAGE: currentCycle?.stages ? Object.keys(currentCycle.stages)[0] : undefined,
+      CYCLE: campaign?.currentCycle || undefined,
+      TIMESTAMP: new Date().toISOString(),
+      TOKENS_USED: 0, // Would be tracked from session
+      RESEARCH_DEPTH: localStorage.getItem('research_depth') || 'NR',
+      MODE: localStorage.getItem('mode') || 'pro',
+      MEMORY_COUNT: 0, // Would be populated from memoryStore
+      CANVAS_ITEMS: 0, // Would be populated from storage
+    },
+  }), [currentCycle?.stages, campaign?.currentCycle]);
+
   // Memoize the context value so the object reference only changes when one of
   // its fields actually changes.  Without this, every CampaignProvider render
   // (triggered by streaming token throttle updates) would create a new object
@@ -323,6 +338,7 @@ export function CampaignProvider({ children }: { children: React.ReactNode }) {
     pendingQuestion,
     questionAnswers,
     answerQuestion,
+    variableContext,
     createCampaign,
     updateCampaign,
     startCycle,
@@ -344,6 +360,7 @@ export function CampaignProvider({ children }: { children: React.ReactNode }) {
     pendingQuestion,
     questionAnswers,
     answerQuestion,
+    variableContext,
     createCampaign,
     updateCampaign,
     startCycle,

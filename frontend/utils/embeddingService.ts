@@ -30,7 +30,7 @@ export async function probeEmbeddingModel(): Promise<boolean> {
   _probePromise = (async () => {
     try {
       const resp = await fetch(`${INFRASTRUCTURE.ollamaUrl}/api/tags`, {
-        signal: AbortSignal.timeout(3000),
+        signal: AbortSignal.timeout(30000),
       });
       if (!resp.ok) { _probeResult = false; return false; }
       const data = await resp.json() as { models: Array<{ name: string }> };
@@ -93,9 +93,9 @@ export async function generateEmbedding(
       return { text, embedding: Array(EMBEDDING_DIM).fill(0), cached: true };
     }
 
-    // Always apply a hard 5s timeout — if nomic-embed-text isn't loaded the
+    // Always apply a hard 30s timeout — if nomic-embed-text isn't loaded the
     // fetch hangs indefinitely with no timeout, blocking the entire agent loop.
-    const timeoutSignal = AbortSignal.timeout(5000);
+    const timeoutSignal = AbortSignal.timeout(30000);
     const combinedSignal = signal
       ? (AbortSignal as any).any
         ? (AbortSignal as any).any([signal, timeoutSignal])

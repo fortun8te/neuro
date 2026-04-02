@@ -228,7 +228,8 @@ export function PermissionApprovalBanner({
                   background: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
                   border: `1px solid ${border}`,
                   color: isDarkMode ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.50)',
-                  transition: 'background 0.12s, color 0.12s',
+                  transition: 'background 0.12s, color 0.12s, outline 0.12s',
+                  outline: 'none',
                 }}
                 onMouseEnter={e => {
                   (e.currentTarget as HTMLButtonElement).style.background = isDarkMode
@@ -246,6 +247,14 @@ export function PermissionApprovalBanner({
                     ? 'rgba(255,255,255,0.55)'
                     : 'rgba(0,0,0,0.50)';
                 }}
+                onFocus={e => {
+                  (e.currentTarget as HTMLButtonElement).style.outline = `2px solid ${isDarkMode ? '#3b82f6' : '#0c63e4'}`;
+                  (e.currentTarget as HTMLButtonElement).style.outlineOffset = '2px';
+                }}
+                onBlur={e => {
+                  (e.currentTarget as HTMLButtonElement).style.outline = 'none';
+                }}
+                aria-label="Deny this permission request (Esc)"
               >
                 Deny
                 <kbd
@@ -282,7 +291,8 @@ export function PermissionApprovalBanner({
                     : 'rgba(0,0,0,0.86)',
                   border: 'none',
                   color: isDarkMode ? '#0c0c0f' : '#ffffff',
-                  transition: 'opacity 0.12s',
+                  transition: 'opacity 0.12s, outline 0.12s',
+                  outline: 'none',
                 }}
                 onMouseEnter={e => {
                   (e.currentTarget as HTMLButtonElement).style.opacity = '0.85';
@@ -290,6 +300,14 @@ export function PermissionApprovalBanner({
                 onMouseLeave={e => {
                   (e.currentTarget as HTMLButtonElement).style.opacity = '1';
                 }}
+                onFocus={e => {
+                  (e.currentTarget as HTMLButtonElement).style.outline = `2px solid ${isDarkMode ? '#0c0c0f' : '#ffffff'}`;
+                  (e.currentTarget as HTMLButtonElement).style.outlineOffset = '2px';
+                }}
+                onBlur={e => {
+                  (e.currentTarget as HTMLButtonElement).style.outline = 'none';
+                }}
+                aria-label="Allow this permission once (Cmd+Enter or Ctrl+Enter)"
               >
                 Allow once
                 <kbd

@@ -154,12 +154,29 @@ export function getContextSizeForModel(model: string): number {
   return 8192;
 }
 
+/** Fallback model when NEURO-1-B2-4B is not available on the Ollama server */
+export const NEURO_FALLBACK_MODEL = 'qwen3.5:9b';
+
+/**
+ * Runtime override — set by isNeuroAvailable() when NEURO-1-B2-4B 404s
+ * but the fallback model responds successfully.
+ */
+let _neuroModelOverride: string | null = null;
+
+export function setNeuroModelOverride(model: string | null): void {
+  _neuroModelOverride = model;
+}
+
 /** Neuro personality model — style rewriting & identity questions */
 export function getNeuroModel(): string {
+  // 1. Runtime fallback (set when primary model is unavailable)
+  if (_neuroModelOverride) return _neuroModelOverride;
+  // 2. User-configured override in localStorage
   if (typeof window !== 'undefined') {
     const stored = localStorage.getItem('neuro_model');
     if (stored) return stored;
   }
+  // 3. Default from config
   return MODEL_CONFIG.neuro;
 }
 

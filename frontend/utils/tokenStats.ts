@@ -171,15 +171,16 @@ export const tokenTracker = {
     firstResponseTokenTime = null;
     notifyNow(); // Immediate — important state change
 
-    // Timeout: if no tokens after 45 seconds, something is stuck
+    // Timeout: if no tokens after 300 seconds, something is stuck
+    // Increased from 45s → 120s → 300s to support models loading under heavy concurrent load
     setTimeout(() => {
       if (state.isModelLoading && state.liveTokens === 0) {
-        console.warn('Model loading timeout: no tokens after 45s — Ollama may be unresponsive');
+        console.warn('Model loading timeout: no tokens after 300s — Ollama may be unresponsive');
         state.isModelLoading = false;
         state.isGenerating = false;
         notifyNow();
       }
-    }, 45000);
+    }, 300000);
   },
 
   /** Call for each thinking token (internal model reasoning) */

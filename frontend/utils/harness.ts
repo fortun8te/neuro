@@ -3,6 +3,8 @@
  * Handles permission checking, progress streaming, and abort signal propagation
  */
 
+import { intelligentTruncator } from './intelligentTruncator';
+
 export interface ToolUseContext {
   sessionId: string;
   abortController: AbortController;
@@ -55,17 +57,10 @@ export interface ParallelExecuteOptions {
 }
 
 /**
- * Middle-elision truncation for large tool outputs.
- * Keeps the head and tail of the output and elides the middle.
+ * Use intelligent truncation that preserves important entities
  */
 function truncateToolOutput(text: string, maxChars = 20_000): string {
-  if (text.length <= maxChars) return text;
-  const headSize = Math.floor(maxChars * 0.4);
-  const tailSize = Math.floor(maxChars * 0.4);
-  const head = text.slice(0, headSize);
-  const tail = text.slice(-tailSize);
-  const elided = text.length - headSize - tailSize;
-  return `${head}\n\n[... ${elided.toLocaleString()} characters truncated (showing first ${headSize} + last ${tailSize}) ...]\n\n${tail}`;
+  return intelligentTruncator.truncate(text, maxChars);
 }
 
 /**

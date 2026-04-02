@@ -9,7 +9,7 @@
  */
 
 import { useState, useCallback } from 'react';
-import type { CanvasContent } from '../components/CanvasPanel';
+import type { CanvasContent } from '../components/Canvas';
 
 export interface CanvasDocument {
   id: string;

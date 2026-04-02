@@ -632,10 +632,22 @@ function buildTools(onEvent?: AgentEngineCallback, modelRef?: { current: string 
         // ── CLI mode: use Node.js child_process directly ──
         if (typeof window === 'undefined') {
           try {
-            const { exec } = await import('child_process');
+            const { execFile } = await import('child_process');
             const { promisify } = await import('util');
-            const execAsync = promisify(exec);
-            const { stdout, stderr } = await execAsync(command, { timeout });
+
+            // Whitelist safe commands
+            const ALLOWED_COMMANDS = [
+              'git', 'npm', 'npx', 'ls', 'cat', 'head', 'tail', 'grep', 'pwd', 'curl', 'node', 'tsc'
+            ];
+
+            const cmdName = command.split(/\s+/)[0];
+            if (!ALLOWED_COMMANDS.includes(cmdName)) {
+              return { success: false, output: `Command not in whitelist: ${cmdName}` };
+            }
+
+            const [cmd, ...args] = command.split(/\s+/);
+            const execFileAsync = promisify(execFile);
+            const { stdout, stderr } = await execFileAsync(cmd, args, { timeout, maxBuffer: 10 * 1024 * 1024 });
             const raw = [stdout, stderr].filter(Boolean).join('\n').trim();
             const output = raw.length > 2000 ? raw.slice(0, 2000) + '\n[...truncated]' : raw;
             return { success: true, output: output || '(no output)' };
@@ -692,7 +704,17 @@ function buildTools(onEvent?: AgentEngineCallback, modelRef?: { current: string 
         if (typeof window === 'undefined') {
           try {
             const { readFile } = await import('fs/promises');
-            const raw = await readFile(filePath, 'utf8');
+            const { resolve } = await import('path');
+            const { homedir } = await import('os');
+
+            // Validate path — prevent directory traversal
+            const basePath = resolve(homedir(), 'Downloads/nomads');
+            const fullPath = resolve(filePath);
+            if (!fullPath.startsWith(basePath)) {
+              return { success: false, output: 'Access denied: path outside allowed directory' };
+            }
+
+            const raw = await readFile(fullPath, 'utf8');
             const lines = raw.split('\n').slice(0, maxLines).join('\n');
             const out = lines.length > 4000 ? lines.slice(0, 4000) + '\n[...truncated]' : lines;
             return { success: true, output: out };
@@ -4623,6 +4645,8 @@ export interface AgentEngineOptions {
   mentionedSubagents?: number[];
   /** Skip semantic/neuro routing (for CLI mode or when embeddings are unavailable) */
   skipSemanticRouting?: boolean;
+  /** Batch/pipe mode — suppress interactive UI elements (spinners, progress bars) */
+  batchMode?: boolean;
 }
 
 export async function runAgentLoop(

@@ -342,6 +342,71 @@ export function StagePanel({ cycle, isRunning, isDarkMode: propDarkMode, viewSta
       {/* Thinking Modal — full-screen drawer for viewing complete thinking */}
       <ThinkingModal isOpen={thinkingModalOpen} onClose={() => setThinkingModalOpen(false)} />
 
+      {/* ── Real-time Metrics Display ── */}
+      {isActive && (
+        <div className={`flex-shrink-0 px-4 py-2 border-b ${
+          isDark ? 'border-zinc-800/60 bg-zinc-900/20' : 'border-zinc-200 bg-zinc-50'
+        }`}>
+          <div className="grid grid-cols-4 gap-3">
+            {/* Token Usage */}
+            <div>
+              <p className={`text-[8px] uppercase tracking-wider font-semibold ${
+                isDark ? 'text-white/[0.40]' : 'text-zinc-500'
+              }`}>
+                Session Total
+              </p>
+              <p className={`text-[13px] font-mono font-bold mt-0.5 ${
+                isDark ? 'text-blue-400' : 'text-blue-600'
+              }`}>
+                {animatedSessionTotal.toLocaleString()}
+              </p>
+            </div>
+
+            {/* Tokens/sec */}
+            <div>
+              <p className={`text-[8px] uppercase tracking-wider font-semibold ${
+                isDark ? 'text-white/[0.40]' : 'text-zinc-500'
+              }`}>
+                Speed
+              </p>
+              <p className={`text-[13px] font-mono font-bold mt-0.5 ${
+                isDark ? 'text-emerald-400' : 'text-emerald-600'
+              }`}>
+                {tokenInfo.tokensPerSec > 0 ? `${tokenInfo.tokensPerSec} t/s` : '—'}
+              </p>
+            </div>
+
+            {/* Active Model */}
+            <div>
+              <p className={`text-[8px] uppercase tracking-wider font-semibold ${
+                isDark ? 'text-white/[0.40]' : 'text-zinc-500'
+              }`}>
+                Model
+              </p>
+              <p className={`text-[10px] font-mono font-semibold mt-0.5 truncate ${
+                isDark ? 'text-white/[0.70]' : 'text-zinc-700'
+              }`}>
+                {formatModelName(tokenInfo.activeModel) || '—'}
+              </p>
+            </div>
+
+            {/* Call Count */}
+            <div>
+              <p className={`text-[8px] uppercase tracking-wider font-semibold ${
+                isDark ? 'text-white/[0.40]' : 'text-zinc-500'
+              }`}>
+                Calls
+              </p>
+              <p className={`text-[13px] font-mono font-bold mt-0.5 ${
+                isDark ? 'text-purple-400' : 'text-purple-600'
+              }`}>
+                {tokenInfo.callCount}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Output area ── */}
       {stageData.agentOutput ? (
         currentStage === 'research' ? (

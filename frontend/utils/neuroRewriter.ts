@@ -15,7 +15,7 @@
  */
 
 import { ollamaService } from './ollama';
-import { getNeuroModel, getModelForStage } from './modelConfig';
+import { getNeuroModel, getModelForStage, NEURO_FALLBACK_MODEL, setNeuroModelOverride } from './modelConfig';
 import { createLogger } from './logger';
 
 const log = createLogger('neuro-rewriter');
@@ -424,7 +424,16 @@ export async function rewriteWithNeuro(
       }
       break;
     } catch (err) {
-      log.warn('NEURO rewrite failed', { attempt, error: err instanceof Error ? err.message : String(err) });
+      const errMsg = err instanceof Error ? err.message : String(err);
+      log.warn('NEURO rewrite failed', { attempt, error: errMsg });
+
+      // If the model 404'd, invalidate cache so next isNeuroAvailable() re-probes with fallback
+      if (errMsg.includes('404') || errMsg.includes('not found')) {
+        _neuroAvailable = null;
+        _neuroCheckedAt = 0;
+        log.warn('NEURO model 404 — invalidated availability cache for fallback probe');
+      }
+
       if (attempt === MAX_RETRIES) {
         onProgress?.('done');
         return originalResponse;
@@ -570,7 +579,16 @@ export async function askNeuroIdentity(
       onChunk?.(cleaned);
       return cleaned;
     } catch (err) {
-      log.warn('NEURO identity failed', { attempt, error: err instanceof Error ? err.message : String(err) });
+      const errMsg = err instanceof Error ? err.message : String(err);
+      log.warn('NEURO identity failed', { attempt, error: errMsg });
+
+      // If the model 404'd, invalidate cache so next isNeuroAvailable() re-probes with fallback
+      if (errMsg.includes('404') || errMsg.includes('not found')) {
+        _neuroAvailable = null;
+        _neuroCheckedAt = 0;
+        log.warn('NEURO model 404 — invalidated availability cache for fallback probe');
+      }
+
       if (attempt === MAX_RETRIES) return null;
     }
   }
@@ -580,45 +598,61 @@ export async function askNeuroIdentity(
 
 /**
  * Check if NEURO-1-B2-4B is available on Ollama.
+ * If the primary model 404s, tries the fallback (qwen3.5:9b) and sets
+ * a runtime override so all subsequent getNeuroModel() calls use it.
  * Caches the result for 60 seconds.
  */
 let _neuroAvailable: boolean | null = null;
 let _neuroCheckedAt = 0;
 const NEURO_CHECK_TTL = 60_000;
 
+async function probeModel(model: string, timeoutMs: number): Promise<boolean> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  let response = '';
+  try {
+    await ollamaService.generateStream(
+      'hi',
+      'respond with ok',
+      {
+        model,
+        temperature: 0,
+        num_predict: 5,
+        think: false,
+        signal: controller.signal,
+        onChunk: (c: string) => { response += c; },
+      },
+    );
+    return response.length > 0;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export async function isNeuroAvailable(timeoutMs: number = 2000): Promise<boolean> {
   if (_neuroAvailable !== null && Date.now() - _neuroCheckedAt < NEURO_CHECK_TTL) {
     return _neuroAvailable;
   }
 
-  try {
-    const neuroModel = getNeuroModel();
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const primaryModel = getNeuroModel();
 
-    let response = '';
-    try {
-      await ollamaService.generateStream(
-        'hi',
-        'respond with ok',
-        {
-          model: neuroModel,
-          temperature: 0,
-          num_predict: 5,
-          think: false,
-          signal: controller.signal,
-          onChunk: (c: string) => { response += c; },
-        },
-      );
-      _neuroAvailable = response.length > 0;
-    } finally {
-      clearTimeout(timeoutId);
+  // Try the primary model first
+  let available = await probeModel(primaryModel, timeoutMs);
+
+  // If primary fails and it is not already the fallback, try the fallback model
+  if (!available && primaryModel !== NEURO_FALLBACK_MODEL) {
+    log.warn(`Primary NEURO model "${primaryModel}" unavailable, trying fallback "${NEURO_FALLBACK_MODEL}"`);
+    available = await probeModel(NEURO_FALLBACK_MODEL, timeoutMs);
+    if (available) {
+      log.info(`Fallback model "${NEURO_FALLBACK_MODEL}" available — using it for NEURO tasks`);
+      setNeuroModelOverride(NEURO_FALLBACK_MODEL);
     }
-  } catch {
-    _neuroAvailable = false;
   }
 
+  _neuroAvailable = available;
   _neuroCheckedAt = Date.now();
-  log.info('NEURO availability check', { available: _neuroAvailable });
+  log.info('NEURO availability check', { available: _neuroAvailable, model: getNeuroModel() });
   return _neuroAvailable;
 }

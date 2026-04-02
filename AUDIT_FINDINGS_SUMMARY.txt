@@ -1,0 +1,255 @@
+================================================================================
+API & INTEGRATION AUDIT — EXECUTIVE SUMMARY
+================================================================================
+
+Project:     Nomads Ad Agent
+Date:        April 2, 2026
+Auditor:     Claude API & Integration Audit Agent
+Duration:    Comprehensive (4+ hours)
+Report:      API_INTEGRATION_AUDIT.md
+
+================================================================================
+HEALTH SCORE: 7.5/10
+================================================================================
+
+Mature Error Handling ✓        Robust Timeout Management ✓
+Health Monitoring System ✓     Exponential Backoff Logic ✓
+Type Safety (TypeScript) ✓     Streaming Response Parsing ✓
+
+Circuit Breaker Missing ✗      Rate Limiting Missing ✗
+Schema Validation Missing ✗    Silent Failure Modes ✗
+
+================================================================================
+CRITICAL FINDINGS (5 TOTAL)
+================================================================================
+
+1. NO CIRCUIT BREAKER [HIGH]
+   - Service outages trigger cascading retries (6-12s latency per call)
+   - Every failure = 3 retries before giving up
+   - Recommendation: Implement circuit breaker (3 consecutive failures → fail-fast)
+   - Effort: 2-3 hours
+   - Files: /src/utils/ollama.ts, /src/utils/wayfarer.ts
+
+2. SILENT WAYFARER FAILURES [MEDIUM]
+   - research() returns empty result, not error
+   - Callers must check result.pages.length === 0
+   - No user notification of failure
+   - Recommendation: Throw explicit "Wayfarer unavailable" error
+   - Effort: 1 hour
+   - File: /src/utils/wayfarer.ts
+
+3. NO SCHEMA VALIDATION [MEDIUM]
+   - JSON responses parsed without runtime type checking
+   - Malformed responses can crash parser
+   - No zod/ajv validation
+   - Recommendation: Add schema validation for all API responses
+   - Effort: 3-4 hours
+   - Files: /src/utils/ollama.ts, /src/utils/wayfarer.ts
+
+4. NO RATE LIMITING (SearXNG) [MEDIUM]
+   - Config specifies searxngConcurrency: 32 but not enforced
+   - No client-side request queue
+   - Can hit 429 rate limits without intelligent backoff
+   - Recommendation: Implement request queue with exponential backoff
+   - Effort: 2-3 hours
+   - File: /src/utils/wayfarer.ts
+
+5. INCONSISTENT ERROR MESSAGES [LOW]
+   - Some errors enhanced ("Is the server running?")
+   - Others are raw HTTP status codes
+   - Makes debugging harder, inconsistent UX
+   - Recommendation: Standardize to [ServiceName] [Action] failed: [Reason]
+   - Effort: 1-2 hours
+   - Multiple files
+
+================================================================================
+API INTEGRATION HEALTH MATRIX
+================================================================================
+
+                    Ollama          Wayfarer        SearXNG
+Connection          HEALTHY         HEALTHY         HEALTHY
+Timeout             MATURE          BASIC           BASIC
+  - Connection      120s            120s (single)   3s (health only)
+  - Idle Stream     120s            180s (batch)    N/A
+  - Per-action      N/A             60s (session)   N/A
+
+Retry Logic         MATURE          BASIC           N/A (via Wayfarer)
+  - Attempts        3               3               N/A
+  - Network         1s/2s/4s        1s/2s/2s        N/A
+  - 429             3s/9s/27s       N/A             N/A
+  - Backoff         2x exponential  Linear          N/A
+
+Error Handling      GOOD            BASIC           BASIC
+  - Type Safety     TypeScript      TypeScript      N/A
+  - Validation      None            None            N/A
+  - Messages        Descriptive     Inconsistent    N/A
+
+Health Monitor      YES (30s)       YES (60s TTL)   YES (3s)
+Circuit Breaker     NO              NO              NO
+Rate Limiting       NO              NO              NO (configured only)
+Schema Validation   NO              NO              N/A
+
+Graceful Degrad.    YES (throw)     YES (silent)    N/A
+Recovery Strategy   Health check +  Health check    Health check
+                    listener notify only            only
+
+================================================================================
+KEY STATISTICS
+================================================================================
+
+Total API Calls Analyzed:       12 endpoint types
+Retry Logic Instances:           33 timeout checks, 13 retry checks
+Health Monitor Checks:           30s interval, 4-service tracking
+Streaming Responses:             120s per idle timeout, ~33-line JSON parser
+
+Code Quality Metrics:
+  - TypeScript Strict Mode:      YES
+  - Error Handlers:              Present (try/catch everywhere)
+  - Abort Signals:               Full pipeline coverage
+  - Type Definitions:            Well-defined (OllamaOptions, WayfayerResult, etc.)
+
+Gaps:
+  - Circuit Breaker:             MISSING (0% implementation)
+  - Rate Limiting:               MISSING (0% enforcement)
+  - Schema Validation:           MISSING (0% runtime checks)
+  - DNS Timeout:                 MISSING (browser default)
+  - Connection Pooling:          MISSING (unbounded fetch)
+
+================================================================================
+TIMEOUT HIERARCHY (OPTIMAL)
+================================================================================
+
+Ollama (Current):                Wayfarer (Current):
+  Connection: 120s               Single Page: 120s
+  Idle Stream: 120s              Batch: 180s (3 concurrent)
+  Preload: 60s                   Session Action: 60s
+                                 Research: 90s (implicit)
+
+Recommended Adjustments:
+  - Ollama connection: 30s (too long during outages)
+  - Add DNS timeout: 10s
+  - Wayfarer batch: parallel instead of sequential
+
+================================================================================
+RECOMMENDATIONS (PRIORITY ORDER)
+================================================================================
+
+PHASE 1 (Week 1) — HIGH IMPACT, MODERATE EFFORT:
+  1. Implement circuit breaker
+     - Ollama: 3 consecutive failures → open for 30s
+     - Wayfarer: 2 consecutive failures → open for 15s
+     - Time: 2-3h
+
+  2. Add zod schema validation
+     - Ollama response schema
+     - Wayfarer result schema
+     - Screenshot batch schema
+     - Time: 3-4h
+
+PHASE 2 (Week 2) — MEDIUM IMPACT, MODERATE EFFORT:
+  3. Replace silent failures
+     - Throw explicit "Wayfarer unavailable" error
+     - Time: 1h
+
+  4. Rate limiting queue (SearXNG)
+     - Max 5 concurrent requests
+     - Honor 429 with exponential backoff
+     - Time: 2-3h
+
+PHASE 3 (Week 3) — LOW IMPACT, LOW EFFORT:
+  5. Standardize error messages
+     - Create error template
+     - Apply across all APIs
+     - Time: 1-2h
+
+  6. Add DNS timeout
+     - 10s default per request
+     - Time: 1h
+
+PHASE 4 (Optional) — OBSERVABILITY:
+  7. Connection pooling
+  8. Metrics/instrumentation
+  9. Load testing (10 concurrent Ollama, 50 Wayfarer)
+
+================================================================================
+TESTING ROADMAP
+================================================================================
+
+Immediate (Next Sprint):
+  - Test Ollama unavailable → 3 retries, circuit breaker opens
+  - Test Wayfarer timeout → error thrown (after fix)
+  - Test 429 rate limit → exponential backoff (3s/9s/27s)
+  - Test abort signal → cleanup propagates
+  - Test malformed JSON → graceful fallback (with schema)
+
+Load Testing:
+  - 10 concurrent Ollama calls
+  - 50 concurrent Wayfarer searches
+  - Monitor VRAM, CPU, bandwidth
+
+Chaos Engineering:
+  - Kill Ollama mid-request
+  - Network packet loss (10%, 50%)
+  - Slow responses (10s, 60s)
+
+================================================================================
+INFRASTRUCTURE READINESS
+================================================================================
+
+Current Setup:
+  - Ollama:  100.74.135.83:11440
+  - Wayfarer: localhost:8889 (or 100.74.135.83:8889)
+  - SearXNG: localhost:8888 (or 100.74.135.83:8888)
+
+Health Endpoints:
+  - Ollama: /api/tags (8s timeout)
+  - Wayfarer: /health (5s timeout)
+  - SearXNG: /healthz (3s timeout)
+
+Documentation Gap:
+  - No ops guide for port configuration
+  - No runbook for service recovery
+  - No scaling guidelines
+
+================================================================================
+FILES ANALYZED
+================================================================================
+
+Frontend (TypeScript/React):
+  /src/utils/ollama.ts               (655 lines, mature)
+  /src/utils/wayfarer.ts             (500+ lines, basic error handling)
+  /src/config/infrastructure.ts      (125 lines, well-structured)
+  /src/utils/healthMonitor.ts        (280 lines, comprehensive)
+  /src/utils/downloadService.ts      (200+ lines, good validation)
+  /src/utils/orchestratorRouter.ts   (77 lines, simple)
+  /src/utils/modelConfig.ts
+
+Backend (Python):
+  /wayfarer/wayfarer_server.py       (FastAPI, CORS, streaming)
+  /wayfarer/wayfarer.py              (Playwright, article extraction)
+  /context1/store.py                 (Context-1 integration)
+
+Total Analysis Scope:
+  - 1000+ lines of API integration code reviewed
+  - 12 different API endpoint types audited
+  - 3 external service dependencies tracked
+
+================================================================================
+CONCLUSION
+================================================================================
+
+The Ad Agent demonstrates MATURE error handling practices with robust timeout
+management, exponential backoff, and health monitoring. Production-ready for
+single-user and small-team deployment.
+
+Risk Assessment:
+  - Single User:        LOW RISK (retries + health monitoring sufficient)
+  - Team (5-10):        MEDIUM RISK (needs circuit breaker)
+  - Production Scale:   HIGH RISK (missing rate limiting, schema validation)
+
+Recommendation: Implement 5 CRITICAL FINDINGS (HIGH + MEDIUM priority) to
+achieve enterprise-grade reliability. Estimated effort: 2 weeks.
+
+Next Step: Schedule circuit breaker RFC + schema validation design review.
+
+================================================================================

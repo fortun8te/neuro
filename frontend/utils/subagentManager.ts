@@ -249,6 +249,14 @@ export class SubagentManager {
   private registry = new Map<string, SubagentEntry>();
   /** role → count of currently-running instances */
   private roleActiveCounts = new Map<SubagentRole, number>();
+  /** Async mutex to protect roleActiveCounts from interleaved mutations */
+  private _roleLock = Promise.resolve();
+
+  private _withRoleLock<T>(fn: () => T | Promise<T>): Promise<T> {
+    const p = this._roleLock.then(fn);
+    this._roleLock = p.then(() => {}, () => {});
+    return p;
+  }
 
   // ── Public API ──────────────────────────────────────────────
 
@@ -388,9 +396,11 @@ export class SubagentManager {
       entry.status = 'running';
       entry.partialOutput = '';
 
-      // Increment role concurrency counter
-      const rolePrev = this.roleActiveCounts.get(entry.request.role) || 0;
-      this.roleActiveCounts.set(entry.request.role, rolePrev + 1);
+      // Increment role concurrency counter (guarded against async interleaving)
+      await this._withRoleLock(() => {
+        const rolePrev = this.roleActiveCounts.get(entry.request.role) || 0;
+        this.roleActiveCounts.set(entry.request.role, rolePrev + 1);
+      });
 
       // Set per-attempt timeout — deep roles (nemotron) get 4 min, others default 2 min
       const roleConf = getRoleConfig(entry.request.role);
@@ -437,8 +447,11 @@ export class SubagentManager {
           clearTimeout(entry.timeoutHandle);
           entry.timeoutHandle = null;
         }
-        const roleNow = this.roleActiveCounts.get(entry.request.role) || 0;
-        this.roleActiveCounts.set(entry.request.role, Math.max(0, roleNow - 1));
+        // Decrement guarded against async interleaving
+        await this._withRoleLock(() => {
+          const roleNow = this.roleActiveCounts.get(entry.request.role) || 0;
+          this.roleActiveCounts.set(entry.request.role, Math.max(0, roleNow - 1));
+        });
       }
     }
 
@@ -746,6 +759,18 @@ export class SubagentPool {
   private onQueueProgress?: (progress: SubagentQueueProgress) => void; // Phase 1 callback
   private isDraining = false; // FIX: Prevent concurrent drain() calls causing race condition
 
+  /**
+   * Async mutex protecting pool stats (active, completedCount, failedCount, etc.)
+   * from interleaved mutations when multiple subagents complete between microtasks.
+   */
+  private _stateLock = Promise.resolve();
+
+  private _withStateLock<T>(fn: () => T | Promise<T>): Promise<T> {
+    const p = this._stateLock.then(fn);
+    this._stateLock = p.then(() => {}, () => {});
+    return p;
+  }
+
   constructor(opts: {
     id?: string;
     maxConcurrent?: number;
@@ -769,17 +794,22 @@ export class SubagentPool {
   submit(request: SubagentSpawnRequest, callbacks?: SubagentCallbacks): Promise<SubagentResult> {
     return new Promise<SubagentResult>((resolve) => {
       const item: PoolQueueItem = { request, callbacks, resolve };
-      this.totalRequested++; // Phase 1: track total
 
-      if (this.active < this.maxConcurrent) {
-        this._dispatch(item);
-      } else {
-        this.queue.push(item);
-        devLog(`pool ${this.id}: queued ${request.id} (queue depth: ${this.queue.length})`);
-      }
+      // Guard all reads/writes of active + totalRequested behind the state lock
+      // so concurrent submit() calls don't over-dispatch past maxConcurrent.
+      this._withStateLock(() => {
+        this.totalRequested++; // Phase 1: track total
 
-      // Phase 1: Emit queue progress for UI
-      this._emitQueueProgress();
+        if (this.active < this.maxConcurrent) {
+          this._dispatch(item);
+        } else {
+          this.queue.push(item);
+          devLog(`pool ${this.id}: queued ${request.id} (queue depth: ${this.queue.length})`);
+        }
+
+        // Phase 1: Emit queue progress for UI
+        this._emitQueueProgress();
+      });
     });
   }
 
@@ -808,8 +838,11 @@ export class SubagentPool {
     this._drain();
   }
 
-  /** Current pool stats snapshot */
+  /** Current pool stats snapshot (consistent read via state lock) */
   getStats(): SubagentPoolStats {
+    // Synchronous read is safe when called from within _withStateLock.
+    // For external callers, build the snapshot from current values --
+    // individual field reads are atomic in JS, and the lock serializes writers.
     const activeCount = this.active;
     let oldestActiveMs = 0;
     const now = Date.now();
@@ -835,9 +868,13 @@ export class SubagentPool {
   }
 
   private _dispatch(item: PoolQueueItem): void {
-    this.active++;
-    this.activeEntryTimes.set(item.request.id, Date.now());
-    this._emitStats();
+    // Increment active count synchronously within the state lock chain
+    // to stay consistent with _onSubagentComplete's decrement.
+    this._withStateLock(() => {
+      this.active++;
+      this.activeEntryTimes.set(item.request.id, Date.now());
+      this._emitStats();
+    });
 
     const wrappedCallbacks: SubagentCallbacks = {
       onSpawned: item.callbacks?.onSpawned,
@@ -857,26 +894,30 @@ export class SubagentPool {
   }
 
   private _onSubagentComplete(result: SubagentResult): void {
-    this.active = Math.max(0, this.active - 1);
-    this.activeEntryTimes.delete(result.subagentId);
-    this.totalTokensUsed += result.tokensUsed;
+    // All stat mutations go through the state lock to prevent async interleaving
+    // when multiple subagents complete in the same microtask batch.
+    this._withStateLock(() => {
+      this.active = Math.max(0, this.active - 1);
+      this.activeEntryTimes.delete(result.subagentId);
+      this.totalTokensUsed += result.tokensUsed;
 
-    switch (result.status) {
-      case 'completed':
-        this.completedCount++;
-        this.confidenceSum += result.confidence;
-        break;
-      case 'failed':
-        this.failedCount++;
-        break;
-      case 'cancelled':
-        this.cancelledCount++;
-        break;
-    }
+      switch (result.status) {
+        case 'completed':
+          this.completedCount++;
+          this.confidenceSum += result.confidence;
+          break;
+        case 'failed':
+          this.failedCount++;
+          break;
+        case 'cancelled':
+          this.cancelledCount++;
+          break;
+      }
 
-    this._emitStats();
-    this._emitQueueProgress(); // Phase 1: update queue status
-    this._drain();
+      this._emitStats();
+      this._emitQueueProgress(); // Phase 1: update queue status
+      this._drain();
+    });
   }
 
   private _drain(): void {

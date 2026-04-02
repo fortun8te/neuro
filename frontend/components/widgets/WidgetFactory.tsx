@@ -4,6 +4,7 @@
  */
 
 import React from 'react'
+import DOMPurify from 'dompurify'
 import type { Widget } from './types'
 
 // Import all widget components
@@ -246,7 +247,7 @@ export function MarkdownWithWidgets({ content }: { content: string }) {
       {parts.map((part, idx) => {
         if (typeof part === 'string') {
           return (
-            <div key={idx} dangerouslySetInnerHTML={{ __html: part }} />
+            <div key={idx} dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(part) }} />
           )
         } else {
           return <WidgetRenderer key={idx} widget={part} />

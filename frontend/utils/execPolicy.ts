@@ -15,11 +15,13 @@ export interface ExecRule {
   reason?: string;
 }
 
-export enum ExecApproval {
-  Skip,          // Run immediately — whitelisted
-  NeedsApproval, // Prompt user
-  Forbidden,     // Reject immediately
-}
+export const ExecApproval = {
+  Skip: 0,           // Run immediately — whitelisted
+  NeedsApproval: 1,  // Prompt user
+  Forbidden: 2,      // Reject immediately
+} as const;
+
+export type ExecApprovalType = typeof ExecApproval[keyof typeof ExecApproval];
 
 // Built-in safe commands (always Allow)
 const SAFE_PREFIXES: ExecRule[] = [
@@ -102,7 +104,7 @@ export class ExecPolicyManager {
     this.watcher = null;
   }
 
-  check(command: string): ExecApproval {
+  check(command: string): ExecApprovalType {
     const cmd = command.trim();
 
     // Check danger list first (highest priority)

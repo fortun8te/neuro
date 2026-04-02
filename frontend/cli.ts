@@ -32,6 +32,8 @@ import type { AgentEngineEvent } from './utils/agentEngine';
 import { vramManager } from './utils/vramManager';
 import { applyPatch, renderPatchPreview } from './utils/applyPatch';
 import type { PatchHunk } from './utils/applyPatch';
+import { cliCanvas } from './utils/cliCanvas';
+import type { DocumentVersion } from './utils/cliCanvas';
 
 setupNodeEnvironment();
 
@@ -67,6 +69,21 @@ const canvasState: CanvasState = {
   rejectedPatches: [],
 };
 
+// ── Document state (CLI canvas documents) ────────────────────────────────────
+interface DocumentState {
+  currentDocument: string;
+  currentTitle: string;
+  currentWordCount: number;
+  generatedAt?: number;
+  versions: DocumentVersion[];
+}
+const documentState: DocumentState = {
+  currentDocument: '',
+  currentTitle: '',
+  currentWordCount: 0,
+  versions: [],
+};
+
 // ── Simple Header (one-liner printed to stdout) ────────────────────────────
 function printHeader(state: CLIState) {
   const canvasPart = state.canvasPending > 0 ? ` | canvas:${state.canvasPending}` : '';
@@ -79,7 +96,11 @@ let shimmerIdx = 0;
 let spinInterval: ReturnType<typeof setInterval> | null = null;
 let spinnerActive = false;
 
+// Batch/pipe mode: suppress spinners when stdin is not a TTY (piped input)
+const isBatchMode = !process.stdin.isTTY;
+
 function startShimmer(label: string) {
+  if (isBatchMode) return; // no spinners in pipe/batch mode
   if (spinnerActive) stopShimmer();
   spinnerActive = true;
   shimmerIdx = 0;
@@ -98,6 +119,7 @@ function stopShimmer(finalMsg?: string) {
     spinInterval = null;
   }
   spinnerActive = false;
+  if (isBatchMode) return; // no cursor/line manipulation in pipe mode
   process.stdout.write('\r'); // clear spinner line
   if (finalMsg) process.stdout.write(finalMsg);
 }
@@ -126,7 +148,7 @@ function printBanner() {
   process.stdout.write('\n');
   printHeader(currentState);
   process.stdout.write('\n');
-  process.stdout.write('  Commands: exit / clear / help / /canvas / [message]\n\n');
+  process.stdout.write('  Commands: exit / clear / help / /canvas / /doc [prompt] / [message]\n\n');
 }
 
 // ── Help ─────────────────────────────────────────────────────────────────────
@@ -136,6 +158,11 @@ function printHelp() {
   process.stdout.write('    exit             quit the CLI\n');
   process.stdout.write('    clear            clear conversation history\n');
   process.stdout.write('    help             show this help\n');
+  process.stdout.write('    /doc [prompt]    generate a document with streaming\n');
+  process.stdout.write('    /edit [section]  edit a specific section (use after /doc)\n');
+  process.stdout.write('    /show            display current document prettified\n');
+  process.stdout.write('    /save            save current document to file\n');
+  process.stdout.write('    /versions        list all saved document versions\n');
   process.stdout.write('    /canvas          show all pending patches (count + preview)\n');
   process.stdout.write('    /canvas apply    apply all pending patches (per-patch accept/reject prompt)\n');
   process.stdout.write('    /canvas reset    discard all pending patches\n');
@@ -212,7 +239,7 @@ function displayEvent(event: AgentEngineEvent, debugMode: boolean) {
     case 'thinking_chunk':
       thinkingTokenCount++;
       // Update shimmer inline to show token count (every 10 tokens)
-      if (thinkingTokenCount % 10 === 0) {
+      if (!isBatchMode && thinkingTokenCount % 10 === 0) {
         process.stdout.write(`\r  thinking... [${thinkingTokenCount} tokens] `);
       }
       break;
@@ -295,7 +322,7 @@ function displayEvent(event: AgentEngineEvent, debugMode: boolean) {
       break;
 
     case 'task_progress':
-      if ((event as any).percent !== undefined) {
+      if (!isBatchMode && (event as any).percent !== undefined) {
         process.stdout.write(`\r  ${(event as any).percent}%  ${(event as any).message || ''}   `);
       }
       break;
@@ -343,8 +370,10 @@ async function main() {
 
   const conversationHistory: Message[] = [];
 
-  printBanner();
-  if (debugMode) process.stdout.write('  [debug mode]\n\n');
+  if (!isBatchMode) {
+    printBanner();
+    if (debugMode) process.stdout.write('  [debug mode]\n\n');
+  }
 
   // Start VRAM keep-alive loop — keeps models warm between messages
   vramManager.startKeepAlive();
@@ -371,6 +400,50 @@ async function main() {
       : '> ';
     rl.question(canvasPrompt, async (input) => {
       const userInput = input.trim();
+
+      // JSON Task Mode: detect if input is JSON (for programmatic benchmark execution)
+      if (userInput.startsWith('{')) {
+        try {
+          const task = JSON.parse(userInput);
+          if (task.id && (task.pillar || task.type)) {
+            // Valid task object — execute directly through agent loop
+            const taskPrompt = task.prompt || '';
+            conversationHistory.push({ role: 'user', content: taskPrompt });
+
+            try {
+              const result = await runAgentLoop(taskPrompt, '', {
+                signal: new AbortController().signal,
+                skipSemanticRouting: true,
+                batchMode: true,
+                onEvent: () => {}, // suppress console output in batch mode
+              });
+
+              // Output structured JSON result
+              const taskResult = {
+                task_id: task.id,
+                status: 'completed',
+                result: result.finalResponse || '',
+                tool_calls: result.steps?.filter(s => s.toolCall).length || 0,
+                tokens_used: 0, // not tracked per-step in AgentStep/ToolResult yet
+              };
+              process.stdout.write(JSON.stringify(taskResult) + '\n');
+              ask();
+              return;
+            } catch (error) {
+              const taskResult = {
+                task_id: task.id,
+                status: 'error',
+                error: error instanceof Error ? error.message : String(error),
+              };
+              process.stdout.write(JSON.stringify(taskResult) + '\n');
+              ask();
+              return;
+            }
+          }
+        } catch (parseError) {
+          // Not valid JSON, treat as regular input
+        }
+      }
 
       if (userInput.toLowerCase() === 'exit') {
         rl.close();
@@ -464,6 +537,152 @@ async function main() {
         return;
       }
 
+      // ─ Document canvas commands ─────────────────────────────────────────
+      if (userInput.toLowerCase().startsWith('/doc')) {
+        const docPrompt = userInput.slice(4).trim();
+        if (!docPrompt) {
+          process.stdout.write('  Usage: /doc [prompt]\n  Example: /doc write a 500-word blog post about AI\n\n');
+          ask();
+          return;
+        }
+
+        const controller = new AbortController();
+        try {
+          const result = await cliCanvas.generateDocument(docPrompt, {
+            model: currentState.model,
+            signal: controller.signal,
+          });
+          documentState.currentDocument = result.content;
+          documentState.currentTitle = result.title;
+          documentState.currentWordCount = result.wordCount;
+          documentState.generatedAt = Date.now();
+
+          process.stdout.write(`  Options: [E]dit / [S]how / [D]ownload / [S]ave / [V]ersions / [Q]uit\n\n`);
+          process.stdout.write('  > ');
+
+          rl.once('line', async (action) => {
+            await handleDocumentAction(action.trim().toLowerCase(), rl);
+            ask();
+          });
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error);
+          process.stdout.write(`\n  [error] ${msg}\n\n`);
+          ask();
+        }
+        return;
+      }
+
+      if (userInput.toLowerCase() === '/show') {
+        if (!documentState.currentDocument) {
+          process.stdout.write('  No document generated yet. Use /doc [prompt] first.\n\n');
+          ask();
+          return;
+        }
+        cliCanvas.showPrettified(documentState.currentDocument, documentState.currentTitle);
+        ask();
+        return;
+      }
+
+      if (userInput.toLowerCase().startsWith('/edit')) {
+        if (!documentState.currentDocument) {
+          process.stdout.write('  No document to edit. Use /doc [prompt] first.\n\n');
+          ask();
+          return;
+        }
+
+        const sectionId = userInput.slice(5).trim();
+        if (!sectionId) {
+          process.stdout.write('  Available sections: [heading name] or [line N-M]\n');
+          process.stdout.write('  Examples: /edit Introduction, /edit "Section 2", /edit line 10-20\n\n');
+          ask();
+          return;
+        }
+
+        // Prompt for edit instruction
+        rl.question('  Edit instruction (what should I change?): ', async (instruction) => {
+          if (!instruction.trim()) {
+            process.stdout.write('  Cancelled.\n\n');
+            ask();
+            return;
+          }
+
+          const controller = new AbortController();
+          try {
+            const editResult = await cliCanvas.editSection(
+              documentState.currentDocument,
+              sectionId,
+              instruction,
+              { signal: controller.signal, model: 'qwen3.5:4b' }
+            );
+
+            cliCanvas.showDiff(editResult.oldText, editResult.newText);
+
+            rl.question('  Accept this edit? (y/n) > ', (answer) => {
+              if (answer.trim().toLowerCase() === 'y') {
+                // Replace section in document
+                const lines = documentState.currentDocument.split('\n');
+                const updatedDoc = lines
+                  .slice(0, editResult.oldText.split('\n').length)
+                  .concat(editResult.newText.split('\n'))
+                  .concat(lines.slice(editResult.oldText.split('\n').length))
+                  .join('\n');
+                documentState.currentDocument = updatedDoc;
+                documentState.currentWordCount = updatedDoc.split(/\s+/).filter(Boolean).length;
+                process.stdout.write('  Updated.\n\n');
+              } else {
+                process.stdout.write('  Reverted.\n\n');
+              }
+              ask();
+            });
+          } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            process.stdout.write(`\n  [error] ${msg}\n\n`);
+            ask();
+          }
+        });
+        return;
+      }
+
+      if (userInput.toLowerCase() === '/save') {
+        if (!documentState.currentDocument) {
+          process.stdout.write('  No document to save.\n\n');
+          ask();
+          return;
+        }
+
+        (async () => {
+          try {
+            const version = await cliCanvas.saveVersion(documentState.currentDocument, {
+              title: documentState.currentTitle,
+              model: currentState.model,
+            });
+            documentState.versions.push(version);
+            ask();
+          } catch (error) {
+            process.stdout.write(`  [error] ${error instanceof Error ? error.message : String(error)}\n\n`);
+            ask();
+          }
+        })();
+        return;
+      }
+
+      if (userInput.toLowerCase() === '/versions') {
+        const versions = cliCanvas.listVersions();
+        if (versions.length > 0 && versions[0]) {
+          rl.question('  Download version #? (enter number or q to cancel) > ', (choice) => {
+            const idx = parseInt(choice, 10) - 1;
+            if (idx >= 0 && idx < versions.length) {
+              cliCanvas.downloadVersion(versions[idx]);
+              process.stdout.write('\n');
+            }
+            ask();
+          });
+        } else {
+          ask();
+        }
+        return;
+      }
+
       if (!userInput) {
         ask();
         return;
@@ -540,6 +759,81 @@ async function main() {
   });
 
   ask();
+}
+
+// ── Document action handler ──────────────────────────────────────────────────
+async function handleDocumentAction(action: string, rl: readline.Interface): Promise<void> {
+  switch (action) {
+    case 'e':
+      process.stdout.write(
+        '\n  Available sections: heading name or line N-M\n' +
+        '  Examples: edit "Features", edit line 10-20\n' +
+        '  Section: '
+      );
+      return new Promise((resolve) => {
+        rl.once('line', async (sectionId) => {
+          if (sectionId.trim()) {
+            rl.question('  Edit instruction: ', async (instruction) => {
+              const controller = new AbortController();
+              try {
+                const editResult = await cliCanvas.editSection(documentState.currentDocument, sectionId, instruction, {
+                  signal: controller.signal,
+                });
+                cliCanvas.showDiff(editResult.oldText, editResult.newText);
+                rl.question('  Accept? (y/n) > ', (answer) => {
+                  if (answer.trim().toLowerCase() === 'y') {
+                    const lines = documentState.currentDocument.split('\n');
+                    const start = editResult.oldText.split('\n').length;
+                    const updated = [...lines.slice(0, start), ...editResult.newText.split('\n'), ...lines.slice(start)].join(
+                      '\n'
+                    );
+                    documentState.currentDocument = updated;
+                    documentState.currentWordCount = updated.split(/\s+/).filter(Boolean).length;
+                    process.stdout.write('  Updated.\n\n');
+                  }
+                  resolve();
+                });
+              } catch (error) {
+                process.stdout.write(`\n  [error] ${error instanceof Error ? error.message : String(error)}\n\n`);
+                resolve();
+              }
+            });
+          } else {
+            resolve();
+          }
+        });
+      });
+
+    case 's':
+      cliCanvas.showPrettified(documentState.currentDocument, documentState.currentTitle);
+      break;
+
+    case 'd':
+      try {
+        cliCanvas.downloadVersion({
+          id: `doc-${Date.now()}`,
+          title: documentState.currentTitle,
+          content: documentState.currentDocument,
+          wordCount: documentState.currentWordCount,
+          createdAt: documentState.generatedAt || Date.now(),
+        });
+        process.stdout.write('\n');
+      } catch (error) {
+        process.stdout.write(`\n  [error] ${error instanceof Error ? error.message : String(error)}\n\n`);
+      }
+      break;
+
+    case 'v':
+      cliCanvas.listVersions();
+      break;
+
+    case 'q':
+      process.stdout.write('\n');
+      break;
+
+    default:
+      process.stdout.write('  Invalid action. Try [E]dit / [S]how / [D]ownload / [V]ersions / [Q]uit\n\n');
+  }
 }
 
 main().catch((error) => {

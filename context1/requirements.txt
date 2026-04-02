@@ -1,0 +1,8 @@
+# Context-1 agent harness dependencies
+# Install with: pip install -r context1/requirements.txt
+
+chromadb>=0.5.0
+sentence-transformers>=2.7.0
+ollama>=0.2.0
+tiktoken>=0.7.0
+numpy>=1.26.0

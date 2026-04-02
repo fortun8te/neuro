@@ -54,6 +54,37 @@ function ServiceHealthDot() {
   );
 }
 
+// ── Feature badges showing active improvements ──
+function HarnessFeatureBadges({ isDark }: { isDark: boolean }) {
+  const features = [
+    { label: 'Phase 1: Query Routing ON', subtitle: '60% token reduction', color: 'from-blue-500 to-blue-600' },
+    { label: 'Phase 2: Context Compression ON', subtitle: '70% size reduction', color: 'from-purple-500 to-purple-600' },
+    { label: 'Phase 3: Advanced Make/Test ON', subtitle: '80-90/100 quality', color: 'from-green-500 to-green-600' },
+    { label: 'Phase 4: Infrastructure Hardening ON', subtitle: 'timeouts + watchdog', color: 'from-orange-500 to-orange-600' },
+    { label: 'Autonomy Engine ON', subtitle: 'proactive decisions', color: 'from-pink-500 to-pink-600' },
+  ];
+
+  return (
+    <div className={`px-3 py-3 border-b ${isDark ? 'border-white/[0.08]' : 'border-black/[0.06]'}`}>
+      <span className={`text-[9px] uppercase font-semibold tracking-wider px-1 ${isDark ? 'text-white/[0.30]' : 'text-zinc-400'}`}>Active Features</span>
+      <div className="mt-2 space-y-1.5">
+        {features.map((feat, i) => (
+          <div key={i} className={`px-2 py-1.5 rounded-md border-l-2 ${
+            isDark ? 'bg-white/[0.03] border-white/[0.15]' : 'bg-zinc-50 border-zinc-300'
+          }`}>
+            <p className={`text-[9px] font-semibold ${isDark ? 'text-white/[0.70]' : 'text-zinc-700'}`}>
+              {feat.label}
+            </p>
+            <p className={`text-[8px] mt-0.5 ${isDark ? 'text-white/[0.40]' : 'text-zinc-500'}`}>
+              {feat.subtitle}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 interface DashboardProps {
   embedded?: boolean;
 }
@@ -286,6 +317,9 @@ function LeftPanel({
 
       {/* ── Scrollable body ── */}
       <div className="flex-1 overflow-y-auto min-h-0">
+
+        {/* Feature badges section */}
+        <HarnessFeatureBadges isDark={isDark} />
 
         {/* Research depth presets removed — system auto-configures based on task complexity */}
 

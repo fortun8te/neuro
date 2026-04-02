@@ -33,6 +33,28 @@ const _listeners = new Set<Listener>();
 // between renders when the store hasn't changed (React 18 requirement).
 let _cache: Memory[] | null = null;
 
+// FIX #4: Content hash index for O(1) duplicate detection (instead of O(n))
+let _contentHashIndex = new Map<string, string>();  // hash → memory.id
+
+function hashContent(content: string): string {
+  // Simple FNV-1a hash, fast and collision-resistant enough for our use
+  const normalized = content.toLowerCase().trim();
+  let hash = 2166136261;  // FNV offset basis
+  for (let i = 0; i < Math.min(normalized.length, 500); i++) {
+    hash = hash ^ normalized.charCodeAt(i);
+    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+  }
+  return Math.abs(hash).toString(16);
+}
+
+function rebuildContentIndex(memories: Memory[]): void {
+  _contentHashIndex.clear();
+  for (const m of memories) {
+    const hash = hashContent(m.content);
+    _contentHashIndex.set(hash, m.id);
+  }
+}
+
 function notify() {
   _cache = null; // invalidate cache on any write
   for (const cb of _listeners) {
@@ -84,15 +106,48 @@ function loadAll(): Memory[] {
   return _cache;
 }
 
+/** FIX #3: Debounced batch writes instead of per-write serialization */
+let _pendingFlush: ReturnType<typeof setTimeout> | null = null;
+const FLUSH_DEBOUNCE_MS = 500;
+
+function debouncedSaveAll(memories: Memory[]): void {
+  _cache = memories;  // Update in-memory cache immediately
+
+  // Rebuild hash index with new memories (FIX #4)
+  rebuildContentIndex(memories);
+
+  if (_pendingFlush) {
+    clearTimeout(_pendingFlush);
+  }
+
+  _pendingFlush = setTimeout(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(_cache!));
+      notify();
+    } catch (e) {
+      console.warn('[memoryStore] Failed to persist memories to localStorage:', e instanceof Error ? e.message : String(e));
+    }
+    _pendingFlush = null;
+  }, FLUSH_DEBOUNCE_MS);
+}
+
 function saveAll(memories: Memory[]): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(memories));
-    // notify() clears _cache and _filteredCache, then we set the fresh cache
-    // so the next read doesn't need to re-parse from localStorage.
-    notify();
-    _cache = memories;
-  } catch (e) {
-    console.warn('[memoryStore] Failed to persist memories to localStorage:', e instanceof Error ? e.message : String(e));
+  debouncedSaveAll(memories);
+}
+
+/** Manually flush any pending writes (call at cycle completion) */
+export function flushMemoriesSync(): void {
+  if (_pendingFlush) {
+    clearTimeout(_pendingFlush);
+    _pendingFlush = null;
+  }
+  if (_cache) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(_cache));
+      notify();
+    } catch (e) {
+      console.warn('[memoryStore] Sync flush failed:', e instanceof Error ? e.message : String(e));
+    }
   }
 }
 
@@ -101,18 +156,10 @@ function saveAll(memories: Memory[]): void {
 // ─────────────────────────────────────────────────────────────
 
 function getSeededMemories(): Memory[] {
-  const now = new Date().toISOString();
-  return [
-    {
-      id: 'user-name',
-      type: 'user',
-      content: "User's name is Michael.",
-      tags: ['user', 'name'],
-      createdAt: now,
-      lastAccessedAt: now,
-      accessCount: 0,
-    },
-  ];
+  // SECURITY FIX: Remove hardcoded user name from default seeds.
+  // User names should only be stored if explicitly provided by the user
+  // via configuration. Hardcoded values are exposed to anyone with browser access.
+  return [];
 }
 
 // Initialize storage with seeds if empty
@@ -151,17 +198,21 @@ function generateId(): string {
  * Uses normalized substring matching to catch near-duplicates.
  */
 function isDuplicate(content: string, existing: Memory[]): Memory | null {
-  const normalized = content.toLowerCase().trim();
-  if (normalized.length < 10) return null;
-  for (const m of existing) {
-    const existingNorm = m.content.toLowerCase().trim();
-    // Exact match
-    if (existingNorm === normalized) return m;
-    // One contains the other (catches minor rewording)
-    if (normalized.length > 20 && existingNorm.length > 20) {
-      if (existingNorm.includes(normalized) || normalized.includes(existingNorm)) return m;
+  const hash = hashContent(content);
+  const matchId = _contentHashIndex.get(hash);
+  if (matchId) {
+    return existing.find(m => m.id === matchId) || null;
+  }
+
+  // Rebuild index if it drifted (every 100 adds or ~20% shrinkage)
+  if (_contentHashIndex.size < Math.max(1, existing.length * 0.8)) {
+    rebuildContentIndex(existing);
+    const retryId = _contentHashIndex.get(hash);
+    if (retryId) {
+      return existing.find(m => m.id === retryId) || null;
     }
   }
+
   return null;
 }
 

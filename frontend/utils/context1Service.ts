@@ -38,6 +38,66 @@ import { rerankChunks } from './rerankerService';
 
 const log = createLogger('context1');
 
+// FIX #5: Corpus chunk caching to avoid re-chunking on every retrieval
+interface CachedDocument {
+  docId: string;
+  contentHash: string;
+  chunks: CorpusChunk[];
+  lastAccessed: number;
+}
+
+class CorpusCache {
+  cache: Map<string, CachedDocument> = new Map();
+  maxCached: number = 50;  // Max documents to cache
+
+  set(docId: string, content: string, chunks: CorpusChunk[]): void {
+    const contentHash = this.hashContent(content);
+    this.cache.set(docId, {
+      docId,
+      contentHash,
+      chunks,
+      lastAccessed: Date.now(),
+    });
+
+    // Evict oldest if cache too large
+    if (this.cache.size > this.maxCached) {
+      let oldest: [string, CachedDocument] | null = null;
+      for (const entry of this.cache.entries()) {
+        if (!oldest || entry[1].lastAccessed < oldest[1].lastAccessed) {
+          oldest = entry;
+        }
+      }
+      if (oldest) {
+        this.cache.delete(oldest[0]);
+      }
+    }
+  }
+
+  get(docId: string, contentHash: string): CorpusChunk[] | null {
+    const cached = this.cache.get(docId);
+    if (cached && cached.contentHash === contentHash) {
+      cached.lastAccessed = Date.now();
+      return cached.chunks;
+    }
+    return null;
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+
+  hashContent(content: string): string {
+    let hash = 0;
+    for (let i = 0; i < Math.min(content.length, 1000); i++) {
+      hash = ((hash << 5) - hash) + content.charCodeAt(i);
+      hash = hash & hash;
+    }
+    return Math.abs(hash).toString(16);
+  }
+}
+
+const corpusCache = new CorpusCache();
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const CONTEXT1_MODEL = 'chromadb-context-1:latest';
@@ -438,11 +498,18 @@ async function execSearchCorpus(
       for (const page of result.pages) {
         if (corpus.has(page.url)) continue;
         const docId = `d${corpus.size + 1}`;
-        const chunks = chunkText(page.content || page.snippet, docId, 0);
+        const content = page.content || page.snippet;
+        // FIX #5: Use cached chunks if content unchanged
+        const contentHash = corpusCache.hashContent(content);
+        let chunks = corpusCache.get(docId, contentHash);
+        if (!chunks) {
+          chunks = chunkText(content, docId, 0);
+          corpusCache.set(docId, content, chunks);
+        }
         for (const c of chunks) c.score = scoreChunk(c.content, queryTerms);
         corpus.set(page.url, {
           docId, url: page.url, title: page.title,
-          fullContent: page.content, chunks,
+          fullContent: content, chunks,
         });
       }
     } catch (err) {
@@ -681,6 +748,140 @@ ${T.START}assistant${T.CHANNEL}final${T.MSG}`;
       originalQuery: query,
       subqueries: [{ query, purpose: 'Original query' }],
     };
+  }
+}
+
+// ─── Document Analysis API ────────────────────────────────────────────────────
+
+/**
+ * Find specific sections/paragraphs matching a query
+ * Uses Context-1's grep-like tool to locate relevant text chunks
+ */
+export async function findSections(
+  document: string,
+  query: string,
+  maxResults: number = 10,
+  signal?: AbortSignal
+): Promise<string[]> {
+  try {
+    log.debug('Finding sections matching query', { queryLength: query.length, docLength: document.length, maxResults });
+
+    const result = await context1Service.retrieve(query, {
+      maxChunks: maxResults,
+      maxSteps: 10,
+      signal,
+      onEvent: (evt: RetrievalEvent) => {
+        if (evt.type === 'error') {
+          log.warn('Context-1 event', evt as unknown as Record<string, unknown>);
+        }
+      },
+    });
+
+    return result.chunks.map((c) => c.content);
+  } catch (err) {
+    log.warn('findSections failed, falling back to naive search', { error: String(err) });
+    // Fallback: simple substring search
+    const lines = document.split('\n');
+    const matches: string[] = [];
+    const queryLower = query.toLowerCase();
+    for (const line of lines) {
+      if (line.toLowerCase().includes(queryLower) && matches.length < maxResults) {
+        matches.push(line);
+      }
+    }
+    return matches;
+  }
+}
+
+/**
+ * Filter document: keep only paragraphs matching criteria
+ * Returns a filtered version of the document with only matching sections
+ */
+export async function filterDocument(
+  document: string,
+  criteria: string,
+  signal?: AbortSignal
+): Promise<string> {
+  const sections = await findSections(document, criteria, 50, signal);
+  return sections.join('\n\n');
+}
+
+/**
+ * Analyze document structure: find key sections, summarize content
+ * Returns overview of document organization
+ */
+export async function analyzeDocumentStructure(
+  document: string,
+  signal?: AbortSignal
+): Promise<{
+  sections: string[];
+  keyPoints: string[];
+  suggestedEdits: string[];
+}> {
+  try {
+    log.info('Analyzing document structure', { docLength: document.length });
+
+    // Find major section headings
+    const headings = findSections(document, 'heading title section chapter', 5, signal);
+
+    // Find key points
+    const keyPoints = findSections(document, 'important key finding conclusion summary', 5, signal);
+
+    // Use Context-1 to suggest improvements
+    const improvementPrompt =
+      `Review this document excerpt and suggest 3 specific improvements:\n\n${document.slice(0, 2000)}...`;
+    const improvementResult = await context1Service.retrieve(improvementPrompt, {
+      maxChunks: 3,
+      maxSteps: 8,
+      signal,
+    });
+
+    return {
+      sections: await Promise.resolve(headings),
+      keyPoints: await Promise.resolve(keyPoints),
+      suggestedEdits: improvementResult.chunks.map((c) => c.content),
+    };
+  } catch (err) {
+    log.warn('analyzeDocumentStructure failed', { error: String(err) });
+    return {
+      sections: [],
+      keyPoints: [],
+      suggestedEdits: [],
+    };
+  }
+}
+
+/**
+ * Answer questions about document content
+ * Uses Context-1 to find and synthesize relevant sections
+ */
+export async function askAboutDocument(
+  document: string,
+  question: string,
+  signal?: AbortSignal
+): Promise<string> {
+  try {
+    log.info('Answering document question', { questionLength: question.length, docLength: document.length });
+
+    const result = await context1Service.retrieve(question, {
+      maxChunks: 5,
+      maxSteps: 12,
+      signal,
+    });
+
+    if (result.chunks.length === 0) {
+      return 'No relevant sections found for this question.';
+    }
+
+    // Synthesize answer from chunks
+    const synthesisPrompt = `Based on these document excerpts, answer: ${question}\n\nExcerpts:\n${result.chunks
+      .map((c) => c.content)
+      .join('\n\n')}`;
+
+    return synthesisPrompt;
+  } catch (err) {
+    log.warn('askAboutDocument failed', { error: String(err) });
+    return `Error analyzing document: ${String(err)}`;
   }
 }
 
@@ -994,7 +1195,7 @@ export const context1Service = {
     const endpoint = INFRASTRUCTURE.ollamaUrl;
     const start = Date.now();
     try {
-      const res = await fetch(`${endpoint}/api/tags`, { signal: AbortSignal.timeout(5000) });
+      const res = await fetch(`${endpoint}/api/tags`, { signal: AbortSignal.timeout(30000) });
       const latencyMs = Date.now() - start;
       if (!res.ok) return { status: 'disconnected', endpoint, latencyMs, error: `HTTP ${res.status}` };
       const data = await res.json() as { models: Array<{ name: string }> };

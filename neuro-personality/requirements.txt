@@ -1,0 +1,12 @@
+# For generate_training_pairs.py (Mac/server)
+requests
+
+# For train_neuro.py (Windows with CUDA)
+# Install torch separately first: pip install torch --index-url https://download.pytorch.org/whl/cu124
+# Then:
+# unsloth
+# transformers
+# datasets
+# peft
+# trl
+# accelerate

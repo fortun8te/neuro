@@ -105,9 +105,28 @@ export const storage = {
 
   async deleteCampaign(id: string): Promise<void> {
     try {
+      // CRITICAL FIX: Cascade delete all associated data
+      // 1. Delete all cycles for this campaign
+      await this.deleteCyclesForCampaign(id);
+
+      // 2. Delete all images for this campaign
+      const images = (await get(GENERATED_IMAGES_KEY)) || {};
+      const imagesToDelete = Object.keys(images).filter(
+        (imgId) => (images[imgId] as StoredImage).campaignId === id
+      );
+      for (const imgId of imagesToDelete) {
+        delete images[imgId];
+      }
+      if (imagesToDelete.length > 0) {
+        await set(GENERATED_IMAGES_KEY, images);
+      }
+
+      // 3. Finally delete the campaign itself
       const campaigns = (await get(CAMPAIGNS_KEY)) || {};
       delete campaigns[id];
       await set(CAMPAIGNS_KEY, campaigns);
+
+      console.log(`[storage] Cascade deleted campaign ${id}: ${imagesToDelete.length} images, all associated cycles`);
     } catch (err) {
       console.error('[storage] deleteCampaign failed:', err);
       throw err;
@@ -287,6 +306,41 @@ export const storage = {
       console.error('[storage] clear failed:', err);
       throw err;
     }
+  },
+
+  // ── Helper for getting all images for a campaign ──
+
+  async getImagesByCampaign(campaignId: string): Promise<StoredImage[]> {
+    try {
+      const images = (await get(GENERATED_IMAGES_KEY)) || {};
+      return (Object.values(images) as StoredImage[])
+        .filter((img) => img.campaignId === campaignId)
+        .sort((a, b) => b.timestamp - a.timestamp);
+    } catch (err) {
+      console.error('[storage] getImagesByCampaign failed:', err);
+      throw err;
+    }
+  },
+
+  // ── Helper for cleaning up images for a campaign ──
+
+  async deleteImagesForCampaign(campaignId: string): Promise<void> {
+    return enqueueImageWrite(async () => {
+      try {
+        const images = (await get(GENERATED_IMAGES_KEY)) || {};
+        const toDelete = Object.keys(images).filter(
+          (id) => (images[id] as StoredImage).campaignId === campaignId
+        );
+        for (const id of toDelete) delete images[id];
+        if (toDelete.length > 0) {
+          await set(GENERATED_IMAGES_KEY, images);
+          console.log(`[storage] Deleted ${toDelete.length} images for campaign ${campaignId}`);
+        }
+      } catch (err) {
+        console.error('[storage] deleteImagesForCampaign failed:', err);
+        throw err;
+      }
+    });
   },
 
   // ── Checkpoint operations (Phase 11) ──

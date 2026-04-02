@@ -122,6 +122,14 @@ export function ExecutionPlanModal({
   const [showChangesInput, setShowChangesInput] = useState(false);
   const [changesText, setChangesText] = useState('');
 
+  // Keyboard navigation
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      onAbort();
+    }
+  };
+
   if (!isOpen) return null;
 
   const readCount = plan.filter(p => p.type === 'read').length;
@@ -139,15 +147,20 @@ export function ExecutionPlanModal({
       onClick={e => {
         if (e.target === e.currentTarget) onAbort();
       }}
+      onKeyDown={handleKeyDown}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="execution-plan-title"
     >
       <div
-        className="rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col"
+        className="rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
         style={{
           background: isDarkMode ? 'rgba(20,20,28,0.95)' : 'rgba(255,255,255,0.95)',
           border: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.08)',
           backdropFilter: 'blur(20px)',
           overflow: 'hidden',
         }}
+        tabIndex={-1}
       >
         {/* Header */}
         <div
@@ -157,6 +170,7 @@ export function ExecutionPlanModal({
           }}
         >
           <h2
+            id="execution-plan-title"
             className="text-[16px] font-bold mb-1"
             style={{
               color: isDarkMode ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.9)',
@@ -171,6 +185,7 @@ export function ExecutionPlanModal({
               color: isDarkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.5)',
               fontFamily: FONT_FAMILY,
             }}
+            role="status"
           >
             {plan.length} tool{plan.length !== 1 ? 's' : ''} will be executed in sequence
           </p>
@@ -299,7 +314,7 @@ export function ExecutionPlanModal({
                     setShowChangesInput(false);
                   }
                 }}
-                className="flex-1 px-4 py-2 rounded-lg text-[12px] font-medium transition-colors"
+                className="flex-1 px-4 py-2 rounded-lg text-[12px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
                 style={{
                   background: 'rgba(59,130,246,0.8)',
                   color: '#fff',
@@ -307,18 +322,20 @@ export function ExecutionPlanModal({
                   cursor: changesText.trim() ? 'pointer' : 'default',
                   opacity: changesText.trim() ? 1 : 0.5,
                 }}
+                aria-label="Submit requested changes"
               >
                 Submit Changes
               </button>
               <button
                 onClick={() => setShowChangesInput(false)}
-                className="px-4 py-2 rounded-lg text-[12px] font-medium transition-colors"
+                className="px-4 py-2 rounded-lg text-[12px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
                 style={{
                   background: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
                   color: isDarkMode ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)',
                   border: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.08)',
                   cursor: 'pointer',
                 }}
+                aria-label="Cancel requesting changes"
               >
                 Cancel
               </button>
@@ -327,37 +344,40 @@ export function ExecutionPlanModal({
             <>
               <button
                 onClick={onAbort}
-                className="px-4 py-2 rounded-lg text-[12px] font-medium transition-colors"
+                className="px-4 py-2 rounded-lg text-[12px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
                 style={{
                   background: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
                   color: isDarkMode ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)',
                   border: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.08)',
                   cursor: 'pointer',
                 }}
+                aria-label="Abort execution plan"
               >
                 Abort
               </button>
               <button
                 onClick={() => setShowChangesInput(true)}
-                className="px-4 py-2 rounded-lg text-[12px] font-medium transition-colors"
+                className="px-4 py-2 rounded-lg text-[12px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
                 style={{
                   background: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
                   color: isDarkMode ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)',
                   border: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.08)',
                   cursor: 'pointer',
                 }}
+                aria-label="Request changes to execution plan"
               >
                 Request Changes
               </button>
               <button
                 onClick={onApprove}
-                className="px-4 py-2 rounded-lg text-[12px] font-medium transition-colors"
+                className="px-4 py-2 rounded-lg text-[12px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
                 style={{
                   background: 'rgba(34,197,94,0.8)',
                   color: '#fff',
                   border: 'none',
                   cursor: 'pointer',
                 }}
+                aria-label="Approve execution plan"
               >
                 Approve Plan
               </button>

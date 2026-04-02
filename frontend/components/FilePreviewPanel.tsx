@@ -7,6 +7,7 @@
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import hljs from 'highlight.js';
+import DOMPurify from 'dompurify';
 
 export interface PreviewFile {
   id: string;
@@ -154,7 +155,7 @@ function LiveCodeView({ content, language, isWriting }: { content: string; langu
               {/* Code */}
               <td style={{ paddingLeft: 14, paddingRight: 12, wordBreak: 'break-all' }}>
                 <span
-                  dangerouslySetInnerHTML={{ __html: lineHtml }}
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(lineHtml) }}
                   style={{ color: 'rgba(220,220,240,0.88)' }}
                 />
                 {/* Blue cursor at end of last line */}

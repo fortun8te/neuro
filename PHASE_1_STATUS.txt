@@ -1,0 +1,321 @@
+================================================================================
+PHASE 1: FILE DOWNLOAD & ANALYSIS SYSTEM — PLANNING COMPLETE
+================================================================================
+
+Date: 2026-04-02
+Status: READY FOR IMPLEMENTATION
+Duration: 40 hours over 1 week
+Blocker: P0-A (Wayfarer file transfer) — Expected week of 2026-04-07
+
+================================================================================
+PLANNING ARTIFACTS CREATED
+================================================================================
+
+✅ PHASE_1_DETAILED_PLAN.md (40 pages)
+   - Complete technical specification
+   - 4 component requirements (12h + 10h + 10h + 8h)
+   - API signatures, security architecture, error handling
+   - Testing strategy, success criteria
+
+✅ PHASE_1_ARCHITECTURE.md (20 pages)
+   - Data flow diagrams
+   - Service dependency graph
+   - Complete implementation checklist (120+ items)
+   - Security checklist, performance benchmarks
+   - File structure and modifications list
+
+✅ PHASE_1_SUMMARY.md (15 pages)
+   - Executive summary
+   - Component specifications (summary)
+   - Risk assessment, timeline
+   - Coordination with P0-A
+
+✅ PHASE_1_QUICK_REFERENCE.md (20 pages)
+   - Developer cheatsheet
+   - Copy-paste API signatures
+   - Type definitions, CLI commands
+   - Implementation patterns, testing templates
+   - Common issues & fixes
+
+✅ PHASE_1_STATUS.txt (this file)
+   - Quick status overview
+   - Key facts, next steps
+
+================================================================================
+PHASE 1 SCOPE (40 HOURS)
+================================================================================
+
+Component 1: Download Service Foundation (12h)
+  ├─ Streaming HTTP download with validation
+  ├─ URL whitelist/blacklist
+  ├─ Retry logic (3 attempts, exponential backoff)
+  ├─ Session-based temp storage (/tmp/nomads-{sessionId}/)
+  ├─ Auto-cleanup on session end
+  └─ File: src/utils/downloadService.ts (200-250 lines)
+
+Component 2: PDF Text Extraction (10h)
+  ├─ Text extraction (pdf.js text layer)
+  ├─ Table parsing (pdfplumber backend)
+  ├─ Metadata extraction (title, author, date)
+  ├─ Scanned PDF detection
+  ├─ File: src/utils/pdfUtils.ts (enhance +150 lines)
+  └─ File: wayfarer/document_parser_service.py (300-400 lines)
+
+Component 3: CSV/JSON Analysis (10h)
+  ├─ Auto-detect CSV delimiter
+  ├─ Type inference (string, number, date, boolean, mixed)
+  ├─ Pattern detection (email, phone, url, ip, uuid)
+  ├─ JSON format detection (array, object, ndjson)
+  ├─ Streaming parsing (no memory buffering)
+  └─ File: src/utils/csvService.ts (250-300 lines)
+
+Component 4: Image Batch Download (8h)
+  ├─ URL download (10 concurrent)
+  ├─ MIME type validation
+  ├─ Integration with existing vision analysis
+  ├─ Batch color extraction
+  └─ File: src/utils/imageBatchService.ts (enhance +100 lines)
+
+CLI Commands (5 commands):
+  ├─ /download <url>
+  ├─ /parse-pdf <url>
+  ├─ /parse-csv <url>
+  ├─ /analyze-images <urls>
+  └─ /find <query> in <url>
+
+================================================================================
+KEY DECISIONS
+================================================================================
+
+✅ Streaming downloads (no memory buffering) — supports 500MB+ files
+✅ Session-based temp storage (/tmp/nomads-{sessionId}/) — auto-cleanup
+✅ Python backend (Wayfarer) — centralizes heavy lifting
+✅ Modular components — reusable for Phase 2 (video, audio)
+✅ Context-1 integration — semantic document search
+✅ Abort signal threading — proper cancellation support
+✅ Security-first — URL whitelist, size limits, timeout enforcement
+
+================================================================================
+DEPENDENCIES TO ADD
+================================================================================
+
+npm (Frontend):
+  - None required (use Node.js built-ins: fs, http, https, stream)
+
+pip (Backend):
+  - pdfplumber==0.10.3 (table detection)
+  - pypdf==4.0.1 (PDF parsing)
+
+System:
+  - Python 3.11 (already available)
+
+================================================================================
+TESTING STRATEGY
+================================================================================
+
+Unit Tests:
+  ✓ downloadService (URL validation, streaming, retry, cleanup)
+  ✓ csvService (delimiter detection, type inference, patterns)
+  ✓ pdfUtils (text extraction, tables, metadata)
+  ✓ imageBatchService (URL validation, batch limits)
+
+Integration Tests:
+  ✓ Download PDF → extract text → search
+  ✓ Download CSV → detect schema → preview
+  ✓ Download images → batch analyze → colors
+  ✓ Error scenarios (404, timeout, oversized)
+
+Manual QA:
+  ✓ Real PDFs, CSVs, images
+  ✓ Session cleanup verification
+  ✓ Error handling edge cases
+
+Target: 80%+ code coverage
+
+================================================================================
+SUCCESS CRITERIA (ALL MUST BE TRUE)
+================================================================================
+
+Code:
+  ✓ All 4 components implemented
+  ✓ All 5 CLI commands working
+  ✓ Zero TypeScript errors (npm run build)
+  ✓ All tests passing (unit + integration)
+
+Quality:
+  ✓ Dev server starts without errors
+  ✓ Session cleanup verified
+  ✓ Security checks in place (URL validation, size limits)
+  ✓ Abort signals fully threaded
+
+Documentation:
+  ✓ README with Phase 1 examples
+  ✓ API documentation (JSDoc comments)
+  ✓ Known limitations listed
+
+================================================================================
+COORDINATION WITH P0-A
+================================================================================
+
+P0-A Deliverable:
+  Expected: Wayfarer file transfer endpoint
+  Format: POST /download → { path, size, mimeType }
+
+P1 Integration:
+  If P0-A available: Use for backend downloads
+  If P0-A unavailable: Fallback to Node.js HTTP client
+
+Critical Coordination Points:
+  1. Confirm P0-A API interface
+  2. Align on temp storage location
+  3. Coordinate session cleanup
+  4. Test P0-A + P1 integration end-to-end
+
+Estimated P0-A Complete: Week of 2026-04-07 (or earlier)
+
+================================================================================
+TIMELINE
+================================================================================
+
+Cannot start until: P0-A complete (estimated 2026-04-07)
+
+Once started (40 hours total):
+  Day 1-2 (20h): Component 1 (downloadService) + Component 3 (csvService)
+  Day 3-4 (18h): Component 2 (PDF) + Component 4 (images)
+  Day 5 (12h): CLI commands + integration tests + documentation
+
+Buffer: Can begin Component 1 in parallel with P0-A final polish
+
+================================================================================
+RISK ASSESSMENT
+================================================================================
+
+High Risk:        NONE
+Medium Risk:      P0-A coordination (mitigation: use Node.js fallback)
+Low Risk:         All others (clear precedent, proven tech stack)
+
+Unknown:          Exact P0-A interface (assume standard REST)
+
+================================================================================
+DELIVERABLES (FINAL)
+================================================================================
+
+Code (8 new files, 4 enhanced):
+  ✓ downloadService.ts
+  ✓ csvService.ts
+  ✓ document_parser_service.py
+  ✓ pdfUtils.ts (enhanced)
+  ✓ imageBatchService.ts (enhanced)
+  ✓ wayfarer_server.py (enhanced)
+  ✓ cli.ts (enhanced)
+  ✓ types/documents.ts
+
+Tests (6 test files, 60+ test cases):
+  ✓ downloadService.test.ts
+  ✓ csvService.test.ts
+  ✓ pdfUtils.test.ts
+  ✓ imageBatchService.test.ts
+  ✓ fileAnalysisPipeline.test.ts (integration)
+  ✓ CLI command tests
+
+Documentation:
+  ✓ PHASE_1_DETAILED_PLAN.md (created)
+  ✓ PHASE_1_ARCHITECTURE.md (created)
+  ✓ PHASE_1_SUMMARY.md (created)
+  ✓ PHASE_1_QUICK_REFERENCE.md (created)
+  ✓ README section with Phase 1 examples (TBD)
+  ✓ API documentation (JSDoc comments, TBD)
+
+================================================================================
+NEXT PHASES (NOT IN SCOPE)
+================================================================================
+
+Phase 2 (P2): Video, Audio, Office Formats (90+ hours)
+  - Video: FFmpeg frame extraction + vision (40h)
+  - Audio: Whisper transcription + sentiment (35h)
+  - Office: .docx, .xlsx, .pptx parsing (35h)
+  - Archive: .zip, .tar.gz extraction (25h)
+
+Phase 3 (P3): Advanced Features (40+ hours)
+  - Folder crawling + batch operations
+  - Document comparison + diff
+  - Pattern matching refinement
+
+Phase 4+ (P4+): Production (ongoing)
+  - Report generation + export
+  - Caching + performance optimization
+  - Batch processing dashboard
+
+================================================================================
+FOR THE DEVELOPER
+================================================================================
+
+Before starting:
+  1. Read PHASE_1_DETAILED_PLAN.md (40 pages) — full spec
+  2. Review PHASE_1_ARCHITECTURE.md — checklist + file structure
+  3. Bookmark PHASE_1_QUICK_REFERENCE.md — use daily
+  4. Wait for P0-A completion confirmation
+
+Start with:
+  1. Component 1 (downloadService) — foundational, can test independently
+  2. Write tests as you go — don't wait until day 5
+  3. Use abort signals early — prevents later refactors
+  4. Document as you write — JSDoc comments save time
+
+Daily:
+  1. Check TypeScript errors (`npm run build`)
+  2. Run tests (`npm run test`)
+  3. Verify session cleanup
+  4. Coordinate with P0-A if blocking
+
+End of day 5:
+  1. All tests passing
+  2. Zero TypeScript errors
+  3. Dev server clean
+  4. Documentation complete
+
+================================================================================
+FOR THE PROJECT MANAGER
+================================================================================
+
+Timeline:
+  - Wait for P0-A completion (critical path)
+  - P1 can begin week of 2026-04-07 (estimated)
+  - Duration: 1 week of full-time development
+  - Buffer: +1 week for unforeseen issues
+
+Risks:
+  - P0-A integration (medium) — coordinate daily
+  - pdfplumber install issues (low) — fallback to text-only
+  - Session cleanup edge cases (low) — tested thoroughly
+
+Gates to Phase 2:
+  1. All 4 components complete
+  2. All CLI commands working
+  3. Zero TypeScript errors
+  4. Tests passing
+
+Dependencies:
+  1. P0-A file transfer endpoint (hard blocker)
+  2. Python 3.11 (already available)
+  3. pdfplumber installation (should be easy)
+
+Success = ship P1 by 2026-04-14 (estimated)
+
+================================================================================
+STATUS: READY FOR DEVELOPMENT
+================================================================================
+
+Planning: ✅ COMPLETE (40+ pages of spec, 120+ checklist items)
+Code: 🕐 BLOCKED (waiting for P0-A)
+Tests: 🕐 BLOCKED (waiting for P0-A)
+Documentation: ✅ IN PROGRESS (planning phase complete)
+
+Next: Kickoff meeting + P0-A coordination
+
+================================================================================
+Questions? Check the detailed planning documents.
+Questions? Check the detailed planning documents.
+Last Updated: 2026-04-02
+Owner: Agent: File Download & Analysis Phase 1
+================================================================================

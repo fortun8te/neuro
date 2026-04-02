@@ -27,8 +27,19 @@
  *   *** End Patch
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+// ── Node.js only imports (guarded for browser compatibility) ────────────────
+let fs: typeof import('fs') | null = null;
+let path: typeof import('path') | null = null;
+
+// Only load Node.js modules in Node.js environment
+if (typeof window === 'undefined' && typeof process !== 'undefined' && process.versions?.node) {
+  try {
+    fs = require('fs');
+    path = require('path');
+  } catch (e) {
+    // Modules not available in this environment
+  }
+}
 
 // ── Public Types ─────────────────────────────────────────────────────────────
 
@@ -187,7 +198,8 @@ export function assessPatch(hunk: PatchHunk): PatchSafety {
   if (SYSTEM_PREFIXES.some((prefix) => p.startsWith(prefix))) return 'reject';
 
   // Reject absolute paths outside workspace (unless they're simple /tmp)
-  if (path.isAbsolute(p) && !p.startsWith('/tmp')) {
+  // Note: path.isAbsolute only available in Node.js environment
+  if (path && typeof path.isAbsolute === 'function' && path.isAbsolute(p) && !p.startsWith('/tmp')) {
     // Allow absolute paths only if they appear safe (no system prefix covered above)
     // Additional safety: reject if it resolves outside any recognizable workspace
     return 'ask_user';
@@ -203,27 +215,32 @@ export function assessPatch(hunk: PatchHunk): PatchSafety {
 
 /**
  * Apply a single PatchHunk to the filesystem relative to workDir.
+ * Only available in Node.js environments.
  */
 export async function applyPatch(
   hunk: PatchHunk,
   workDir: string
 ): Promise<{ success: boolean; error?: string }> {
+  if (!fs || !path) {
+    return { success: false, error: 'File system operations not available in this environment' };
+  }
+
   const resolvePath = (p: string) =>
-    path.isAbsolute(p) ? p : path.resolve(workDir, p);
+    (path as any).isAbsolute(p) ? p : (path as any).resolve(workDir, p);
 
   try {
     switch (hunk.op) {
       case 'add': {
         const fullPath = resolvePath(hunk.path);
-        const dir = path.dirname(fullPath);
-        fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(fullPath, hunk.content ?? '', 'utf8');
+        const dir = (path as any).dirname(fullPath);
+        (fs as any).mkdirSync(dir, { recursive: true });
+        (fs as any).writeFileSync(fullPath, hunk.content ?? '', 'utf8');
         return { success: true };
       }
 
       case 'delete': {
         const fullPath = resolvePath(hunk.path);
-        fs.unlinkSync(fullPath);
+        (fs as any).unlinkSync(fullPath);
         return { success: true };
       }
 
@@ -233,7 +250,7 @@ export async function applyPatch(
         // Read existing file
         let existing: string;
         try {
-          existing = fs.readFileSync(srcPath, 'utf8');
+          existing = (fs as any).readFileSync(srcPath, 'utf8');
         } catch (err) {
           return { success: false, error: `Cannot read file: ${hunk.path}` };
         }
@@ -245,8 +262,8 @@ export async function applyPatch(
           // No changes — handle rename only
           if (hunk.newPath) {
             const destPath = resolvePath(hunk.newPath);
-            fs.mkdirSync(path.dirname(destPath), { recursive: true });
-            fs.renameSync(srcPath, destPath);
+            (fs as any).mkdirSync((path as any).dirname(destPath), { recursive: true });
+            (fs as any).renameSync(srcPath, destPath);
           }
           return { success: true };
         }
@@ -260,14 +277,14 @@ export async function applyPatch(
         // Write to destination (rename if newPath specified)
         const destPath = hunk.newPath ? resolvePath(hunk.newPath) : srcPath;
         if (hunk.newPath) {
-          fs.mkdirSync(path.dirname(destPath), { recursive: true });
+          (fs as any).mkdirSync((path as any).dirname(destPath), { recursive: true });
         }
-        fs.writeFileSync(destPath, newContent, 'utf8');
+        (fs as any).writeFileSync(destPath, newContent, 'utf8');
 
         // If renamed, remove original
         if (hunk.newPath && hunk.newPath !== hunk.path) {
           try {
-            fs.unlinkSync(srcPath);
+            (fs as any).unlinkSync(srcPath);
           } catch {
             // Ignore if already gone
           }

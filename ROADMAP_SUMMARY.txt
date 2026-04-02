@@ -1,0 +1,275 @@
+================================================================================
+NEURO FEATURE ROADMAP — EXECUTIVE SUMMARY
+April 2, 2026 | Phase 11 & Beyond
+================================================================================
+
+CURRENT STATE
+─────────────────────────────────────────────────────────────────────────────
+✅ What We Have
+  • 8-stage creative pipeline (research → brand DNA → angles → production)
+  • Desire-driven research with parallel orchestration
+  • 12-dimensional ad evaluation framework
+  • Streaming architecture (real-time token visibility)
+  • Checkpoint/resume capability
+  • Complete audit trail (sources, tokens, timing)
+  • Cost tracking with soft/hard limits
+  • Embedding service + semantic compression
+
+⚠️ What We Don't Have
+  • Query-level caching (repeated questions hit Ollama fresh)
+  • Speculative decoding (sequential generation is slow)
+  • Long-context optimization (struggles with 100K+ tokens)
+  • Knowledge base/RAG (all findings siloed)
+  • Quality eval gates (no auto-retry on bad answers)
+  • Vision integration into pipeline (isolated to Wayfarer Plus)
+  • Export formats (PDF, HTML, JSON, PowerPoint)
+  • Search across past cycles
+  • Multi-user collaboration
+  • Custom workflows
+
+BENCHMARKS
+─────────────────────────────────────────────────────────────────────────────
+GAIA Benchmark:
+  • Current: 50% (5/10 questions) in 1,902 seconds (~32 min)
+  • Target: 70%+ in <15 minutes
+  • Bottlenecks: Speed (generation), accuracy (repeat failures), reuse (knowledge)
+
+================================================================================
+ROADMAP: 15 FEATURES ACROSS 3 PRIORITY TIERS
+================================================================================
+
+PRIORITY 1: CRITICAL (Week 1-5) — Core gaps that block GAIA improvement
+─────────────────────────────────────────────────────────────────────────────
+
+🔴 P1-A: Query-Level Caching & Memoization
+   Impact: SPEED (5-10% faster on repeated queries)
+   Effort: 3 days | Feasibility: HIGH
+   Why: GAIA has repeated questions. Hash-based LLM cache saves 30% of model calls.
+   Action: Add cache layer to ollama.ts, TTL 24h, per-model + per-prompt
+
+🔴 P1-B: Speculative Decoding
+   Impact: SPEED (2-3x faster generation)
+   Effort: 4 days | Feasibility: MEDIUM
+   Why: Token generation is bottleneck. Small model generates draft, large validates.
+   Action: Implement dual-model orchestration (qwen2b → qwen9b validation)
+
+🔴 P1-C: Long-Context Management (100K+ tokens)
+   Impact: CAPABILITY (unblock document analysis)
+   Effort: 2.5 days | Feasibility: HIGH
+   Why: Can't analyze large documents/codebases. Need hierarchical chunking.
+   Action: Use Context-1 semantic chunking + reranking + sliding window
+
+─────────────────────────────────────────────────────────────────────────────
+
+PRIORITY 2: HIGH-VALUE (Week 5-7) — Leverage + quality improvements
+─────────────────────────────────────────────────────────────────────────────
+
+🟠 P2-A: Quality Metrics & Automated Evaluation
+   Impact: QUALITY (gate bad answers, auto-retry)
+   Effort: 3 days | Feasibility: HIGH
+   Why: No feedback loop today. Eval model scores output; if <60, retry automatically.
+   Action: Implement 5-criteria eval (coherence, relevance, completeness, accuracy,
+           specificity). Route to larger model or adjusted prompt if needed.
+
+🟠 P2-B: Autonomous Improvement Loop
+   Impact: LEARNING (fewer repeated mistakes)
+   Effort: 4 days | Feasibility: MEDIUM
+   Why: Same failures repeat. LLM analyzes root cause, adjusts strategy, retries.
+   Action: Add failure tracking + root cause analysis + adaptation strategy routing
+
+🟠 P2-C: Knowledge Base / RAG System
+   Impact: REUSE (20%+ faster on follow-ups)
+   Effort: 4 days | Feasibility: MEDIUM
+   Why: All findings trapped in IndexedDB. Chroma + embeddings enable retrieval.
+   Action: Index all findings in Chroma. On new question, retrieve similar past answers.
+           Surface "Similar to Q3: here's what we learned" in UI.
+
+🟠 P2-D: Vision & Multimodal Integration
+   Impact: CAPABILITY (true image understanding)
+   Effort: 5-6 days | Feasibility: MEDIUM
+   Why: Wayfarer Plus isolated. Need qwen-vl in research, make, test stages.
+   Action: Integrate vision model, add image analysis to research, visual reasoning to make
+
+─────────────────────────────────────────────────────────────────────────────
+
+PRIORITY 3: NICE-TO-HAVE (Weeks 8+) — Usability & team features
+─────────────────────────────────────────────────────────────────────────────
+
+🟡 P3-A: Advanced Search & Full-Text Retrieval
+   Impact: DISCOVERY (find past work quickly)
+   Effort: 3 days | Feasibility: HIGH
+   Why: Can't search cycles. Need FTS + semantic search across all findings.
+   Action: SQLite FTS + embeddings, search UI with facets (date, stage, quality)
+
+🟡 P3-B: Export & Sharing (PDF, HTML, JSON, PowerPoint)
+   Impact: SHARING (stakeholder visibility)
+   Effort: 4-5 days | Feasibility: HIGH
+   Why: Work trapped in NEURO. Stakeholders can't review offline.
+   Action: Multiple export templates (PDF professional, HTML interactive, JSON data,
+           Markdown wiki, PowerPoint slides)
+
+🟡 P3-C: Real-Time Collaboration & Multi-User
+   Impact: TEAMWORK (async + sync collaboration)
+   Effort: 5-7 days | Feasibility: MEDIUM-HIGH
+   Why: Single-user only. Teams can't work together.
+   Action: WebSocket server, state sync, conflict resolution, role-based access
+
+🟡 P3-D: Custom Workflow Designer
+   Impact: FLEXIBILITY (adapt to different question types)
+   Effort: 6-8 days | Feasibility: MEDIUM
+   Why: 8-stage pipeline fixed. Some questions need less research, more ideation.
+   Action: Visual workflow builder (React Flow), DAG execution, conditional routing
+
+🟡 P3-E: Model Adaptation & Few-Shot Learning
+   Impact: QUALITY (better outputs with in-context examples)
+   Effort: 3-4 days | Feasibility: HIGH
+   Why: Static prompts. Few-shot examples from past successes improve quality.
+   Action: Few-shot library per task type, retrieve good examples, append to prompt
+
+🟡 P3-F: Cost Tracking & Optimization
+   Impact: BUSINESS (visibility, optimization)
+   Effort: 3-4 days | Feasibility: HIGH
+   Why: No per-query cost breakdown. Can't optimize spending.
+   Action: Fine-grained token tracking per stage, dashboard, auto-suggest smaller models
+
+🟡 P3-G: Automated Testing Framework
+   Impact: STABILITY (regression detection)
+   Effort: 4-5 days | Feasibility: MEDIUM
+   Why: No regression testing. Optimizations might silently break things.
+   Action: Test suite (30-50 questions), baseline comparison, CI/CD integration
+
+🟡 P3-H: Mobile Responsiveness
+   Impact: USABILITY (view on mobile)
+   Effort: 3-4 days | Feasibility: MEDIUM
+   Why: Desktop-first UI. Can't view results on phone.
+   Action: Responsive design, mobile-friendly streaming
+
+================================================================================
+PHASE 11 EXECUTION PLAN (6-7 weeks)
+================================================================================
+
+WEEK 1-2: Query Caching
+  ✓ Hash-based prompt cache (24h TTL)
+  ✓ Embedding cache layer
+  ✓ Test on GAIA (measure 5-10% speedup)
+
+WEEK 2-3: Long-Context Management
+  ✓ Hierarchical semantic chunking
+  ✓ Reranking with embeddings
+  ✓ Test 100K+ token documents
+
+WEEK 3-4: Quality Metrics Framework
+  ✓ Eval criteria per question type
+  ✓ Eval model scoring (qwen2b)
+  ✓ Auto-retry if score < 60
+
+WEEK 4-5: Speculative Decoding
+  ✓ Dual-model orchestration
+  ✓ Draft acceptance threshold tuning
+  ✓ Measure 2-3x speedup
+
+WEEK 5-6: Knowledge Base (Chroma)
+  ✓ Vector DB setup (in-process)
+  ✓ Index past findings
+  ✓ Semantic search + retrieval
+  ✓ UI: "Similar to X" surfaces
+
+WEEK 6-7: Autonomous Improvement Loop
+  ✓ Failure tracking + LLM root cause
+  ✓ Strategy adaptation
+  ✓ Feedback loop: fail → analyze → retry
+
+WEEK 7-8: Testing & Integration
+  ✓ Test suite (30-50 questions)
+  ✓ GAIA benchmark run
+  ✓ Performance profiling
+  ✓ Documentation
+
+================================================================================
+EXPECTED OUTCOMES (Phase 11)
+================================================================================
+
+GAIA Benchmark:
+  Before: 50% accuracy, 32 min runtime
+  After:  70%+ accuracy, 15-20 min runtime
+
+Performance:
+  • Query caching: 5-10% speedup on repeats
+  • Spec decoding: 2-3x faster generation
+  • Knowledge retrieval: 20% faster on follow-ups
+  • Total: 40-50% faster overall
+
+Quality:
+  • Quality gates: 0% low-quality output shipped
+  • Auto-retry: 15-20% fewer manual interventions
+  • Autonomous improve: 10% reduction in repeated failures
+
+================================================================================
+PHASE 12+ ROADMAP (3-4 months out)
+================================================================================
+
+Month 3: Vision & Multimodal (2-3 weeks)
+Month 3-4: Advanced Search & Collaboration (2-3 weeks)
+Month 4: Export, Cost Dashboard, Testing Framework (2-3 weeks)
+
+================================================================================
+RISK ASSESSMENT
+================================================================================
+
+Technical Risks:
+  • Caching breaks with model updates → VERSION PROMPTS
+  • Spec decoding quality drop → VALIDATE FIRST, EASY ROLLBACK
+  • Long-context OOM → ADD MEMORY LIMITS
+  • Chroma diverges → REGULAR REINDEX
+  • Eval wrong → VALIDATE ON TEST SET FIRST
+  • Retry loops → LOOP DETECTION + MAX COUNT
+
+Mitigation:
+  ✓ Phased rollout (feature flags)
+  ✓ A/B testing (old vs new)
+  ✓ Audit trail (enable debugging)
+  ✓ Rollback plan (per feature)
+  ✓ Test suite (regression detection)
+
+================================================================================
+EFFORT SUMMARY
+================================================================================
+
+Total Phase 11: ~204 hours (25-30 developer-days)
+Timeline: 6-7 weeks (1 developer, 5 days/week)
+
+Quick Wins (1-2 days): Cost dashboard, JSON export, offline detection
+Strategic Bets (3-5 days): Caching, eval framework, knowledge base, spec decoding
+
+================================================================================
+SUCCESS METRICS
+================================================================================
+
+Phase 11 Done When:
+  ✓ GAIA: 50% → 70%+
+  ✓ Speed: 32 min → 15-20 min
+  ✓ Caching: 10% hit rate
+  ✓ Eval accuracy: 95%+
+  ✓ Knowledge reuse: 20%+
+  ✓ Zero regressions
+
+Phase 12+ Goals:
+  ✓ GAIA: 70% → 85%+
+  ✓ Speed: 15 min → 8-10 min
+  ✓ Vision: 5+ new question types
+  ✓ Cost: 30% spending reduction
+
+================================================================================
+NEXT STEPS
+================================================================================
+
+1. Review roadmap with team (this document)
+2. Validate effort estimates against team capacity
+3. Create feature branches for P1 items
+4. Set up test infrastructure (GAIA benchmark + regression suite)
+5. Begin Phase 11 Week 1 (Query Caching)
+
+Questions? See full FEATURE_ROADMAP.md for detailed analysis, architecture,
+and implementation recommendations.
+
+================================================================================

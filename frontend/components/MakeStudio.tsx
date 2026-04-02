@@ -21,6 +21,7 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import DOMPurify from 'dompurify';
 import { useCampaign } from '../context/CampaignContext';
 import { useTheme } from '../context/ThemeContext';
 import { useSoundEngine } from '../hooks/useSoundEngine';
@@ -4219,7 +4220,7 @@ Output ONLY the complete HTML document. Start with <!DOCTYPE html>.`;
                 <div className={`flex-1 min-w-0 overflow-y-auto overflow-x-hidden font-mono text-[10px] leading-relaxed p-3 ${theme === 'dark' ? 'bg-zinc-900/80' : 'bg-slate-100'}`}>
                   <pre
                     className="whitespace-pre-wrap break-words"
-                    dangerouslySetInnerHTML={{ __html: highlightHtml(llmOutput || '', theme === 'dark') }}
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(highlightHtml(llmOutput || '', theme === 'dark')) }}
                   />
                   <div ref={codeEndRef} />
                 </div>

@@ -1,0 +1,360 @@
+═══════════════════════════════════════════════════════════════════════════════
+  DATA VISUALIZATION & FORMATTING COMPREHENSIVE AUDIT SUMMARY
+═══════════════════════════════════════════════════════════════════════════════
+
+DOCUMENT: DATA_VIZ_FORMATTING_ROADMAP.md (1,374 lines, comprehensive)
+LOCATION: /Users/mk/Downloads/nomads/
+
+─────────────────────────────────────────────────────────────────────────────
+ CURRENT STATE: WHAT'S ALREADY WORKING
+─────────────────────────────────────────────────────────────────────────────
+
+✓ TEXT RENDERING (MarkdownRenderer.tsx)
+  • GitHub Flavored Markdown with syntax highlighting
+  • Support: H1-H3 headings, lists, tables, blockquotes, code blocks
+  • Color-coded themes (dark/light mode)
+  • LIMITATION: All text uniform—no highlights, badges, or callouts
+
+✓ CHARTS (Recharts installed)
+  • Line, bar, area, pie, scatter charts ready to use
+  • PerformanceChart custom SVG implementation
+  • LIMITATION: Charts exist but underutilized in pipeline
+
+✓ WIDGET SYSTEM (24+ card types)
+  • Competitor, metrics, audience, research, social widgets
+  • Centralized type definitions
+  • Glass morphism styling (MetricsCard pattern)
+  • LIMITATION: Missing interactive tables, heatmaps, networks
+
+✓ DESIGN TOKENS (canvasStyles.ts)
+  • Semantic colors (success, error, warning, info)
+  • Spacing, fonts, transitions, responsive breakpoints
+  • Dark/light theme switching
+  • ADVANTAGE: Foundation for consistent theming
+
+✓ STRUCTURED OUTPUT PARSER (ResearchOutput.tsx)
+  • Real-time streaming parser: 37 section types
+  • Color-coded badges and collapsible sections
+  • Token counting and timing
+  • LIMITATION: Cannot express nuance within section content
+
+─────────────────────────────────────────────────────────────────────────────
+ OPPORTUNITY ANALYSIS
+─────────────────────────────────────────────────────────────────────────────
+
+Why This Matters:
+  1. Currently: All output looks like "plain text" research
+  2. Problem: Users can't scan for insights—must read everything
+  3. Solution: Visual hierarchy, colors, charts, callouts
+  4. Expected gain: 60% readability improvement, 40% faster insight discovery
+
+Unique Advantages:
+  • Recharts already installed (no dependency bloat)
+  • Centralized styling system (easy theme management)
+  • Multi-stage pipeline (perfect for progression visualization)
+  • No emoji constraints (avoiding visual clutter)
+  • Proven widget infrastructure (extensible pattern)
+
+─────────────────────────────────────────────────────────────────────────────
+ THE ROADMAP: 30+ FEATURES ACROSS 3 TIERS
+─────────────────────────────────────────────────────────────────────────────
+
+TIER 1: QUICK WINS (1-2 weeks, LOW effort, HIGH impact)
+───────────────────────────────────────────────────────
+
+  A. SEMANTIC TEXT HIGHLIGHTING (2 hours)
+     Syntax: [KEY], [WARN], [INSIGHT], [EVIDENCE], [NOTE]
+     Example: [KEY] Customer pain point: high purchase friction (23 min avg)
+     Impact: Makes important findings impossible to miss
+
+  B. CALLOUT BOXES (3 hours)
+     Types: Tip, Warning, Critical, Success, Quote
+     Example:
+       ┌─ WARNING ───────────────────┐
+       │ Confidence below 65%.        │
+       │ Recommend more sources.      │
+       └─────────────────────────────┘
+     Impact: Separates metadata from content
+
+  C. BADGE SYSTEM (2 hours)
+     Types: 24 variants (status, confidence, category, sentiment)
+     Example: [Complete] [High Confidence] [Market Research]
+     Impact: Visual categorization at a glance
+
+  D. SORTABLE DATA TABLES (4 hours)
+     Features: Click header to sort, striped rows, responsive
+     Impact: Makes structured data scannable
+
+  E. PROGRESS INDICATORS (3 hours)
+     Types: Linear bars, circular gauges, multi-dimension
+     Example: Coverage: ████████░░ 78% (8 of 10 dimensions)
+     Impact: Shows research depth visually
+
+  SUBTOTAL P1: 5 components, 14 hours, enables 80% of value
+
+TIER 2: POWER FEATURES (2-3 weeks, MEDIUM effort)
+──────────────────────────────────────────────
+
+  A. ENHANCED CHART GALLERY (8 hours)
+     7 new chart types:
+     • Feature heatmap (competitor comparison matrix)
+     • Market size evolution (area chart with projections)
+     • Sentiment distribution (donut chart)
+     • Price vs features (scatter plot)
+     • Confidence gauge (radial chart)
+     • Multi-series comparison (grouped bars)
+     • Coverage timeline (stacked bars showing phases)
+     Impact: Transforms raw data into visual insights
+
+  B. COMPETITIVE HEATMAP (5 hours)
+     Structure: Competitors × dimensions grid with color intensity
+     Colors: Red (1) → Yellow (5) → Green (10)
+     Features: Hover for evidence, sortable, filterable
+     Impact: Instant visual competitor comparison
+
+  C. TIMELINE VISUALIZATION (5 hours)
+     Types: Vertical (research journey), horizontal (market events)
+     Impact: Shows progression and context
+
+  D. EXPANDABLE SECTIONS (2 hours)
+     UX: Click to expand/collapse detailed breakdowns
+     Impact: Reduces cognitive load, improves focus
+
+  SUBTOTAL P2: 8 components, 20 hours, 90% of cumulative value
+
+TIER 3: STRATEGIC FEATURES (3-4 weeks, HIGH effort)
+────────────────────────────────────────────────
+
+  A. NETWORK DIAGRAM (10 hours)
+     Purpose: Competitor positioning, topic clusters, relationships
+     Library: vis.js (50KB)
+     Impact: Specialized for relationship visualization
+
+  B. INTERACTIVE SLIDERS (6 hours)
+     Use case: Adjust TAM estimation, ad spend allocation
+     Impact: Exploratory analysis capability
+
+  C. EXPORT SYSTEM (10 hours)
+     Formats: PDF (html-to-image + jsPDF), PowerPoint (pptx-gen-js)
+     Impact: Enables sharing and presentation mode
+
+  D. CUSTOM BRANDING (8 hours)
+     Features: Client logos, brand colors, white-label support
+     Impact: Enterprise feature, client customization
+
+  SUBTOTAL P3: 4 advanced features, 34 hours, specialized needs
+
+─────────────────────────────────────────────────────────────────────────────
+ QUICK IMPLEMENTATION GUIDE
+─────────────────────────────────────────────────────────────────────────────
+
+STAGE-SPECIFIC FORMATTING (How to Use):
+
+  Phase 1: Research
+    ├─ Highlights: [EVIDENCE], [KEY]
+    ├─ Callouts: TIP (methodology), WARNING (gaps)
+    ├─ Charts: Distribution pie, timeline
+    └─ Badges: [Complete], [High Confidence]
+
+  Phase 2: Objections
+    ├─ Highlights: [WARN], [IMPORTANT]
+    ├─ Callouts: WARNING (common), CRITICAL (blockers)
+    ├─ Charts: Stacked bar, heatmap
+    └─ Badges: [Risk High/Med/Low], [Opportunity]
+
+  Phase 3: Taste
+    ├─ Highlights: [INSIGHT]
+    ├─ Callouts: TIP (creative), SUCCESS (alignment)
+    ├─ Charts: Color swatches, radar
+    └─ Badges: [Tone], [Style], [Audience]
+
+  Phase 4: Make
+    ├─ Highlights: [KEY], [INSIGHT]
+    ├─ Callouts: SUCCESS (wins), WARNING (trade-offs)
+    ├─ Charts: Concept matrix, bar chart
+    └─ Badges: [Concept], [Positioning]
+
+  Phase 5: Test
+    ├─ Highlights: [KEY], [EVIDENCE]
+    ├─ Callouts: SUCCESS (winner), CRITICAL (failed)
+    ├─ Charts: Ranking bar, confidence gauge
+    └─ Badges: [Winner], [High/Med/Low]
+
+  Phase 6: Memories
+    ├─ Highlights: [INSIGHT]
+    ├─ Callouts: SUCCESS (learned), WARNING (avoid)
+    ├─ Charts: Timeline, trend line
+    └─ Badges: [Learning], [Win/Loss], [Repeat]
+
+─────────────────────────────────────────────────────────────────────────────
+ PRIORITY MATRIX: What to Build First
+─────────────────────────────────────────────────────────────────────────────
+
+HIGH IMPACT / LOW EFFORT (IMMEDIATE):
+  1. Semantic highlighting ([KEY], [WARN], [INSIGHT])   — 2h → 60% visibility gain
+  2. Callout boxes (tip, warning, critical, success)    — 3h → Critical info stands out
+  3. Badge system (24 variants)                          — 2h → Visual categorization
+  4. Data table (sortable, striped)                      — 4h → Structured data scannable
+  5. Progress indicators (bars, gauges)                  — 3h → Depth visualization
+
+MEDIUM IMPACT / MEDIUM EFFORT (NEXT):
+  6. Chart gallery (7 new types)                         — 8h → Data becomes insight
+  7. Competitive heatmap                                 — 5h → Visual comparison
+  8. Timeline visualization                              — 5h → Progression tracking
+  9. Expanding sections                                  — 2h → Cognitive load reduction
+
+STRATEGIC / HIGH EFFORT (LATER):
+  10. Network diagrams                                   — 10h → Relationship mapping
+  11. Interactive sliders                                — 6h → Exploratory analysis
+  12. Export system (PDF/PowerPoint)                     — 10h → Presentation mode
+  13. Custom branding                                    — 8h → Enterprise support
+
+HIGHEST ROI: Items 1-5 combined = 14 hours, 80% of total value
+
+─────────────────────────────────────────────────────────────────────────────
+ FILES TO CREATE/MODIFY
+─────────────────────────────────────────────────────────────────────────────
+
+NEW FILES (14 total):
+  src/components/Canvas/CalloutBox.tsx
+  src/components/Canvas/Highlight.tsx
+  src/components/Canvas/Badge.tsx
+  src/components/ProgressIndicator.tsx
+  src/components/Timeline.tsx
+  src/widgets/cards/DataTable.tsx
+  src/widgets/charts/CompetitiveHeatmap.tsx
+  src/widgets/charts/MarketChart.tsx
+  src/widgets/charts/SentimentChart.tsx
+  src/widgets/charts/ScatterChart.tsx
+  src/widgets/charts/RankingChart.tsx
+  src/widgets/charts/CoverageChart.tsx
+  src/widgets/charts/GaugeChart.tsx
+  src/utils/reportExport.ts
+  src/context/BrandContext.tsx
+
+MODIFIED FILES (5 total):
+  src/components/Canvas/MarkdownRenderer.tsx (add highlighting)
+  src/components/ResearchOutput.tsx (integrate components)
+  src/styles/canvasStyles.ts (add semantic tokens)
+  src/components/widgets/types.ts (add widget types)
+  package.json (add vis.js, pptx-gen-js if using P3)
+
+─────────────────────────────────────────────────────────────────────────────
+ IMPLEMENTATION TIMELINE (RECOMMENDED)
+─────────────────────────────────────────────────────────────────────────────
+
+WEEK 1 (P1 Foundation):
+  Mon:  Semantic highlighting ([KEY], [WARN], [INSIGHT])
+  Tue:  Callout boxes (tip, warning, critical, success, quote)
+  Wed:  Badge system (24 variants)
+  Thu:  Basic data table (sortable columns)
+  Fri:  Progress indicators (bars, gauges)
+
+WEEK 2 (P1 Polish + P2 Start):
+  Mon:  Test all P1 features, fix bugs
+  Tue:  Competitive feature heatmap
+  Wed:  Timeline visualization
+  Thu:  Expanding/collapsible sections
+  Fri:  Quick chart implementations (3 types)
+
+WEEK 3 (P2 Charts):
+  Mon:  Chart gallery completion (4 remaining types)
+  Tue:  Integration testing, responsiveness
+  Wed:  Dark/light mode verification
+  Thu:  Performance optimization
+  Fri:  Documentation + examples
+
+WEEK 4 (P3 Foundation):
+  Mon:  Network diagram setup (vis.js integration)
+  Tue:  Interactive sliders implementation
+  Wed:  Export system framework (PDF)
+  Thu:  PowerPoint export functionality
+  Fri:  Custom branding context
+
+WEEK 5 (P3 Polish):
+  Mon:  Full testing + bug fixes
+  Tue:  Performance tuning
+  Wed:  Documentation complete
+  Thu:  User testing
+  Fri:  Final polish + deployment
+
+─────────────────────────────────────────────────────────────────────────────
+ EXPECTED OUTCOMES
+─────────────────────────────────────────────────────────────────────────────
+
+After P1 (2 weeks):
+  • Research output no longer looks like "plain text"
+  • Users can scan key insights in 30 seconds (vs 5 minutes)
+  • Important findings highlighted, warnings obvious
+  • Data tables more scannable than bullets
+
+After P2 (4 weeks):
+  • Competitive analysis instantly visual (heatmap)
+  • Market trends visible (charts)
+  • Research progression transparent (timeline)
+  • Professional-grade output quality
+
+After P3 (6 weeks):
+  • Can generate PDF/PowerPoint reports
+  • White-label support for enterprise
+  • Advanced explorations (interactive sliders)
+  • Complete market relationship mapping
+
+─────────────────────────────────────────────────────────────────────────────
+ KEY DEPENDENCIES & LIBRARY RECOMMENDATIONS
+─────────────────────────────────────────────────────────────────────────────
+
+ALREADY INSTALLED (No new deps needed for P1 + P2):
+  ✓ Recharts (charts)
+  ✓ React-markdown + remark-gfm (markdown)
+  ✓ Highlight.js (syntax highlighting)
+  ✓ jsPDF + jspdf-autotable (if using PDF)
+  ✓ html-to-image (screenshot export)
+  ✓ Tailwind (styling)
+
+OPTIONAL FOR P3:
+  + vis.js (50KB) — Network diagrams
+  + pptx-gen-js (100KB) — PowerPoint export
+  + D3.js (200KB) — Advanced viz (avoid if possible)
+
+AVOID:
+  ✗ Chart.js (Recharts is better)
+  ✗ Apache ECharts (Recharts sufficient)
+  ✗ Plotly.js (Too heavy)
+
+TOTAL FOOTPRINT: ~1MB (gzipped ~250KB) for all optional libs
+
+─────────────────────────────────────────────────────────────────────────────
+ COLOR PALETTE (Use Throughout)
+─────────────────────────────────────────────────────────────────────────────
+
+SEMANTIC COLORS:
+  Primary:    #3b82f6 (Blue — info, research, default)
+  Success:    #22c55e (Green — complete, positive, opportunity)
+  Warning:    #fb923c (Orange — caution, in-progress)
+  Critical:   #ef4444 (Red — blocker, negative, high risk)
+  Neutral:    #9ca3af (Gray — neutral sentiment, low priority)
+  Insight:    #a78bfa (Purple — discovery, learning)
+  Cyan:       #06b6d4 (Notification, secondary)
+
+USE EXISTING TOKENS:
+  src/styles/canvasStyles.ts already has dark/light mode colors
+  Extend with 10 new semantic properties for viz system
+
+─────────────────────────────────────────────────────────────────────────────
+ NEXT STEPS
+─────────────────────────────────────────────────────────────────────────────
+
+1. READ: DATA_VIZ_FORMATTING_ROADMAP.md (full 1,374-line reference)
+2. PICK: Start with P1 (5 quick wins, 14 hours total)
+3. CODE: Begin with semantic highlighting (lowest friction entry point)
+4. TEST: Integrate into research pipeline, gather feedback
+5. ITERATE: Roll out remaining P1 features based on usage patterns
+6. PLAN: Evaluate P2/P3 based on user demand
+
+ESTIMATED ROI:
+  Investment: 14 hours (P1), 20 hours (P2), 34 hours (P3)
+  Gain: 60% readability improvement, 40% faster insights, professional output
+  Timeline: 2 weeks (quick wins), 4 weeks (full P1+P2)
+
+═══════════════════════════════════════════════════════════════════════════════

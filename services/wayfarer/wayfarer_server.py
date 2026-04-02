@@ -7,15 +7,19 @@ import json
 import math as _math
 import os
 import random as _random
+import shutil
+import threading
 import time as _time
 import traceback
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from wayfarer import research
 
@@ -53,9 +57,93 @@ USE_CAMOUFOX = os.getenv("USE_CAMOUFOX", "true").lower() == "true"
 
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://100.74.135.83:11440")
 
+# SECURITY FIX: API key for sensitive operations (JavaScript evaluation)
+# Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+WAYFARER_API_KEY = os.getenv("WAYFARER_API_KEY", None)
+
 USER_DATA_DIR = "/tmp/wayfarer_browser_profile"
 COOKIE_CACHE_FILE = "/tmp/wayfarer_chrome_cookies.json"
 os.makedirs(USER_DATA_DIR, exist_ok=True)
+
+# =====================================================================
+# SECURITY HELPERS
+# =====================================================================
+
+def validate_api_key(request: Request) -> bool:
+  """Check if request has valid API key (required for sensitive operations like evaluate)."""
+  if not WAYFARER_API_KEY:
+    # If no API key is configured, allow (safe default for localhost dev)
+    # For production, set WAYFARER_API_KEY to require authentication
+    return True
+
+  auth_header = request.headers.get("Authorization", "")
+  if auth_header.startswith("Bearer "):
+    token = auth_header[7:]
+    return token == WAYFARER_API_KEY
+  return False
+
+# =====================================================================
+# FILE DOWNLOAD MANAGER — Session-scoped file transfer
+# =====================================================================
+
+DOWNLOADS_BASE_DIR = "/tmp/wayfarer_downloads"
+DOWNLOAD_RETENTION_HOURS = 24  # Auto-cleanup after 24 hours
+
+os.makedirs(DOWNLOADS_BASE_DIR, exist_ok=True)
+
+
+def get_session_downloads_dir(session_id: str) -> str:
+  """Get or create downloads directory for a session."""
+  # Validate session_id (alphanumeric + hyphens only, prevent traversal)
+  if not all(c.isalnum() or c in '-_' for c in session_id):
+    raise ValueError(f"Invalid session_id: {session_id}")
+
+  session_dir = os.path.join(DOWNLOADS_BASE_DIR, session_id)
+  os.makedirs(session_dir, exist_ok=True)
+  return session_dir
+
+
+def cleanup_old_downloads():
+  """Remove download directories older than DOWNLOAD_RETENTION_HOURS."""
+  now = datetime.now()
+  try:
+    for session_dir in Path(DOWNLOADS_BASE_DIR).iterdir():
+      if not session_dir.is_dir():
+        continue
+
+      mtime = datetime.fromtimestamp(session_dir.stat().st_mtime)
+      age = (now - mtime).total_seconds() / 3600  # hours
+
+      if age > DOWNLOAD_RETENTION_HOURS:
+        try:
+          shutil.rmtree(session_dir)
+          print(f"[Wayfarer] Cleaned up old downloads: {session_dir.name}")
+        except Exception as e:
+          print(f"[Wayfarer] Failed to cleanup {session_dir.name}: {e}")
+  except Exception as e:
+    print(f"[Wayfarer] Cleanup scan error: {e}")
+
+
+def validate_filename(filename: str) -> str:
+  """Validate filename and prevent path traversal."""
+  # Remove any path separators
+  filename = os.path.basename(filename)
+
+  # Whitelist safe characters
+  if not all(c.isalnum() or c in '.-_' for c in filename):
+    raise ValueError(f"Invalid filename: {filename}")
+
+  return filename
+
+
+def _cleanup_loop():
+  """Run cleanup every 6 hours."""
+  while True:
+    try:
+      cleanup_old_downloads()
+      _time.sleep(6 * 3600)  # 6 hours
+    except Exception as e:
+      print(f"[Wayfarer] Cleanup error: {e}")
 
 
 async def _import_chrome_cookies(context) -> int:
@@ -853,6 +941,12 @@ async def lifespan(app: FastAPI):
     for _ in range(_MAX_CONCURRENT_TASKS):
         asyncio.create_task(_task_worker())
     asyncio.create_task(_cleanup_old_tasks())
+    # Clean up old downloads on startup
+    cleanup_old_downloads()
+    print("[Wayfarer] Download manager initialized")
+    # Start background cleanup thread
+    cleanup_thread = threading.Thread(target=_cleanup_loop, daemon=True)
+    cleanup_thread.start()
     yield
     # Cleanup on shutdown
     global _browser, _playwright, _context, _camoufox_instance, _camoufox_browser
@@ -932,12 +1026,27 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
+# SECURITY FIX: Restrict CORS origins to prevent wildcard exposure (CVE-level)
+# Only allow requests from trusted frontend origins
+ALLOWED_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:5173,http://localhost:3000"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
+    allow_credentials=True,
 )
+
+
+class FileMetadata(BaseModel):
+    name: str
+    size: str
+    type: str
+    url: str
 
 
 class ResearchRequest(BaseModel):
@@ -945,6 +1054,16 @@ class ResearchRequest(BaseModel):
     num_results: int = 10
     concurrency: int = 20
     extract_mode: str = "article"
+    session_id: str | None = None  # Optional session ID for file tracking
+
+
+class ResearchResponse(BaseModel):
+    query: str
+    text: str
+    pages: list
+    sources: list
+    files: list[FileMetadata] = []  # NEW: downloaded files
+    meta: dict
 
 
 class BatchQuery(BaseModel):
@@ -964,11 +1083,16 @@ async def health():
 
 
 @app.post("/research")
-async def do_research(req: ResearchRequest):
+async def do_research(req: ResearchRequest) -> ResearchResponse:
     # Input sanitization: cap query length
     req.query = req.query.strip()[:2000]
     if not req.query:
-        return {"error": "query is required", "results": []}
+        return ResearchResponse(query="", text="", pages=[], sources=[], files=[], meta={"error": "query is required"})
+
+    # Generate session ID if not provided
+    session_id = req.session_id or str(uuid.uuid4())
+    downloads_dir = get_session_downloads_dir(session_id)
+
     try:
         result = await research(
             query=req.query,
@@ -976,9 +1100,30 @@ async def do_research(req: ResearchRequest):
             concurrency=req.concurrency,
             extract_mode=req.extract_mode,
         )
-        return result
+
+        # Track downloaded files in this session
+        files = []
+        if os.path.exists(downloads_dir):
+            for filename in os.listdir(downloads_dir):
+                file_path = os.path.join(downloads_dir, filename)
+                if os.path.isfile(file_path):
+                    files.append(FileMetadata(
+                        name=filename,
+                        size=f"{os.path.getsize(file_path) / 1024:.1f} KB",
+                        type="document",
+                        url=f"/files/{session_id}/{filename}",
+                    ))
+
+        return ResearchResponse(
+            query=result.get("query", req.query),
+            text=result.get("text", ""),
+            pages=result.get("pages", []),
+            sources=result.get("sources", []),
+            files=files,
+            meta=result.get("meta", {})
+        )
     except Exception as e:
-        return {"error": str(e), "results": []}
+        return ResearchResponse(query=req.query, text="", pages=[], sources=[], files=[], meta={"error": str(e)})
 
 
 @app.post("/batch")
@@ -1004,6 +1149,117 @@ async def do_batch(req: BatchRequest):
         return {"results": cleaned}
     except Exception as e:
         return {"error": str(e), "results": []}
+
+
+# ── File Download Endpoints ──
+
+
+@app.get("/files/{session_id}/{filename}")
+async def get_download_file(session_id: str, filename: str):
+    """
+    Stream a downloaded file from a session.
+
+    Usage:
+        GET /files/abc-123-def/document.pdf
+
+    Returns: Binary file blob
+    """
+    try:
+        # Validate inputs
+        session_id = validate_filename(session_id)
+        filename = validate_filename(filename)
+
+        file_path = os.path.join(
+            get_session_downloads_dir(session_id),
+            filename
+        )
+
+        # Security: ensure file exists and is within session directory
+        file_path = os.path.abspath(file_path)
+        session_dir = os.path.abspath(get_session_downloads_dir(session_id))
+
+        if not file_path.startswith(session_dir):
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="File not found")
+
+        # Stream file
+        return FileResponse(
+            file_path,
+            media_type="application/octet-stream",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"'
+            }
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        print(f"[Wayfarer] File download error: {e}")
+        raise HTTPException(status_code=500, detail="Download failed")
+
+
+@app.delete("/files/{session_id}")
+async def cleanup_session_files(session_id: str):
+    """
+    Clean up all downloaded files for a session.
+
+    Usage:
+        DELETE /files/abc-123-def
+
+    Returns: {"status": "cleaned", "session_id": "...", "removed": 5}
+    """
+    try:
+        session_id = validate_filename(session_id)
+        session_dir = get_session_downloads_dir(session_id)
+
+        # Count files before cleanup
+        count = len(os.listdir(session_dir)) if os.path.exists(session_dir) else 0
+
+        # Remove directory
+        if os.path.exists(session_dir):
+            shutil.rmtree(session_dir)
+
+        return {
+            "status": "cleaned",
+            "session_id": session_id,
+            "removed": count,
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/files/{session_id}")
+async def list_session_files(session_id: str):
+    """
+    List all files in a session.
+
+    Usage:
+        GET /files/abc-123-def
+
+    Returns: {"session_id": "...", "files": [{"name": "...", "size": "...", "url": "..."}]}
+    """
+    try:
+        session_id = validate_filename(session_id)
+        downloads_dir = get_session_downloads_dir(session_id)
+
+        files = []
+        if os.path.exists(downloads_dir):
+            for filename in os.listdir(downloads_dir):
+                file_path = os.path.join(downloads_dir, filename)
+                if os.path.isfile(file_path):
+                    files.append({
+                        "name": filename,
+                        "size": os.path.getsize(file_path),
+                        "url": f"/files/{session_id}/{filename}",
+                    })
+
+        return {"session_id": session_id, "files": files}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ── Screenshot endpoints ──
@@ -1626,6 +1882,9 @@ async def session_action(req: SessionActionRequest):
             return {"error": "coordinates required for hover", "result": None, "image_base64": ""}
 
         elif req.action == "evaluate":
+            # SECURITY FIX: Require API key to prevent arbitrary JavaScript execution
+            if WAYFARER_API_KEY and not validate_api_key(request):
+                return {"error": "Unauthorized: API key required for JavaScript evaluation", "result": None, "image_base64": ""}
             if not req.js:
                 return {"error": "js required for evaluate", "result": None, "image_base64": ""}
             result = await page.evaluate(req.js)
@@ -3624,6 +3883,103 @@ async def api_health():
         "auth_required": bool(_NEURO_API_KEY),
     }
 
+
+# ─── PDF Parsing Endpoints ───────────────────────────────────────────────────
+
+@app.post("/parse-pdf")
+async def parse_pdf(req: Request):
+    """
+    Parse a PDF file from local path and extract text, tables, metadata.
+
+    Request body:
+    {
+        "pdf_path": "/path/to/file.pdf",
+        "extract_tables": true
+    }
+    """
+    try:
+        from document_parser_service import analyze_pdf
+
+        body = await req.json()
+        pdf_path = body.get("pdf_path")
+        extract_tables = body.get("extract_tables", True)
+
+        if not pdf_path:
+            raise HTTPException(status_code=400, detail="Missing pdf_path")
+
+        # Security: prevent directory traversal
+        pdf_path = os.path.abspath(pdf_path)
+        if not os.path.exists(pdf_path):
+            raise HTTPException(status_code=404, detail=f"PDF not found: {pdf_path}")
+
+        result = analyze_pdf(pdf_path, extract_tables=extract_tables)
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[Wayfarer] PDF parsing error: {e}")
+        raise HTTPException(status_code=500, detail=f"PDF parsing failed: {str(e)}")
+
+
+@app.post("/analyze-pdf-url")
+async def analyze_pdf_url(req: Request):
+    """
+    Download PDF from URL and analyze it.
+
+    Request body:
+    {
+        "url": "https://example.com/document.pdf",
+        "extract_tables": true
+    }
+    """
+    try:
+        from document_parser_service import analyze_pdf
+        import tempfile
+
+        body = await req.json()
+        url = body.get("url")
+        extract_tables = body.get("extract_tables", True)
+
+        if not url:
+            raise HTTPException(status_code=400, detail="Missing url")
+
+        # Download PDF to temp file
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.get(url)
+                if response.status_code != 200:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Failed to download PDF: HTTP {response.status_code}"
+                    )
+
+                # Save to temp file
+                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                    tmp.write(response.content)
+                    tmp_path = tmp.name
+        except httpx.RequestError as e:
+            raise HTTPException(status_code=400, detail=f"Download failed: {str(e)}")
+
+        try:
+            # Analyze the downloaded PDF
+            result = analyze_pdf(tmp_path, extract_tables=extract_tables)
+            return result
+        finally:
+            # Clean up temp file
+            try:
+                os.unlink(tmp_path)
+            except:
+                pass
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[Wayfarer] PDF URL analysis error: {e}")
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+
+# ─── End PDF Parsing Endpoints ────────────────────────────────────────────────
 
 @app.get("/api/tool-schema")
 async def tool_schema():

@@ -142,11 +142,19 @@ export async function selectTools(
       ? `Agent goal: "${request.goal}"\nUser said: "${request.userMessage}"\nAlready used: ${request.previousTools.join(', ')}\nWhat additional tools are needed?`
       : `Agent goal: "${request.goal}"\nUser said: "${request.userMessage}"\nWhat tools does the agent need?`;
 
-    // Hard 8s timeout — tool routing must be fast. If Ollama is loading the
-    // model we can't wait 120s; fall through to regex fallback instead.
+    // Timeout for tool routing — long enough for cold model loads on Ollama.
+    // If the model is already warm this completes in ~300-600ms; the 30s cap
+    // only guards against truly stuck requests.
     const routerController = new AbortController();
-    const routerTimeout = setTimeout(() => routerController.abort(), 8000);
-    if (signal) signal.addEventListener('abort', () => routerController.abort(), { once: true });
+    const routerTimeout = setTimeout(() => routerController.abort(), 30000);
+    if (signal) {
+      // If the parent signal is already aborted, propagate immediately.
+      if (signal.aborted) {
+        routerController.abort();
+      } else {
+        signal.addEventListener('abort', () => routerController.abort(), { once: true });
+      }
+    }
     try {
       await ollamaService.generateStream(
         prompt,

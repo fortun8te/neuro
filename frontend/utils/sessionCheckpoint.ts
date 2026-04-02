@@ -394,4 +394,128 @@ export const sessionCheckpoint = {
       }
     });
   },
+
+  // ── TTL Management (Checkpoint Expiration) ──
+
+  /**
+   * Delete checkpoints and sessions older than specified days.
+   * Useful for periodic cleanup to prevent unbounded growth.
+   * Returns count of deleted sessions/checkpoints.
+   */
+  async purgeOldSessions(days: number): Promise<{ sessionsDeleted: number; checkpointsDeleted: number }> {
+    let result = { sessionsDeleted: 0, checkpointsDeleted: 0 };
+    await enqueueCheckpointWrite(async () => {
+      try {
+        const cutoffTime = Date.now() - days * 24 * 60 * 60 * 1000;
+        const sessions = (await get(SESSIONS_KEY)) || {};
+
+        let sessionsDeleted = 0;
+        let checkpointsDeleted = 0;
+
+        const sessionIds = Object.keys(sessions);
+        for (const sessionId of sessionIds) {
+          const session = sessions[sessionId] as SessionState;
+          const isOld = (session.completedAt || session.cancelledAt || session.startTime) < cutoffTime;
+
+          if (isOld && session.status !== 'in-progress' && session.status !== 'paused') {
+            // Delete all checkpoints for this session
+            for (const cpId of session.checkpoints) {
+              await del(`${CHECKPOINTS_KEY}:${cpId}`);
+              checkpointsDeleted++;
+            }
+            // Delete session
+            delete sessions[sessionId];
+            sessionsDeleted++;
+          }
+        }
+
+        if (sessionsDeleted > 0) {
+          await set(SESSIONS_KEY, sessions);
+          console.log(`[sessionCheckpoint] Purged ${sessionsDeleted} old sessions and ${checkpointsDeleted} checkpoints`);
+        }
+
+        result = { sessionsDeleted, checkpointsDeleted };
+      } catch (err) {
+        console.error('[sessionCheckpoint] purgeOldSessions failed:', err);
+        throw err;
+      }
+    });
+    return result;
+  },
+
+  /**
+   * Delete all completed and cancelled sessions (keep only in-progress/paused).
+   * More aggressive than purgeOldSessions, useful for cleanup when quota critical.
+   */
+  async purgeCompletedSessions(): Promise<{ sessionsDeleted: number; checkpointsDeleted: number }> {
+    let result = { sessionsDeleted: 0, checkpointsDeleted: 0 };
+    await enqueueCheckpointWrite(async () => {
+      try {
+        const sessions = (await get(SESSIONS_KEY)) || {};
+
+        let sessionsDeleted = 0;
+        let checkpointsDeleted = 0;
+
+        const sessionIds = Object.keys(sessions);
+        for (const sessionId of sessionIds) {
+          const session = sessions[sessionId] as SessionState;
+          if (session.status === 'completed' || session.status === 'cancelled') {
+            // Delete all checkpoints
+            for (const cpId of session.checkpoints) {
+              await del(`${CHECKPOINTS_KEY}:${cpId}`);
+              checkpointsDeleted++;
+            }
+            // Delete session
+            delete sessions[sessionId];
+            sessionsDeleted++;
+          }
+        }
+
+        if (sessionsDeleted > 0) {
+          await set(SESSIONS_KEY, sessions);
+          console.log(`[sessionCheckpoint] Purged ${sessionsDeleted} completed sessions and ${checkpointsDeleted} checkpoints`);
+        }
+
+        result = { sessionsDeleted, checkpointsDeleted };
+      } catch (err) {
+        console.error('[sessionCheckpoint] purgeCompletedSessions failed:', err);
+        throw err;
+      }
+    });
+    return result;
+  },
+
+  /**
+   * Get all sessions (useful for monitoring/debugging).
+   */
+  async getAllSessions(): Promise<SessionState[]> {
+    try {
+      const sessions = (await get(SESSIONS_KEY)) || {};
+      return Object.values(sessions) as SessionState[];
+    } catch (err) {
+      console.error('[sessionCheckpoint] getAllSessions failed:', err);
+      throw err;
+    }
+  },
+
+  /**
+   * Get checkpoint count across all sessions.
+   */
+  async getCheckpointStats(): Promise<{ totalSessions: number; totalCheckpoints: number; avgCheckpointsPerSession: number }> {
+    try {
+      const sessions = (await get(SESSIONS_KEY)) || {};
+      const sessionArray = Object.values(sessions) as SessionState[];
+      const totalCheckpoints = sessionArray.reduce((sum, s) => sum + s.checkpoints.length, 0);
+      const avgCheckpointsPerSession = sessionArray.length > 0 ? totalCheckpoints / sessionArray.length : 0;
+
+      return {
+        totalSessions: sessionArray.length,
+        totalCheckpoints,
+        avgCheckpointsPerSession: Math.round(avgCheckpointsPerSession * 10) / 10,
+      };
+    } catch (err) {
+      console.error('[sessionCheckpoint] getCheckpointStats failed:', err);
+      throw err;
+    }
+  },
 };

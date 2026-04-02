@@ -1,0 +1,14 @@
+{
+  "total": 2500,
+  "kept": 2436,
+  "skipped": 64,
+  "categories": {
+    "short_casual": 1160,
+    "system_prompt": 3,
+    "technical_3d": 232,
+    "general": 903,
+    "dutch": 57,
+    "long_form": 66,
+    "too_short": 15
+  }
+}

@@ -1,0 +1,226 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                     CLI CANVAS — QUICK START GUIDE                        ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+NEW COMMANDS AVAILABLE:
+  /doc [prompt]        Generate a document from a prompt
+  /show                Display the current document (prettified)
+  /edit [section]      Edit a specific section (heading or line range)
+  /save                Save document version to disk
+  /versions            List all saved versions + download menu
+
+════════════════════════════════════════════════════════════════════════════
+
+STEP-BY-STEP EXAMPLE
+
+1. Start the CLI:
+   $ npm run cli
+
+2. Generate a document:
+   > /doc write a 500-word blog post about AI trends in 2026
+
+   Expected output:
+     Generating document...
+     Title: blog post about AI trends in 2026
+
+     [████████████████████░░░░░░░░] 65%  (325/500 words)  18s
+
+     Options: [E]dit / [S]how / [D]ownload / [S]ave / [V]ersions / [Q]uit
+
+3. View the document:
+   > s
+
+   Pretty-printed output with colors:
+     Blog Post About AI Trends in 2026
+     ==================================
+     
+     Introduction
+     The rapid evolution of artificial intelligence...
+
+4. Edit a section:
+   > e
+   Section: Introduction
+   Edit instruction: Make this more technical for software engineers
+
+   Shows diff (old | new, color-coded)
+   Accept? (y/n) > y
+
+5. Save the document:
+   > s
+   [saved] /Users/mk/Downloads/documents/blog-post-...-1711234567.md
+
+6. Manage versions:
+   > v
+   Saved versions:
+   1. Blog Post About AI (2345 words, 4/2/2026 2:34 PM)
+   2. Marketing Copy (1200 words, 4/2/2026 1:15 PM)
+   
+   Download #? > 1
+   [download] /Users/mk/Downloads/document-blog-post-1711234567.md
+
+════════════════════════════════════════════════════════════════════════════
+
+FEATURES EXPLAINED
+
+Real-Time Streaming
+  ✓ Character-by-character output (no waiting for full response)
+  ✓ Purple progress bar showing document length
+  ✓ Word counter updating in real-time
+  ✓ Elapsed time tracking
+
+Section Editing
+  ✓ Edit by heading name:     /edit Introduction
+  ✓ Edit by line range:       /edit line 10-20
+  ✓ EDIT agent refines section (respects instruction)
+  ✓ Shows color-coded diff before applying changes
+
+Markdown Formatting
+  ✓ Headings: Bold + Cyan color
+  ✓ Bold text: **bold** → bold
+  ✓ Italic text: *italic* → italic
+  ✓ Code blocks: ```code``` → dim gray
+  ✓ Lists: - item → • bullet symbol
+
+Version Management
+  ✓ Saved to: ~/Downloads/documents/ (persistent)
+  ✓ Metadata: title, word count, creation date, model used
+  ✓ Download any version to ~/Downloads/
+  ✓ View complete version history
+
+════════════════════════════════════════════════════════════════════════════
+
+COMMON WORKFLOWS
+
+Blog Post Writing
+  /doc write a 1000-word blog post about machine learning
+  /show             # review the draft
+  /edit "Challenges" # improve a specific section
+  /save             # persist to disk
+
+Marketing Copy
+  /doc write a product marketing email for SaaS platform
+  /edit "Features"   # emphasize key benefits
+  /edit "CTA"        # strengthen call-to-action
+  /save
+  /versions          # download final copy
+
+Research Summary
+  /doc summarize recent trends in artificial intelligence
+  /edit "Key Findings"
+  /download          # export to ~/Downloads/
+
+Academic Content
+  /doc write a 2000-word research paper introduction about neural networks
+  /edit "Related Work"
+  /edit "Methodology"
+  /save
+  /versions          # keep all draft versions
+
+════════════════════════════════════════════════════════════════════════════
+
+EDITING BY SECTION
+
+Section Identifiers:
+  ✓ "Introduction" — Match heading (case-insensitive)
+  ✓ "Section 2: Details" — Full heading text
+  ✓ "line 10" — Single line
+  ✓ "line 10-20" — Line range
+  ✓ "lines 5-15" — Alternative syntax
+
+Example:
+  > /edit "Key Benefits"
+  Edit instruction: Add more concrete examples from successful customers
+  
+  The EDIT agent will:
+    1. Find the "Key Benefits" section
+    2. Refine it based on your instruction
+    3. Show color-coded diff
+    4. Ask for confirmation
+
+════════════════════════════════════════════════════════════════════════════
+
+FILE LOCATIONS
+
+Generated Documents:
+  Disk:   ~/Downloads/documents/[title]-[timestamp].md
+  Memory: Current session (cleared on CLI exit)
+
+Downloaded Documents:
+  Location: ~/Downloads/document-[title]-[timestamp].md
+
+════════════════════════════════════════════════════════════════════════════
+
+KEYBOARD SHORTCUTS (Interactive Mode)
+
+After /doc completes, choose:
+  E — Enter edit mode (prompts for section)
+  S — Show prettified document
+  D — Download to ~/Downloads/
+  V — Show version history
+  Q — Quit and return to CLI
+
+════════════════════════════════════════════════════════════════════════════
+
+ADVANCED TIPS
+
+Batch Generation (Piped Input)
+  printf "/doc write marketing copy\n" | npx tsx src/cli.ts
+  # Runs in headless mode, auto-saves
+
+Model Selection
+  Default: qwen3.5:9b for generation
+  Default: qwen3.5:4b for editing (faster)
+  Can change in CLI with model settings
+
+Long Documents
+  Progress bar updates every 500ms (prevents flicker)
+  Word count tracked in real-time
+  Reading time estimated automatically
+
+Version Control
+  Every save creates unique ID: doc-[timestamp]-[random]
+  Old versions preserved in memory and filesystem
+  No automatic cleanup (safe recovery)
+
+════════════════════════════════════════════════════════════════════════════
+
+TROUBLESHOOTING
+
+No progress bar visible
+  → Try maximizing terminal width (80+ columns)
+  → Check stdout is not redirected (use /show instead)
+
+Section not found
+  → Use exact heading: /edit "Introduction" (case-insensitive)
+  → Or line range: /edit line 10-20
+  → Check with /show to see available sections
+
+Ollama not responding
+  → Start Ollama: ollama serve
+  → Check model exists: ollama pull qwen3.5:9b
+  → Verify endpoint: VITE_OLLAMA_URL env var
+
+File not saving
+  → Check directory: ls ~/Downloads/documents/
+  → Ensure permissions: chmod 755 ~/Downloads
+  → Use /versions to confirm save succeeded
+
+════════════════════════════════════════════════════════════════════════════
+
+DOCUMENTATION
+
+Full Guide:        CLI_CANVAS_README.md (350+ lines)
+Implementation:    CLI_CANVAS_IMPLEMENTATION.md (detailed)
+Examples:          bash examples-cli-canvas.sh [1-7|all]
+Test Suite:        npx tsx src/testCliCanvas.ts
+
+════════════════════════════════════════════════════════════════════════════
+
+NEED HELP?
+
+  CLI command list:     help
+  Canvas examples:      bash examples-cli-canvas.sh all
+  Run tests:            npx tsx src/testCliCanvas.ts
+  Full documentation:   Less CLI_CANVAS_README.md
+
+════════════════════════════════════════════════════════════════════════════

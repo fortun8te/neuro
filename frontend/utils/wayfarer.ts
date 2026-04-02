@@ -2,6 +2,8 @@
 // Replaces the old searxng.ts (DuckDuckGo snippets) with full page scraping
 
 import { INFRASTRUCTURE } from '../config/infrastructure';
+import { getOrCreateBreaker } from './circuitBreaker';
+import { validateWayfarerResult, validateScreenshotBatch, validateScreenshotSingle } from './schemas/wayfarer.schemas';
 
 export interface WayfayerPage {
   url: string;
@@ -24,12 +26,35 @@ export interface WayfayerMeta {
   error?: string | null;
 }
 
+export interface FileDownloadMetadata {
+  name: string;
+  size: string;  // e.g. "123.4 KB"
+  type: 'document' | 'image' | 'pdf' | 'csv' | 'json' | 'video' | 'audio' | 'other';
+  url: string;  // e.g. "/files/{sessionId}/{filename}"
+}
+
 export interface WayfayerResult {
   query: string;
   text: string;             // All pages concatenated with --- separators
   pages: WayfayerPage[];
   sources: WayfayerSource[];
+  files?: FileDownloadMetadata[];  // NEW: downloaded files from research
   meta: WayfayerMeta;
+}
+
+export interface FileListResponse {
+  session_id: string;
+  files: Array<{
+    name: string;
+    size: number;  // bytes
+    url: string;
+  }>;
+}
+
+export interface CleanupResponse {
+  status: 'cleaned';
+  session_id: string;
+  removed: number;
 }
 
 const DEFAULT_HOST = INFRASTRUCTURE.wayfarerUrl;
@@ -102,6 +127,20 @@ export const wayfarerService = {
     signal?: AbortSignal,
     freshness?: 'any' | 'week' | 'month',
   ): Promise<WayfayerResult> {
+    // Check circuit breaker before attempting request
+    const breaker = getOrCreateBreaker('wayfarer-research', {
+      failureThreshold: 2,
+      resetTimeout: 15_000,
+      name: 'Wayfarer Research'
+    });
+
+    try {
+      breaker.canAttempt();
+    } catch (cbError) {
+      console.warn('Circuit breaker blocking Wayfarer request', cbError);
+      throw cbError;
+    }
+
     const body: Record<string, unknown> = {
       query,
       num_results: numResults,
@@ -114,7 +153,10 @@ export const wayfarerService = {
 
     let lastError: Error | null = null;
     for (let attempt = 0; attempt < 3; attempt++) {
-      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      if (signal?.aborted) {
+        breaker.recordFailure();
+        throw new DOMException('Aborted', 'AbortError');
+      }
       try {
         const resp = await fetch(`${getHost()}/research`, {
           method: 'POST',
@@ -131,18 +173,33 @@ export const wayfarerService = {
 
         if (!resp.ok) {
           console.error(`Wayfayer error: ${resp.status} ${resp.statusText}`);
-          return emptyResult(query);
+          breaker.recordFailure();
+          throw new Error(`Wayfarer research failed: HTTP ${resp.status} ${resp.statusText}`);
         }
 
         try {
-          return await resp.json();
-        } catch {
+          const data = await resp.json();
+          // Validate response schema
+          try {
+            validateWayfarerResult(data);
+          } catch (schemaErr) {
+            console.debug('Wayfarer response validation failed', schemaErr);
+            // Continue processing even if validation fails — be lenient
+          }
+          breaker.recordSuccess();
+          return data;
+        } catch (parseErr) {
           console.error('Wayfayer: non-JSON response from /research');
-          return emptyResult(query);
+          breaker.recordFailure();
+          throw new Error('Wayfarer returned non-JSON response');
         }
       } catch (error) {
-        if (signal?.aborted) throw error;
+        if (signal?.aborted) {
+          breaker.recordFailure();
+          throw error;
+        }
         lastError = error as Error;
+        breaker.recordFailure();
         if (attempt < 2) {
           console.warn(`Wayfayer fetch error on attempt ${attempt + 1}, retrying:`, error);
           await new Promise(r => setTimeout(r, 1000));
@@ -151,7 +208,7 @@ export const wayfarerService = {
     }
 
     console.error('Wayfayer fetch error (all attempts failed):', lastError);
-    return emptyResult(query);
+    throw lastError || new Error('Wayfarer research failed after retries');
   },
 
   /** Batch crawl multiple URLs simultaneously (no search, direct fetch) */
@@ -1118,4 +1175,91 @@ export function formatRedditResults(result: RedditSearchResult): string {
   }
   return lines.join('\n');
 }
+
+// ── File Download Service ──
+
+export const fileDownloadService = {
+  /**
+   * Download a file from the server.
+   * @param sessionId - The session ID from the research response
+   * @param filename - The filename to download
+   * @returns A Blob of the file content
+   */
+  async downloadFile(sessionId: string, filename: string): Promise<Blob> {
+    const url = `${getHost()}/files/${sessionId}/${filename}`;
+
+    const response = await fetch(url, {
+      method: 'GET',
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to download file: ${response.statusText}`);
+    }
+
+    return response.blob();
+  },
+
+  /**
+   * List all files for a session.
+   * @param sessionId - The session ID
+   * @returns List of file metadata
+   */
+  async listSessionFiles(sessionId: string): Promise<Array<{
+    name: string;
+    size: number;
+    url: string;
+  }>> {
+    const url = `${getHost()}/files/${sessionId}`;
+
+    const response = await fetch(url, {
+      method: 'GET',
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to list files: ${response.statusText}`);
+    }
+
+    const data = await response.json() as FileListResponse;
+    return data.files || [];
+  },
+
+  /**
+   * Clean up all files for a session.
+   * @param sessionId - The session ID
+   */
+  async cleanupSessionFiles(sessionId: string): Promise<void> {
+    const url = `${getHost()}/files/${sessionId}`;
+
+    const response = await fetch(url, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to cleanup files: ${response.statusText}`);
+    }
+  },
+
+  /**
+   * Download file as browser download (save to user's downloads folder).
+   * @param sessionId - The session ID
+   * @param filename - The filename to download
+   */
+  async downloadFileToLocalDisk(sessionId: string, filename: string): Promise<void> {
+    const blob = await this.downloadFile(sessionId, filename);
+
+    // Create a temporary URL for the blob
+    const url = URL.createObjectURL(blob);
+
+    // Create and trigger download link
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+
+    // Cleanup
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+};
 

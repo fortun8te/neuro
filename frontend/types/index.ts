@@ -12,6 +12,23 @@ export type StageName =
   | 'production'    // Generate actual ads (Freepik/HTML pipelines)
   | 'test';         // Evaluate produced ads, rank, pick winners
 
+// Quality evaluation type (imported from utils/qualityEvaluator)
+export type QualityEvaluation = {
+  stageName: StageName;
+  severity: 'critical' | 'warning' | 'pass';
+  overallScore: number;
+  metrics: Array<{
+    name: string;
+    score: number;
+    threshold: number;
+    feedback: string;
+  }>;
+  feedback: string;
+  shouldRetry: boolean;
+  suggestedFix: string;
+  timestamp: number;
+};
+
 export type CycleMode = 'full' | 'concepting';
 // full = all 8 stages
 // concepting = research + brand-dna + persona-dna + angles only
@@ -20,6 +37,28 @@ export type StageStatus = 'pending' | 'in-progress' | 'complete' | 'stopped';
 export type CampaignStatus = 'active' | 'paused' | 'archived';
 export type CycleStatus = 'in-progress' | 'complete' | 'stopped';
 export type SystemStatus = 'idle' | 'running' | 'error';
+
+// ═ Research Limits ═
+export interface ResearchLimits {
+  maxIterations: number;
+  minIterations?: number;
+  coverageThreshold?: number;
+  minSources: number;
+  maxResearchersPerIteration: number;
+  maxTimeMinutes: number;
+  parallelCompressionCount?: number;
+  crossValidation?: boolean;
+  multiLanguageSearch?: boolean;
+  historicalAnalysis?: boolean;
+  communityDeepDive?: boolean;
+  competitorAdScrape?: boolean;
+  academicSearch?: boolean;
+  maxVisualBatches?: number;
+  maxVisualUrls?: number;
+  skipReflection?: boolean;
+  singlePassResearch?: boolean;
+  useSubagents?: boolean;
+}
 
 // ─ Ad Library ─
 export interface AdLibraryImage {
@@ -219,6 +258,15 @@ export interface CompetitorPosition {
   customerComplaint: string;          // Top complaint from real reviews
 }
 
+// ─ File Downloads ─
+export interface DownloadedFile {
+  filename: string;
+  size: string;
+  type: string;
+  downloadedAt: string;  // ISO timestamp
+  contentHash?: string;  // Optional: SHA256 for integrity
+}
+
 // Research audit trail — tracks where findings came from
 export interface ResearchSource {
   url: string;
@@ -243,6 +291,8 @@ export interface ResearchAuditTrail {
   preset: string;                            // which research preset was used
   iterationsCompleted: number;
   coverageAchieved: number;                  // 0-1 scale
+  sessionId?: string;                        // Wayfarer session ID for file downloads
+  downloadedFiles?: DownloadedFile[];        // files downloaded during research
 }
 
 export interface ResearchFindings {
@@ -270,6 +320,10 @@ export interface ResearchFindings {
   researchReport?: ResearchReport;
   // Thinking token content (captured during /think phases)
   thinkingTokens?: string;
+  // Downloaded files from research
+  downloadedFiles?: DownloadedFile[];
+  // Session ID for file retrieval
+  researchSessionId?: string;
   // Aggregate page metrics (populated by orchestrator)
   pagesScanned?: number;
   urlsProcessed?: number;
@@ -593,6 +647,8 @@ export interface StageData {
   startedAt: number | null;
   completedAt: number | null;
   readyForNext: boolean;
+  evaluation?: QualityEvaluation;        // Quality evaluation result (Phase 11+)
+  _ringBuffer?: any;                     // Internal: Ring buffer for efficient streaming (FIX #1)
 }
 
 export interface ResearchQuestion {
@@ -642,6 +698,10 @@ export interface Cycle {
   creativeStrategy?: CreativeStrategy;
   // Test stage verdict
   testVerdict?: TestVerdict;
+  // Phase 3: Advanced Make/Test results
+  advancedMakeConcepts?: any[]; // FinalConcept[]
+  advancedTestOutput?: any; // AdvancedTestOutput
+  polishedConcept?: any; // ProductionReadyConcept
   // Live metrics / orchestration state (updated during run)
   orchestrationData?: OrchestrationMetrics;
   watchdogState?: WatchdogMetrics;
@@ -704,6 +764,21 @@ export interface CampaignContextType {
   pendingQuestion: UserQuestion | null;
   questionAnswers: UserQuestionAnswer[];
   answerQuestion: (answer: string) => void;
+
+  // Phase 1: Variable context for quick menu
+  variableContext?: {
+    context: {
+      MODEL?: string;
+      STAGE?: string;
+      CYCLE?: number;
+      TIMESTAMP?: string;
+      TOKENS_USED?: number;
+      RESEARCH_DEPTH?: string;
+      MODE?: string;
+      MEMORY_COUNT?: number;
+      CANVAS_ITEMS?: number;
+    };
+  };
 
   // Actions
   createCampaign: (

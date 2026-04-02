@@ -8,6 +8,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import DOMPurify from 'dompurify';
 import { TextShimmer } from './TextShimmer';
 import { runAgentLoop } from '../utils/agentEngine';
 import type { TaskProgress, AgentEngineEvent, ToolCall, CampaignContextData, SubagentEventData } from '../utils/agentEngine';
@@ -45,27 +46,23 @@ import { PermissionApprovalBanner } from './PermissionApprovalBanner';
 import { ExecutionPlanModal, type ExecutionPlanItem } from './ExecutionPlanModal';
 import { PermissionModeDropdown } from './PermissionModeDropdown';
 import { FaviconCircle } from './FaviconCircle';
-import { CanvasPanel, type CanvasContent } from './CanvasPanel';
+import { CanvasPanel, type CanvasContent } from './Canvas';
 import { useCanvasState, createCanvasContent, shouldOpenCanvas, shouldShowOpenCanvasButton } from '../hooks/useCanvasState';
 import { FinderWindow } from './FinderWindow';
 import { saveAs } from 'file-saver';
 import type { Campaign, Cycle } from '../types';
 import { parseResumeCommand, getLatestResumableCheckpoint, autoSaveStopCheckpoint } from '../utils/agentResume'; // Phase 2: continue command
 import { SourcesList } from './SourcesList';
+import { SourceFooter } from './SourceFooter';
 import { useSourcesFromMessage } from '../hooks/useSourcesFromMessage';
+import { removeUrlsFromText } from '../utils/sourceExtractor';
 
 /** Wrapper component so useSourcesFromMessage is called at component level (not inside .map()) */
 function BlockSources({ content, findings, isDarkMode }: { content?: string; findings?: any; isDarkMode: boolean }) {
   const { sources, hasSources } = useSourcesFromMessage({ messageText: content, findings });
   if (!hasSources) return null;
   return (
-    <div style={{
-      background: isDarkMode ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)',
-      borderRadius: 10, padding: '10px 12px',
-      border: isDarkMode ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.08)',
-    }}>
-      <SourcesList sources={sources} maxVisible={3} variant="inline" compact={true} />
-    </div>
+    <SourceFooter sources={sources} isDarkMode={isDarkMode} variant="inline" />
   );
 }
 
@@ -426,15 +423,18 @@ function ThinkingMorph({ size = 18 }: { size?: number }) {
 
 function AnimatedAgentText({ text, animate }: { text: string; animate: boolean }) {
   const { isDarkMode } = useTheme();
+  // Filter out full URLs from message text — they appear in source footer instead
+  const cleanedText = removeUrlsFromText(text);
+
   if (!animate) {
-    return <div className="space-y-1">{renderMarkdown(text, isDarkMode)}</div>;
+    return <div className="space-y-1">{renderMarkdown(cleanedText, isDarkMode)}</div>;
   }
   // For long text, use typewriter with fast speed; for short, use fade
-  const isLong = text.length > 600;
+  const isLong = cleanedText.length > 600;
   return (
     <div style={{ color: isDarkMode ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.75)', fontFamily: FONT_FAMILY }}>
       <ResponseStream
-        textStream={text}
+        textStream={cleanedText}
         mode={isLong ? "typewriter" : "fade"}
         speed={isLong ? 50 : 40}
         className="whitespace-pre-wrap text-[13px] leading-[1.7]"
@@ -676,7 +676,7 @@ function ToolIcon({ name, size = 22 }: { name: string; size?: number }) {
   return (
     <span
       style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-      dangerouslySetInnerHTML={{ __html: sized }}
+      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(sized) }}
     />
   );
 }
@@ -3217,7 +3217,7 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
               );
             })()}
 
-            <div className="nomad-glass-medium" style={{ borderRadius: 15, position: 'relative', boxShadow: '0px 4px 15px rgba(0,0,0,0.05)' }} onDrop={handleInputDrop} onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}>
+            <div className="nomad-glass-medium" style={{ borderRadius: 15, position: 'relative', boxShadow: '0px 4px 15px rgba(0,0,0,0.05)', pointerEvents: 'auto', zIndex: 10 }} onDrop={handleInputDrop} onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}>
               {/* Attachment previews */}
               {attachments.length > 0 && (
                 <div className="flex flex-wrap gap-2 px-3.5 pt-3 pb-1">
@@ -3251,6 +3251,8 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
                   suppressContentEditableWarning
                   onInput={handleInputChange as unknown as React.FormEventHandler<HTMLDivElement>}
                   onKeyDown={handleKeyDown}
+                  onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                  onMouseDown={(e) => { if (e.button === 2) e.preventDefault(); }}
                   onPaste={e => {
                     const items = Array.from(e.clipboardData?.items || []);
                     const hasFile = items.some(i => i.kind === 'file');

@@ -5,6 +5,8 @@ import { TextShimmer } from './TextShimmer';
 import { ResponseStream } from './ResponseStream';
 import { playSound } from '../hooks/useSoundEngine';
 import { visualProgressStore } from '../utils/visualProgressStore';
+import { Badge, type BadgeType } from './Canvas/Badge';
+import { ProgressBar } from './Canvas/ProgressIndicator';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -346,6 +348,40 @@ function ManusBlob({ size = 14 }: { size?: number }) {
 
 
 // ─────────────────────────────────────────────────────────────
+// Badge type mapper
+// ─────────────────────────────────────────────────────────────
+
+function getSectionBadgeType(kind: SectionKind): BadgeType {
+  const typeMap: Record<SectionKind, BadgeType> = {
+    phase: 'primary',
+    campaign: 'finding',
+    step: 'research',
+    layer: 'research',
+    'memory-input': 'secondary',
+    orchestrator: 'inprogress',
+    researcher: 'finding',
+    reflection: 'insight',
+    'reflection-perspective': 'insight',
+    visual: 'finding',
+    thinking: 'secondary',
+    metrics: 'neutral',
+    coverage: 'positive',
+    deploy: 'inprogress',
+    complete: 'complete',
+    timelimit: 'unverified',
+    error: 'blocked',
+    findings: 'finding',
+    ads: 'competitor',
+    brain: 'research',
+    'council-head': 'research',
+    council: 'research',
+    report: 'finding',
+    raw: 'neutral',
+  };
+  return typeMap[kind] || 'neutral';
+}
+
+// ─────────────────────────────────────────────────────────────
 // Icons (inline SVGs — small, clean, Manus-style)
 // ─────────────────────────────────────────────────────────────
 
@@ -578,36 +614,67 @@ function ExpandedContent({ section, dark, isStreaming }: { section: Section; dar
   const covPct = (section.kind === 'coverage' || section.kind === 'metrics')
     ? parseInt(section.title.match(/(\d+)%/)?.[1] || '0') : null;
 
+  const badgeType = getSectionBadgeType(section.kind);
+
   const renderLine = (line: string, i: number, isLast: boolean) => {
     // For the last line of an actively streaming section, animate it in
     const shouldAnimate = isStreaming && isLast;
 
+    // Hide source-only lines (bare "[Source: full_url]" metadata)
+    const isSourceOnly = /^\[Source:\s*https?:\/\/.+?\]$/.test(line.trim());
+    if (isSourceOnly) {
+      return null;
+    }
+
+    // Skip lines that are just bare URLs (moved to source footer)
+    if (/^\s*https?:\/\/[^\s]*\s*$/.test(line.trim())) {
+      return null;
+    }
+
+    // Clean up full URLs in source tags — show domain instead
+    let cleanedLine = line.replace(/\[Source:\s*(https?:\/\/[^\]]+)\]/g, (match, url) => {
+      try {
+        const domain = new URL(url).hostname.replace('www.', '');
+        return `[Source: ${domain}]`;
+      } catch {
+        return `[Source: URL]`;
+      }
+    });
+
+    // Remove bare URLs from line content (they'll be in the source footer)
+    cleanedLine = cleanedLine.replace(/https?:\/\/[^\s\]\)]+/g, '').trim();
+
+    // Skip empty lines after URL removal
+    if (!cleanedLine) {
+      return null;
+    }
+
     // Query
-    if (line.startsWith('→ "')) {
+    if (cleanedLine.startsWith('→ "')) {
       return (
         <div key={i} className={`text-[12px] ${txtCls} italic`}>
           {shouldAnimate
-            ? <ResponseStream textStream={line} mode="typewriter" speed={90} className="inline" />
-            : line}
+            ? <ResponseStream textStream={cleanedLine} mode="typewriter" speed={90} className="inline" />
+            : cleanedLine}
         </div>
       );
     }
     // Compress/fetch — very dim
-    if (line.match(/Compress|Fetched/i)) {
+    if (cleanedLine.match(/Compress|Fetched/i)) {
       return (
         <div key={i} className={`text-[10px] font-mono ${dimCls}`}>
           {shouldAnimate
-            ? <ResponseStream textStream={line} mode="typewriter" speed={90} className="inline" />
-            : line}
+            ? <ResponseStream textStream={cleanedLine} mode="typewriter" speed={90} className="inline" />
+            : cleanedLine}
         </div>
       );
     }
     // JSON tokens — no animation (too fast already)
-    if (line.match(/^\s*[\[{\]},"]/) || line.match(/^\s*"[a-zA-Z_]+"\s*:/)) {
-      return <div key={i} className={`text-[9px] font-mono leading-snug ${dimCls}`}>{line}</div>;
+    if (cleanedLine.match(/^\s*[\[{\]},"]/) || cleanedLine.match(/^\s*"[a-zA-Z_]+"\s*:/)) {
+      return <div key={i} className={`text-[9px] font-mono leading-snug ${dimCls}`}>{cleanedLine}</div>;
     }
     // KV pairs
-    const kvMatch = line.match(/^(Brand|Target Audience|Marketing Goal|Audience congregates|Key language|Market gap|Patterns|Gaps):\s*(.+)/);
+    const kvMatch = cleanedLine.match(/^(Brand|Target Audience|Marketing Goal|Audience congregates|Key language|Market gap|Patterns|Gaps):\s*(.+)/);
     if (kvMatch) {
       return (
         <div key={i} className={`text-[12px] ${txtCls}`}>
@@ -622,16 +689,35 @@ function ExpandedContent({ section, dark, isStreaming }: { section: Section; dar
     return (
       <div key={i} className={`text-[12px] leading-relaxed ${txtCls}`}>
         {shouldAnimate
-          ? <ResponseStream textStream={line} mode="typewriter" speed={85} />
-          : line}
+          ? <ResponseStream textStream={cleanedLine} mode="typewriter" speed={85} />
+          : cleanedLine}
       </div>
     );
   };
 
   return (
-    <div className={`ml-8 mr-2 mt-1 mb-2 space-y-1 ${dark ? 'border-l border-zinc-800/50' : 'border-l border-zinc-200'} pl-3`}>
-      {/* Coverage */}
+    <div className={`ml-8 mr-2 mt-1 mb-2 space-y-2 ${dark ? 'border-l border-zinc-800/50' : 'border-l border-zinc-200'} pl-3`}>
+      {/* Badge and Section Header */}
+      <div className="flex items-center gap-2 flex-wrap mb-2">
+        <Badge type={badgeType} isDarkMode={dark} size="sm">
+          {section.kind === 'coverage' || section.kind === 'metrics' ? `${covPct}% Complete` : section.title}
+        </Badge>
+      </div>
+
+      {/* Progress Bar for Coverage */}
       {covPct !== null && (
+        <div className="py-1 max-w-xs">
+          <ProgressBar
+            value={covPct}
+            label="Research Coverage"
+            isDarkMode={dark}
+            showPercent={true}
+          />
+        </div>
+      )}
+
+      {/* Legacy Coverage Bar (fallback) */}
+      {covPct !== null && section.kind === 'coverage' && (
         <div className="py-1 max-w-xs">
           <CoverageBar pct={covPct} dark={dark} />
         </div>

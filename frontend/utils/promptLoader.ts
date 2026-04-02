@@ -14,9 +14,21 @@
  */
 
 // ── Load prompt files: Vite (bundled) or Node.js (CLI/tsx) ──────────────────
-import * as fs from 'fs';
-import * as path from 'path';
-import * as url from 'url';
+// Node.js imports are optional and guarded for browser compatibility
+let fs: typeof import('fs') | null = null;
+let path: typeof import('path') | null = null;
+let url: typeof import('url') | null = null;
+
+// Only load Node.js modules in Node.js environment
+if (typeof window === 'undefined' && typeof process !== 'undefined' && process.versions?.node) {
+  try {
+    fs = require('fs');
+    path = require('path');
+    url = require('url');
+  } catch (e) {
+    // Modules not available in this environment
+  }
+}
 
 let promptFiles: Record<string, string> = {};
 
@@ -27,7 +39,7 @@ if (typeof (import.meta as any).glob === 'function') {
     query: '?raw',
     import: 'default',
   }) as Record<string, string>;
-} else {
+} else if (fs && path && url) {
   // Node.js (CLI/tsx) environment: read files from disk
   try {
     const __dirname = path.dirname(url.fileURLToPath(import.meta.url));

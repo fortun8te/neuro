@@ -18,6 +18,8 @@ export interface ResearchMetrics {
   coverageAchieved: number;
   totalThinkingTokens?: number;        // Qwen 3.5 thinking tokens across all calls
   thinkingByModel?: Map<string, number>; // thinking token count per model
+  sessionId?: string;                  // Wayfarer session ID for file downloads
+  downloadedFiles?: Array<{ filename: string; size: string; type: string; downloadedAt: string }>;
 }
 
 class ResearchAuditCollector {
@@ -72,6 +74,17 @@ class ResearchAuditCollector {
     this.metrics.thinkingByModel.set(modelName, (this.metrics.thinkingByModel.get(modelName) || 0) + count);
   }
 
+  // Record session ID for file downloads
+  setSessionId(sessionId: string) {
+    this.metrics.sessionId = sessionId;
+  }
+
+  // Record downloaded files
+  addDownloadedFiles(files: Array<{ filename: string; size: string; type: string; downloadedAt: string }>) {
+    if (!this.metrics.downloadedFiles) this.metrics.downloadedFiles = [];
+    this.metrics.downloadedFiles.push(...files);
+  }
+
   // Build final audit trail
   buildAuditTrail(): ResearchAuditTrail {
     const endTime = Date.now();
@@ -107,6 +120,8 @@ class ResearchAuditCollector {
       coverageAchieved: this.metrics.coverageAchieved,
       totalThinkingTokens: this.metrics.totalThinkingTokens || 0,
       thinkingTokensByModel: thinkingByModel,
+      sessionId: this.metrics.sessionId,
+      downloadedFiles: this.metrics.downloadedFiles,
     };
   }
 }

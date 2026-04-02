@@ -13,6 +13,8 @@ import { getOllamaEndpoint } from './modelConfig';
 import { INFRASTRUCTURE } from '../config/infrastructure';
 import { createLogger } from './logger';
 import { logModelUsage } from './modelUsageLogger';
+import { getOrCreateBreaker } from './circuitBreaker';
+import { validateOllamaResponse } from './schemas/ollama.schemas';
 
 const log = createLogger('ollama');
 
@@ -223,6 +225,21 @@ export const ollamaService = {
     // Log model usage start
     const startTime = Date.now();
 
+    // Check circuit breaker before attempting request
+    const breaker = getOrCreateBreaker('ollama', {
+      failureThreshold: 5,
+      resetTimeout: 30_000,
+      name: 'Ollama'
+    });
+
+    try {
+      breaker.canAttempt();
+    } catch (cbError) {
+      log.warn('Circuit breaker blocking request', {}, cbError);
+      onError?.(cbError as Error);
+      throw cbError;
+    }
+
     // Retry wrapper for transient failures
     let lastError: Error | null = null;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -323,9 +340,33 @@ export const ollamaService = {
 
         const decoder = new TextDecoder();
         let buffer = '';
-        // Inline <think> tag parsing — for models that embed thinking in response text
-        // rather than using Ollama's native json.thinking field.
-        let inlineThinking = false;
+
+        // FIX #6: Parse thinking tags with regex instead of char-by-char iteration
+        const parseThinkingTags = (token: string): Array<{type: 'think'|'response', content: string}> => {
+          const parts: Array<{type: 'think'|'response', content: string}> = [];
+          const regex = /<think>([\s\S]*?)<\/think>/g;
+          let lastIdx = 0;
+          let match;
+
+          while ((match = regex.exec(token)) !== null) {
+            // Content before the think tag
+            if (match.index > lastIdx) {
+              const content = token.slice(lastIdx, match.index);
+              if (content) parts.push({ type: 'response', content });
+            }
+            // The think tag content
+            parts.push({ type: 'think', content: match[1] });
+            lastIdx = match.index + match[0].length;
+          }
+
+          // Remaining content after last think tag
+          if (lastIdx < token.length) {
+            const remaining = token.slice(lastIdx);
+            if (remaining) parts.push({ type: 'response', content: remaining });
+          }
+
+          return parts;
+        };
 
         // Idle timeout: abort if no data received for 120 seconds
         // (Ollama may be busy with another request and delay the first token)
@@ -375,37 +416,27 @@ export const ollamaService = {
               try {
                 const json = JSON.parse(line);
 
+                // Validate against schema
+                try {
+                  validateOllamaResponse(json);
+                } catch (schemaErr) {
+                  log.debug('Ollama response validation failed', { line: line.slice(0, 100) }, schemaErr);
+                  // Continue processing even if validation fails — be lenient with unexpected fields
+                }
+
                 // Response tokens — /api/generate uses json.response, /api/chat uses json.message.content
                 const token = useChat ? json.message?.content : json.response;
                 if (token) {
-                  // Parse inline <think>...</think> tags — models that don't use the native
-                  // Ollama thinking API embed reasoning in the response text directly.
-                  let remaining = token as string;
-                  while (remaining.length > 0) {
-                    if (inlineThinking) {
-                      const endIdx = remaining.indexOf('</think>');
-                      if (endIdx >= 0) {
-                        const thinkPart = remaining.slice(0, endIdx);
-                        if (thinkPart) onThink?.(thinkPart);
-                        inlineThinking = false;
-                        remaining = remaining.slice(endIdx + 8); // '</think>'.length
-                      } else {
-                        onThink?.(remaining);
-                        remaining = '';
-                      }
+                  // Parse inline <think>...</think> tags with regex (FIX #6)
+                  const parts = parseThinkingTags(token as string);
+                  for (const part of parts) {
+                    if (part.type === 'think') {
+                      onThink?.(part.content);
+                      tokenTracker.tickThinking(part.content);
                     } else {
-                      const startIdx = remaining.indexOf('<think>');
-                      if (startIdx >= 0) {
-                        const before = remaining.slice(0, startIdx);
-                        if (before) { fullResponse += before; onChunk?.(before); tokenTracker.tick(before); }
-                        inlineThinking = true;
-                        remaining = remaining.slice(startIdx + 7); // '<think>'.length
-                      } else {
-                        fullResponse += remaining;
-                        onChunk?.(remaining);
-                        tokenTracker.tick(remaining);
-                        remaining = '';
-                      }
+                      fullResponse += part.content;
+                      onChunk?.(part.content);
+                      tokenTracker.tick(part.content);
                     }
                   }
                 }
@@ -469,11 +500,17 @@ export const ollamaService = {
           success: true,
         });
 
+        // Record success in circuit breaker
+        breaker.recordSuccess();
+
         return fullResponse;
       } catch (error) {
         if (timeoutId) clearTimeout(timeoutId);
         if (!trackingEnded) { tokenTracker.endCall(); trackingEnded = true; }
         lastError = error instanceof Error ? error : new Error(String(error));
+
+        // Record failure in circuit breaker
+        breaker.recordFailure();
 
         // Don't retry on user abort
         if (signal?.aborted) {
@@ -555,7 +592,7 @@ export const ollamaService = {
             keep_alive: m.keep_alive || '30m',
             options: { num_predict: 1, num_ctx: m.num_ctx || 2048 },
           }),
-          signal: AbortSignal.timeout(60_000),
+          signal: AbortSignal.timeout(180_000),
         });
         if (res.ok) {
           log.info(`Preloaded ${m.model} (keep_alive=${m.keep_alive || '30m'}, ctx=${m.num_ctx || 2048})`);
