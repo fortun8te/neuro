@@ -13,40 +13,11 @@ import { visualProgressStore } from '../utils/visualProgressStore';
 import { tokenTracker } from '../utils/tokenStats';
 import { ollamaService } from '../utils/ollama';
 import { getRelevantMemories, getCrystallizedMemories, touchMemory } from '../utils/memoryStore';
-<<<<<<< HEAD:frontend/hooks/useCycleLoop.ts
-=======
-import { consolidateCycleMemories, generateSkillInjectionPrompt } from '../utils/memoryAgent';
-import { ContextBridgeValidator } from '../utils/multiPhaseContextBridge';
->>>>>>> 5e8b1b9 (Fix NEURO benchmark timeouts and tool_calls tracking):src/hooks/useCycleLoop.ts
 import { set, get, del } from 'idb-keyval';
 import { autonomyManager, selfImprovementAgent, proactiveMonitor, type CycleMetrics } from '../utils/autonomyEngine';
 import { storage } from '../utils/storage';
-<<<<<<< HEAD:frontend/hooks/useCycleLoop.ts
-=======
-import {
-  withTimeout,
-  STAGE_TIMEOUTS,
-  TimeoutError,
-  isTimeoutPyramidEnabled,
-  getGracefulDegradationStrategy,
-  logTimeoutEvent
-} from '../utils/stageTimeouts';
-import { runAdvancedMakeStage, type FinalConcept } from '../utils/advancedMakeStage';
-import { runAdvancedTestStage, type AdvancedTestOutput } from '../utils/advancedTestStage';
-import { polishConceptForProduction, type ProductionReadyConcept } from '../utils/adConceptPolisher';
-import { enforceCreativeDirection, type TasteDirection } from '../utils/creativeDirectionEnforcer';
-import { TimeoutManager, globalTimeoutManager } from '../utils/aggressiveTimeouts';
-import { CrashRecoveryManager, globalCrashRecoveryManager } from '../utils/crashRecoveryManager';
-import { processWatchdog } from '../utils/processWatchdog';
-import { INFRASTRUCTURE } from '../config/infrastructure';
-import { MetricsCalculator } from '../q3BenchmarkMetrics';
-import { BenchmarkReportGenerator } from '../q3BenchmarkReport';
-import {
-  evaluateStageAndDecideRetry,
-  initializeQualityControl,
-  getQualitySession,
-} from '../utils/qualityControlIntegration';
->>>>>>> 5e8b1b9 (Fix NEURO benchmark timeouts and tool_calls tracking):src/hooks/useCycleLoop.ts
+import { analyzeStageGroups, executeStageGroupsParallel } from '../utils/stageParallelizer';
+import { executeParallel, executeBatched, type ParallelTask } from '../utils/parallelExecutor';
 
 
 const FULL_STAGE_ORDER: StageName[] = ['research', 'brand-dna', 'persona-dna', 'angles', 'strategy', 'copywriting', 'production', 'test'];
@@ -1111,61 +1082,8 @@ Use THEIR language — not brand speak. Every word should feel like it came from
 
       while (isRunningRef.current && !signal.aborted) {
         try {
-<<<<<<< HEAD:frontend/hooks/useCycleLoop.ts
           // Execute current stage — pass the shared signal
           await executeStage(cycle, cycle.currentStage, campaign, signal);
-=======
-          // Execute current stage with timeout pyramid + aggressive timeout protection
-          const stageName = cycle.currentStage;
-          const timeoutEnabled = isTimeoutPyramidEnabled();
-          const timeout = STAGE_TIMEOUTS[stageName];
-
-          if (timeoutEnabled && timeout) {
-            // Phase 4: Wrap stage execution with aggressive timeout (30s per request)
-            try {
-              const startTime = Date.now();
-
-              // Use aggressive timeout manager for all requests within the stage
-              const stagePromise = executeStage(cycle, stageName, campaign, signal);
-
-              // Also apply phase-level timeout pyramid
-              await withTimeout(
-                stagePromise,
-                timeout,
-                stageName,
-                new AbortController() // Create fresh abort controller for timeout
-              );
-            } catch (timeoutErr) {
-              if (timeoutErr instanceof TimeoutError) {
-                // Handle timeout with graceful degradation
-                const elapsed = Date.now() - cycle.stages[stageName].startedAt!;
-                const strategy = getGracefulDegradationStrategy(stageName);
-                logTimeoutEvent(stageName, timeout, elapsed, strategy.action);
-
-                console.warn(
-                  `[TimeoutPyramid] Stage "${stageName}" timed out after ${timeout}ms.` +
-                  `\nStrategy: ${strategy.action}` +
-                  (strategy.fallback ? `\nFallback: ${strategy.fallback}` : '')
-                );
-
-                // Mark stage as completed with partial results
-                const stage = cycle.stages[stageName];
-                stage.status = 'complete';
-                stage.completedAt = Date.now();
-                stage.agentOutput += `\n[TIMEOUT] This stage exceeded its ${timeout}ms budget and was concluded with partial results.`;
-                throttledSetCycle(cycle);
-
-                // Continue to next stage rather than failing
-                setCurrentCycle(refreshCycleReference(cycle));
-              } else {
-                throw timeoutErr;
-              }
-            }
-          } else {
-            // No timeout protection — execute normally
-            await executeStage(cycle, stageName, campaign, signal);
-          }
->>>>>>> 5e8b1b9 (Fix NEURO benchmark timeouts and tool_calls tracking):src/hooks/useCycleLoop.ts
 
           // Generation guard: if the cycle was restarted/aborted while this
           // stage was executing, discard the result and stop this run.

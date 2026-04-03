@@ -35,7 +35,25 @@ import type { PatchHunk } from './utils/applyPatch';
 import { cliCanvas } from './utils/cliCanvas';
 import type { DocumentVersion } from './utils/cliCanvas';
 
+// ── CLI Fixes: Health checks, logging, state persistence, benchmarking ────────
+import { runHealthCheckCLI } from './cli/cliHealthCheck';
+import { runInfrastructureTestCLI } from './cli/cliInfrastructureTest';
+import { runModelSwitchTestCLI } from './cli/cliModelSwitchTest';
+import { runBenchmarkCLI } from './cli/architectureBenchmark';
+import { runParallelizationTestCLI } from './cli/cliParallelizationTest';
+import { initLogger, closeLogger, getLogPath, log as logEntry } from './cli/cliLogger';
+import * as cliState from './cli/cliState';
+
 setupNodeEnvironment();
+
+// ── Quick event logger ────────────────────────────────────────────────────────
+function logEvent(type: string, data: Record<string, any>): void {
+  try {
+    logEntry(type, data);
+  } catch (error) {
+    // Silent fail for logging errors
+  }
+}
 
 interface Message {
   role: 'user' | 'assistant';
@@ -168,11 +186,15 @@ function printHelp() {
   process.stdout.write('    /canvas reset    discard all pending patches\n');
   process.stdout.write('\n');
   process.stdout.write('  Flags (command line):\n');
-  process.stdout.write('    --debug / -d    verbose mode (tool output, token counts, step timing)\n');
-  process.stdout.write('    --ws            start WebSocket server (default port 8890) alongside CLI\n');
+  process.stdout.write('    --benchmark/-b   run 6-test architecture benchmark\n');
+  process.stdout.write('    --health/-h      run service health checks\n');
+  process.stdout.write('    --parallel/-p    run parallelization tests (Promise.all, batched, race)\n');
+  process.stdout.write('    --debug/-d       verbose mode (tool output, token counts, step timing)\n');
+  process.stdout.write('    --ws             start WebSocket server (default port 8890) alongside CLI\n');
   process.stdout.write('\n');
   process.stdout.write('  Env vars:\n');
-  process.stdout.write('    DEBUG=*   same as --debug\n');
+  process.stdout.write('    DEBUG=*                            same as --debug\n');
+  process.stdout.write('    VITE_INFRASTRUCTURE_MODE=local     local or remote (default: local)\n');
   process.stdout.write('\n');
 }
 
@@ -194,6 +216,13 @@ function displayEvent(event: AgentEngineEvent, debugMode: boolean) {
             process.stdout.write(`  [tools selected]  ${event.routing.tools.join(', ')}\n`);
           }
         }
+        // Log routing decision to JSONL
+        logEvent('routing_decision', {
+          phase: event.routing.phase,
+          decision: event.routing.decision,
+          model: event.routing.model,
+          toolsSelected: event.routing.tools?.length || 0,
+        });
       }
       break;
 
@@ -221,6 +250,13 @@ function displayEvent(event: AgentEngineEvent, debugMode: boolean) {
             process.stdout.write(`         ${out.replace(/\n/g, ' ')}\n`);
           }
         }
+        // Log tool call to JSONL
+        logEvent('tool_call', {
+          tool: event.toolCall.name,
+          status,
+          input: (event.toolCall as any).input,
+          hasOutput: !!event.toolCall.result?.output,
+        });
       }
       break;
 
@@ -275,16 +311,23 @@ function displayEvent(event: AgentEngineEvent, debugMode: boolean) {
         const t = (event as any).tokens;
         currentState.tokens += (t.input || 0) + (t.output || 0);
         process.stdout.write(`  [tokens] in:${t.input}  out:${t.output}\n`);
+        // Log response completion
+        logEvent('response_complete', {
+          inputTokens: t.input || 0,
+          outputTokens: t.output || 0,
+        });
       } else if (event.response && !streamedChunks) {
         // Only estimate tokens if we didn't already stream (fallback path)
         const estimated = Math.round(event.response.split(/\s+/).filter(Boolean).length * 1.3);
         currentState.tokens += estimated;
         process.stdout.write(`  [tokens] ~${estimated} estimated\n`);
+        logEvent('response_complete', { estimatedTokens: estimated });
       } else if (event.response) {
         // Already streamed — still count tokens but don't re-display
         const estimated = Math.round(event.response.split(/\s+/).filter(Boolean).length * 1.3);
         currentState.tokens += estimated;
         process.stdout.write(`  [tokens] ~${estimated} estimated\n`);
+        logEvent('response_complete', { estimatedTokens: estimated });
       }
       streamedChunks = false;
       break;
@@ -350,11 +393,6 @@ function displayEvent(event: AgentEngineEvent, debugMode: boolean) {
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 async function main() {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
   const args = process.argv.slice(2);
   const debugMode =
     process.env.DEBUG === '*' ||
@@ -362,10 +400,65 @@ async function main() {
     args.includes('--debug') ||
     args.includes('-d');
 
+  // ── Benchmark mode: Run tests and exit ────────────────────────────────────
+  if (args.includes('--benchmark') || args.includes('-b')) {
+    try {
+      const logPath = initLogger();
+      process.stdout.write(`\n  [logger] Initialized at ${logPath}\n`);
+
+      await runBenchmarkCLI();
+      await closeLogger();
+      process.exit(0);
+    } catch (error) {
+      console.error('Benchmark failed:', error);
+      await closeLogger();
+      process.exit(1);
+    }
+  }
+
+  // ── Health check mode: Run checks and exit ────────────────────────────────
+  if (args.includes('--health') || args.includes('-h')) {
+    try {
+      const healthy = await runHealthCheckCLI();
+      process.exit(healthy ? 0 : 1);
+    } catch (error) {
+      console.error('Health check failed:', error);
+      process.exit(1);
+    }
+  }
+
+  // ── Parallelization test mode: Test parallel execution and exit ─────────────
+  if (args.includes('--parallel') || args.includes('-p')) {
+    try {
+      await runParallelizationTestCLI();
+      process.exit(0);
+    } catch (error) {
+      console.error('Parallelization test failed:', error);
+      process.exit(1);
+    }
+  }
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
   const wsMode = args.includes('--ws');
   if (wsMode) {
     const { startWebSocketServer } = await import('./utils/webServer');
     startWebSocketServer();
+  }
+
+  // ── Initialize CLI logger and state ───────────────────────────────────────
+  const logPath = initLogger();
+  let executionState = await cliState.loadState();
+  if (!executionState) {
+    executionState = cliState.createState();
+  }
+
+  if (debugMode) {
+    process.stdout.write(`  [state] Loaded session: ${executionState.sessionId.substring(0, 20)}...\n`);
+    process.stdout.write(`  [logger] Initialized at ${logPath}\n\n`);
   }
 
   const conversationHistory: Message[] = [];
@@ -376,7 +469,10 @@ async function main() {
   }
 
   // Start VRAM keep-alive loop — keeps models warm between messages
-  vramManager.startKeepAlive();
+  // Only in browser/remote mode; in CLI the preload URL is wrong before dotenv runs
+  if (typeof window !== 'undefined') {
+    vramManager.startKeepAlive();
+  }
 
   // In piped/non-interactive mode, stdin closes right after delivering input.
   // Track that so we exit cleanly after processing completes (not before).
@@ -446,8 +542,14 @@ async function main() {
       }
 
       if (userInput.toLowerCase() === 'exit') {
-        rl.close();
-        process.exit(0);
+        // Save state before exiting
+        (async () => {
+          await cliState.saveState(executionState);
+          await closeLogger();
+          rl.close();
+          process.exit(0);
+        })();
+        return;
       }
 
       if (userInput.toLowerCase() === 'clear') {

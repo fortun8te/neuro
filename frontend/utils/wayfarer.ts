@@ -57,14 +57,12 @@ export interface CleanupResponse {
   removed: number;
 }
 
-const DEFAULT_HOST = INFRASTRUCTURE.wayfarerUrl;
-
 function getHost(): string {
   if (typeof window !== 'undefined') {
     const stored = localStorage.getItem('wayfarer_host');
     if (stored) return stored;
   }
-  return DEFAULT_HOST;
+  return INFRASTRUCTURE.wayfarerUrl;
 }
 
 // ── Health check state (cached, 1-minute TTL) ─────────────────────────────

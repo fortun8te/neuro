@@ -256,8 +256,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@': path.resolve(__dirname, './frontend'),
     },
+    dedupe: ['react', 'react-dom', 'react/jsx-runtime'],
   },
   server: {
     port: parseInt(process.env.PORT || '5173'),

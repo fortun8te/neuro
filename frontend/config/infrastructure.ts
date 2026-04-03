@@ -15,20 +15,33 @@ export function validateInfrastructureMode(mode: unknown): 'local' | 'remote' {
 }
 
 /**
- * Get infrastructure mode from localStorage, with fallback to 'remote'
+ * Get infrastructure mode from env var, localStorage, or default
+ * Priority: VITE_INFRASTRUCTURE_MODE env var > localStorage > 'local' (CLI/server-side default)
  * User can toggle between local and remote in Settings → Infrastructure
  * SECURITY: Validates mode against whitelist to prevent injection
  */
 function getInfrastructureMode(): 'local' | 'remote' {
+  // Check env var first (for CLI and server-side execution)
+  const envMode = getEnv('VITE_INFRASTRUCTURE_MODE');
+  if (envMode) {
+    return validateInfrastructureMode(envMode);
+  }
+
+  // Check localStorage (browser environment)
   try {
     if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
       const rawMode = localStorage.getItem('neuro_infrastructure_mode');
-      return validateInfrastructureMode(rawMode);
+      if (rawMode) {
+        return validateInfrastructureMode(rawMode);
+      }
     }
   } catch (e) {
     // localStorage may not be available (SSR, private mode, etc)
   }
-  return 'remote';
+
+  // Default to 'local' for CLI/server-side, allowing env override
+  // In browser without setting, falls back to what's in localStorage or 'local'
+  return 'local';
 }
 
 /**
@@ -101,23 +114,6 @@ export const INFRASTRUCTURE = {
   wayfarerConcurrency: parseInt(getEnv('VITE_WAYFARER_CONCURRENCY', '20'), 10),
   // Helper to get current infrastructure mode
   getMode: getInfrastructureMode,
-<<<<<<< HEAD:frontend/config/infrastructure.ts
-=======
-  // Feature flags (Phase 1-3)
-  healthMonitoringEnabled: getEnv('VITE_HEALTH_MONITORING_ENABLED', 'true') === 'true',
-  gracefulDegradationEnabled: getEnv('VITE_GRACEFUL_DEGRADATION_ENABLED', 'true') === 'true',
-  processWatchdogEnabled: getEnv('VITE_PROCESS_WATCHDOG_ENABLED', 'true') === 'true',
-  // Feature flags (Phase 4: Infrastructure Hardening)
-  aggressiveTimeoutsEnabled: getEnv('VITE_AGGRESSIVE_TIMEOUTS_ENABLED', 'true') === 'true',
-  timeoutPyramidEnabled: getEnv('VITE_TIMEOUT_PYRAMID_ENABLED', 'true') === 'true',
-  watchdogEnabled: getEnv('VITE_WATCHDOG_ENABLED', 'true') === 'true',
-  crashRecoveryEnabled: getEnv('VITE_CRASH_RECOVERY_ENABLED', 'true') === 'true',
-  overnightModeEnabled: getEnv('VITE_OVERNIGHT_MODE_ENABLED', 'true') === 'true',
-  // Configuration parameters
-  sessionCheckpointingInterval: parseInt(getEnv('VITE_SESSION_CHECKPOINTING_INTERVAL', '30000'), 10),
-  watchdogInterval: parseInt(getEnv('VITE_WATCHDOG_INTERVAL', '30000'), 10),
-  healthCheckTimeout: parseInt(getEnv('VITE_HEALTH_CHECK_TIMEOUT', '5000'), 10),
->>>>>>> 5e8b1b9 (Fix NEURO benchmark timeouts and tool_calls tracking):src/config/infrastructure.ts
 };
 
 export type InfrastructureHealth = {

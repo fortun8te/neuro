@@ -579,7 +579,7 @@ export const ollamaService = {
    * Uses small num_ctx to minimize VRAM footprint during preload.
    */
   async preloadModels(models: Array<{ model: string; num_ctx?: number; keep_alive?: string }>): Promise<void> {
-    const endpoint = `${DIRECT_OLLAMA}/api/generate`;
+    const endpoint = `${getOllamaEndpoint()}/api/generate`;
     await Promise.allSettled(models.map(async (m) => {
       try {
         const res = await fetch(endpoint, {

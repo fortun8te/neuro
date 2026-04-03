@@ -629,34 +629,8 @@ function buildTools(onEvent?: AgentEngineCallback, modelRef?: { current: string 
 
         const timeout = Math.min(Number(params.timeout_ms) || 30000, 120000);
 
-        // ── CLI mode: use Node.js child_process directly ──
-        if (typeof window === 'undefined') {
-          try {
-            const { execFile } = await import('child_process');
-            const { promisify } = await import('util');
-
-            // Whitelist safe commands
-            const ALLOWED_COMMANDS = [
-              'git', 'npm', 'npx', 'ls', 'cat', 'head', 'tail', 'grep', 'pwd', 'curl', 'node', 'tsc'
-            ];
-
-            const cmdName = command.split(/\s+/)[0];
-            if (!ALLOWED_COMMANDS.includes(cmdName)) {
-              return { success: false, output: `Command not in whitelist: ${cmdName}` };
-            }
-
-            const [cmd, ...args] = command.split(/\s+/);
-            const execFileAsync = promisify(execFile);
-            const { stdout, stderr } = await execFileAsync(cmd, args, { timeout, maxBuffer: 10 * 1024 * 1024 });
-            const raw = [stdout, stderr].filter(Boolean).join('\n').trim();
-            const output = raw.length > 2000 ? raw.slice(0, 2000) + '\n[...truncated]' : raw;
-            return { success: true, output: output || '(no output)' };
-          } catch (err: any) {
-            const msg = err?.stdout || err?.stderr || err?.message || String(err);
-            return { success: false, output: `shell_exec error: ${String(msg).slice(0, 500)}` };
-          }
-        }
-
+        // In CLI mode, nodeAdapter.ts patches globalThis.fetch to intercept /api/shell
+        // and handle it via Node.js execSync — no separate code path needed here.
         try {
           const resp = await fetch('/api/shell', {
             method: 'POST',
@@ -700,29 +674,8 @@ function buildTools(onEvent?: AgentEngineCallback, modelRef?: { current: string 
         const filePath = String(params.path || '');
         const maxLines = Number(params.max_lines) || 200;
         if (!filePath) return { success: false, output: 'No path provided.' };
-        // ── CLI mode: use Node.js fs directly ──
-        if (typeof window === 'undefined') {
-          try {
-            const { readFile } = await import('fs/promises');
-            const { resolve } = await import('path');
-            const { homedir } = await import('os');
-
-            // Validate path — prevent directory traversal
-            const basePath = resolve(homedir(), 'Downloads/nomads');
-            const fullPath = resolve(filePath);
-            if (!fullPath.startsWith(basePath)) {
-              return { success: false, output: 'Access denied: path outside allowed directory' };
-            }
-
-            const raw = await readFile(fullPath, 'utf8');
-            const lines = raw.split('\n').slice(0, maxLines).join('\n');
-            const out = lines.length > 4000 ? lines.slice(0, 4000) + '\n[...truncated]' : lines;
-            return { success: true, output: out };
-          } catch (err: any) {
-            if (err?.code === 'ENOENT') return { success: false, output: `File not found: ${filePath}` };
-            return { success: false, output: `file_read failed: ${err instanceof Error ? err.message : err}` };
-          }
-        }
+        // In CLI mode, nodeAdapter.ts patches globalThis.fetch to intercept /api/file/read
+        // and handle it via Node.js fs — no separate restricted code path needed here.
         try {
           const path = filePath;
           const resp = await fetch('/api/file/read', {
@@ -749,9 +702,7 @@ function buildTools(onEvent?: AgentEngineCallback, modelRef?: { current: string 
         dir: { type: 'string', description: 'Directory to list (e.g. ~/Documents/Nomads/nomadfiles/, ~/Downloads, /tmp)', required: true },
       },
       execute: async (params) => {
-        if (typeof window === 'undefined') {
-          return { success: false, output: '[CLI mode] file_browse is not available in CLI mode. Respond directly instead of using this tool.' };
-        }
+        // In CLI mode, nodeAdapter.ts patches fetch to intercept /api/file/list
         try {
           const dir = String(params.dir || '');
           if (!dir) return { success: false, output: 'No directory provided.' };
@@ -4692,7 +4643,11 @@ export async function runAgentLoop(
   probeEmbeddingModel();
 
   // ── Smart VRAM management — preload the right tier for this task ──
-  vramManager.prepareForTask('chat'); // fire-and-forget: loads duo tier (9b + 2b)
+  // Skip in CLI/Node mode: preloadModels uses a module-level URL constant captured before
+  // dotenv runs, so it would hit the wrong (remote) endpoint. In CLI the model loads on first use.
+  if (typeof window !== 'undefined') {
+    vramManager.prepareForTask('chat'); // fire-and-forget: loads duo tier (9b + 2b)
+  }
 
   // ── Source tracking — accumulate all URLs visited during this agent run ──
   const sourceRegistry = new Map<string, { title: string; url: string; index: number; snippet?: string }>();
@@ -5812,9 +5767,28 @@ ${toCompress}`,
     // When the LLM "succeeds" but returns an error message as text (not a thrown exception),
     // pushing it into contextEntries causes 400-loop spirals on every subsequent call.
     if (step > 0 && looksLikeErrorResponse(llmResponse)) {
-      contextEntries.push('System: [step skipped — LLM returned error response]');
+      consecutiveStuckCount++;
+      console.log(`[Step ${step}] Detected error response (stuck count: ${consecutiveStuckCount}/${MAX_STUCK_BEFORE_ABORT})`);
+      if (consecutiveStuckCount >= MAX_STUCK_BEFORE_ABORT) {
+        // If we have tool results in context, synthesize a response from them
+        const lastToolEntry = contextEntries.slice().reverse().find(e => e.includes('Tool Result ('));
+        if (lastToolEntry) {
+          const toolResultMatch = lastToolEntry.match(/Tool Result \([^)]+\):\s*([\s\S]+)/);
+          finalResponse = toolResultMatch
+            ? `Here is the result:\n\n${toolResultMatch[1].trim()}`
+            : "I ran the tool but couldn't produce a response.";
+        } else {
+          finalResponse = "I wasn't able to generate a response. Please try again.";
+        }
+        onEvent({ type: 'done', response: finalResponse, step, timestamp: Date.now() });
+        break;
+      }
+      const hasRecentToolResult = contextEntries.slice(-3).some(e => e.includes('Tool Result ('));
+      const recoveryHint = hasRecentToolResult
+        ? `System: The previous tool call completed. Review the tool result above and either: (a) provide your final answer to the user if the task is done, or (b) call the next required tool if more steps are needed.`
+        : 'System: [step skipped — LLM returned error response. Try again with a valid response or tool call.]';
+      contextEntries.push(recoveryHint);
       onEvent({ type: 'error', error: 'LLM returned error-like response, skipping context push', step, timestamp: Date.now() });
-      console.log(`[Step ${step}] Detected error response, looping`);
       continue;
     }
 
@@ -6412,21 +6386,6 @@ ${toCompress}`,
     // 'respond_to_model' errors flow through normally — no extra suffix needed
 
     contextEntries.push(`Assistant: ${thinking}\n\n\`\`\`tool\n${JSON.stringify({ name: toolCallParsed.name, args: toolCallParsed.args })}\n\`\`\`\n\nTool Result (${toolCallParsed.name}): ${resultOutput}${contextSuffix}`);
-
-    // ── Post-file_write: force inline output in CLI mode ──
-    // The system prompt tells the model to save to file and reference it, but in CLI the file
-    // is invisible to the user. Force the model to ALSO output the content directly.
-    if (typeof window === 'undefined' && toolCallParsed.name === 'file_write' && result.success) {
-      const savedContent = String(toolCallParsed.args.content || '');
-      const savedPath = String(toolCallParsed.args.path || '');
-      if (savedContent.length > 0) {
-        contextEntries.push(
-          `System: File saved to ${savedPath}. In CLI mode the file is not visible to the user — ` +
-          `you MUST now output the COMPLETE content directly in your response (not a summary, not "see the file" — ` +
-          `the FULL content, verbatim). Start outputting it now.`
-        );
-      }
-    }
 
     // Periodic checkpointing removed — use sessionFileSystem instead
   }
