@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  # SearXNG - Meta search engine (4+ instances for load balancing)
+  searxng-1:
+    image: searxng/searxng:latest
+    container_name: searxng-1
+    ports:
+      - "8888:8080"
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8888/
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    networks:
+      - neuro-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  searxng-2:
+    image: searxng/searxng:latest
+    container_name: searxng-2
+    ports:
+      - "8889:8080"
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8889/
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    networks:
+      - neuro-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Wayfarer - Web scraping & research service (4+ instances)
+  # Note: Requires Python 3.11+ and pvlwebtools
+  # Start locally with: SEARXNG_URL=http://localhost:8888 python3.11 -m uvicorn wayfarer_server:app --host 0.0.0.0 --port 8889
+  # Or via Docker if image is built
+
+  # Nginx Load Balancer - Routes requests across SearXNG instances
+  nginx:
+    image: nginx:alpine
+    container_name: neuro-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - neuro-network
+    depends_on:
+      - searxng-1
+      - searxng-2
+    restart: unless-stopped
+
+networks:
+  neuro-network:
+    driver: bridge
+
+volumes:
+  searxng-data:
+    driver: local

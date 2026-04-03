@@ -12,31 +12,54 @@ Neuro is an advanced agentic system built on Claude 3.5's extended thinking capa
 - **Visual Intelligence** — Screenshot analysis and competitive visual scouting
 - **Context Management** — Sophisticated context window handling with compression and retrieval
 
+## ⚠️ REMOTE INFRASTRUCTURE REQUIRED
+
+**Neuro is optimized for remote infrastructure deployment.** Do NOT run Ollama, Wayfarer, or SearXNG locally.
+
+**👉 See [REMOTE_SETUP.md](./REMOTE_SETUP.md) for complete infrastructure setup instructions.**
+
+---
+
 ## Quick Start
 
 ### Prerequisites
 
-- Node.js 18+
-- Python 3.11+ (for Wayfarer service)
-- Docker (for SearXNG search engine)
-- Ollama with models deployed
+- Node.js 18+ (local machine)
+- **Remote Docker server** with:
+  - 4-8 SearXNG instances (load-balanced)
+  - Wayfarer service (Python 3.11+)
+  - Ollama with models (qwen3.5, gpt-oss-20b, etc.)
 
 ### Installation
 
 ```bash
-# Clone and setup
+# On your LOCAL machine:
 git clone https://github.com/yourusername/neuro.git
 cd neuro
 
 # Install dependencies
 npm install
 
-# Configure environment
-cp config/.env.example .env
-# Edit .env with your infrastructure URLs
+# Configure environment — USE REMOTE SERVERS ONLY
+cp .env.example .env
+# ✅ DO: VITE_OLLAMA_URL=http://remote-server.com:11440
+# ❌ DON'T: VITE_OLLAMA_URL=http://localhost:11434
 
-# Start services
+# Start development
 npm run dev
+```
+
+### Verify Remote Connectivity
+
+```bash
+# Check all remote services are accessible
+npm run cli -- --health
+
+# Run parallelization tests
+npm run cli -- --parallel
+
+# Run full architecture benchmark
+npm run cli -- --benchmark
 ```
 
 ### Architecture
@@ -84,14 +107,21 @@ Deploy multiple specialized agents in parallel:
 
 ## Configuration
 
-### Environment Variables
+### Environment Variables — REMOTE ONLY
 
 ```bash
-VITE_OLLAMA_URL=http://localhost:11440          # Ollama server
-VITE_WAYFARER_URL=http://localhost:8889         # Wayfarer service
-VITE_SEARXNG_URL=http://localhost:8888          # SearXNG search
-VITE_CONTEXT1_URL=http://localhost:8001         # Context-1 retrieval
+# ✅ CORRECT (Remote servers)
+VITE_OLLAMA_URL=http://100.74.135.83:11440               # Remote Ollama
+VITE_WAYFARER_URL=http://research-server.com:8889        # Remote Wayfarer
+VITE_SEARXNG_URL=http://search-cluster.com:80            # Remote SearXNG (with Nginx LB)
+
+# ❌ NEVER USE (Local servers - will fail in production)
+# VITE_OLLAMA_URL=http://localhost:11440
+# VITE_WAYFARER_URL=http://localhost:8889
+# VITE_SEARXNG_URL=http://localhost:8888
 ```
+
+See [REMOTE_SETUP.md](./REMOTE_SETUP.md) for detailed infrastructure setup.
 
 ### Model Configuration
 

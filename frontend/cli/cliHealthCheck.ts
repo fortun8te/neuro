@@ -108,18 +108,36 @@ export function printHealthCheck(result: HealthCheckResult): void {
         ? 'OK'
         : service.status === 'timeout'
           ? 'TIMEOUT'
-          : 'FAIL';
+          : 'OFFLINE';
 
     const time = service.responseTime > 0 ? ` (${service.responseTime}ms)` : '';
     process.stdout.write(`  │  ${icon} ${service.name.padEnd(12)} ${status.padEnd(8)}${time}\n`);
 
     if (service.error) {
-      process.stdout.write(`  │     Error: ${service.error}\n`);
+      const errorMsg = service.error.length > 40 ? service.error.substring(0, 40) + '...' : service.error;
+      process.stdout.write(`  │     → ${errorMsg}\n`);
+    }
+  }
+
+  const offlineServices = result.services.filter((s) => s.status !== 'healthy');
+  if (offlineServices.length > 0) {
+    process.stdout.write(`  ├─────────────────────────────────────────────────────\n`);
+    process.stdout.write(`  │  ⚠️ Offline services (graceful degradation):\n`);
+    for (const service of offlineServices) {
+      process.stdout.write(`  │    • ${service.name}: ${service.url}\n`);
+      if (service.status === 'timeout') {
+        process.stdout.write(`  │      → Timeout: Check remote service is running\n`);
+      } else {
+        process.stdout.write(`  │      → Connection refused: Is remote Docker running?\n`);
+      }
     }
   }
 
   process.stdout.write(`  ├─────────────────────────────────────────────────────\n`);
   process.stdout.write(`  │  ${result.summary}\n`);
+  if (!result.allHealthy) {
+    process.stdout.write(`  │  See README.md for remote setup instructions\n`);
+  }
   process.stdout.write(`  └─────────────────────────────────────────────────────┘\n\n`);
 }
 
