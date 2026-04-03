@@ -4410,39 +4410,66 @@ const TASK_TOOLS: Record<TaskType, string[]> = {
   general:  ['web_search', 'browse', 'multi_browse', 'summarize', 'shell_exec', 'run_code', 'file_read', 'file_write', 'write_content', 'create_docx', 'image_analyze', 'video_analyze', 'video_edit', 'audio_transcribe', 'video_create', 'spawn_agents'],
 };
 
-function classifyTaskType(msg: string): TaskType {
+/**
+ * Multi-Task Classification: Returns ALL matching task types instead of just the first.
+ * This enables multi-step workflows like "research competitors → analyze sentiment → write copy"
+ * to get the union of all required tools instead of being gated by a single category.
+ */
+function classifyTaskTypes(msg: string): TaskType[] {
   const t = msg.toLowerCase();
+  const matched = new Set<TaskType>();
+
   // Memory operations — check FIRST to prevent "look at memories" → computer
-  if (/\b(remember|recall|memor|what did i tell|my preference|my goal|save this|note this|your (memories|notes|knowledge)|look at.*(memor|notes|knowledge))\b/.test(t)) return 'memory';
+  if (/\b(remember|recall|memor|what did i tell|my preference|my goal|save this|note this|your (memories|notes|knowledge)|look at.*(memor|notes|knowledge))\b/.test(t)) matched.add('memory');
+
   // Data visualization — check BEFORE research/analyze to catch viz-specific requests
-  if (/\b(chart|graph|plot|visuali[sz]e|bar chart|line chart|pie chart|scatter|heatmap|histogram|data.*viz|show.*data.*visually|visuali[sz]ation|render.*data|data.*pipeline)\b/.test(t)) return 'dataviz';
-  if (/\b(show me (stats|numbers|figures|data) (on|for|about))\b/.test(t)) return 'dataviz';
+  if (/\b(chart|graph|plot|visuali[sz]e|bar chart|line chart|pie chart|scatter|heatmap|histogram|data.*viz|show.*data.*visually|visuali[sz]ation|render.*data|data.*pipeline)\b/.test(t)) matched.add('dataviz');
+  if (/\b(show me (stats|numbers|figures|data) (on|for|about))\b/.test(t)) matched.add('dataviz');
+
   // Computer / desktop control — narrowed to avoid false positives on "open", "browse"
-  if (/\b(click|screenshot|open (chrome|safari|firefox|finder|a browser|the browser|a tab)|control desktop|automate|use computer|interact with (the |a )?(page|site|browser|desktop)|take a screenshot)\b/.test(t)) return 'computer';
-  if (/\b(go to|visit|navigate to)\b/.test(t) && /\b(\.com|\.org|\.net|http|www|site|page|url)\b/.test(t)) return 'computer';
+  if (/\b(click|screenshot|open (chrome|safari|firefox|finder|a browser|the browser|a tab)|control desktop|automate|use computer|interact with (the |a )?(page|site|browser|desktop)|take a screenshot)\b/.test(t)) matched.add('computer');
+  if (/\b(go to|visit|navigate to)\b/.test(t) && /\b(\.com|\.org|\.net|http|www|site|page|url)\b/.test(t)) matched.add('computer');
+
   // Security analysis — deep vulnerability assessment (routes to nemotron)
-  if (/\b(security.?audit|vulnerabilit|attack.?surface|cve|owasp|penetration.?test|threat.?model|security.?review|exploit|injection|xss|csrf|auth.?bypass)\b/.test(t)) return 'security';
+  if (/\b(security.?audit|vulnerabilit|attack.?surface|cve|owasp|penetration.?test|threat.?model|security.?review|exploit|injection|xss|csrf|auth.?bypass)\b/.test(t)) matched.add('security');
+
   // Architecture analysis — system design reasoning (routes to nemotron)
-  if (/\b(architecture.?(review|analysis|reasoning)|system.?design|design.?pattern|dependency.?(graph|analysis)|technical.?debt|module.?structure|service.?boundary)\b/.test(t)) return 'architecture';
+  if (/\b(architecture.?(review|analysis|reasoning)|system.?design|design.?pattern|dependency.?(graph|analysis)|technical.?debt|module.?structure|service.?boundary)\b/.test(t)) matched.add('architecture');
+
   // Code analysis / general — check BEFORE general code writing
-  if (/\b(analyze.*code|code.*analysis|codebase|file.*tree|refactor|optimize.*code|performance.*analysis|code.*review|deep.*dive.*code|understand.*codebase|explain.*structure|pattern.*detection)\b/.test(t)) return 'code';
+  if (/\b(analyze.*code|code.*analysis|codebase|file.*tree|refactor|optimize.*code|performance.*analysis|code.*review|deep.*dive.*code|understand.*codebase|explain.*structure|pattern.*detection)\b/.test(t)) matched.add('code');
+
   // Code / scripting — writing, debugging, implementing
-  if (/\b(write.*code|write.*script|function|debug|fix.*bug|implement|program|python|javascript|typescript|bash|shell|command|terminal|npm|pip|git|deploy|build)\b/.test(t)) return 'code';
+  if (/\b(write.*code|write.*script|function|debug|fix.*bug|implement|program|python|javascript|typescript|bash|shell|command|terminal|npm|pip|git|deploy|build)\b/.test(t)) matched.add('code');
+
   // Video / audio operations
-  if (/\b(video|mp4|mov|avi|mkv|webm|trim.*video|cut.*video|edit.*video|analyze.*video|transcri(be|pt)|subtitle|gif.*from|video.*to|audio.*from|extract.*frame|frame.*extract|ffmpeg|whisper|speech.?to.?text|timelapse|slideshow.*video)\b/.test(t)) return 'file';
+  if (/\b(video|mp4|mov|avi|mkv|webm|trim.*video|cut.*video|edit.*video|analyze.*video|transcri(be|pt)|subtitle|gif.*from|video.*to|audio.*from|extract.*frame|frame.*extract|ffmpeg|whisper|speech.?to.?text|timelapse|slideshow.*video)\b/.test(t)) matched.add('file');
+
   // File operations — match actual file work, NOT descriptors like "PDF-ready" or "PDF format"
-  if (/(\.(pdf|docx|csv|json|txt|xlsx|md)\b|read.*file|open.*file|parse.*file|read.*pdf|open.*pdf|parse.*pdf|extract from.*file)\b/.test(t)) return 'file';
+  if (/(\.(pdf|docx|csv|json|txt|xlsx|md)\b|read.*file|open.*file|parse.*file|read.*pdf|open.*pdf|parse.*pdf|extract from.*file)\b/.test(t)) matched.add('file');
+
   // Competitive / market analysis
-  if (/\b(swot|competitor|market|trends|google trends|social media|reddit|twitter|sentiment|brand voice|positioning|landscape)\b/.test(t)) return 'analyze';
+  if (/\b(swot|competitor|market|trends|google trends|social media|reddit|twitter|sentiment|brand voice|positioning|landscape)\b/.test(t)) matched.add('analyze');
+
   // Content creation
-  if (/\b(write.*post|write.*email|write.*ad|write.*copy|draft|blog|caption|article|essay|report)\b/.test(t)) return 'create';
+  if (/\b(write.*post|write.*email|write.*ad|write.*copy|draft|blog|caption|article|essay|report)\b/.test(t)) matched.add('create');
+
   // Parallel agent tasks — check BEFORE analyze so "research 3 things at once" hits agents
-  if (/\b(parallel|simultaneously|at the same time|spawn|multiple agents|subagent|sub.?agent|launch.*(agent|worker)|deploy.*(agent|worker)|send.*(agent|worker)|at once|concurrent|batch.*(research|analy))\b/.test(t)) return 'agents';
+  if (/\b(parallel|simultaneously|at the same time|spawn|multiple agents|subagent|sub.?agent|launch.*(agent|worker)|deploy.*(agent|worker)|send.*(agent|worker)|at once|concurrent|batch.*(research|analy))\b/.test(t)) matched.add('agents');
+
   // Deep research / analysis
-  if (/\b(research|analyze|analyse|investigate|deep.?dive|comprehensive|in-depth|compare)\b/.test(t)) return 'analyze';
+  if (/\b(research|analyze|analyse|investigate|deep.?dive|comprehensive|in-depth|compare)\b/.test(t)) matched.add('analyze');
+
   // Factual lookups / research (default for questions)
-  if (/\b(what is|who is|what are|find|look up|search|tell me about|info on|how does|why does|when did|fetch|scrape|grab.*(from|the))\b/.test(t)) return 'research';
-  return 'general';
+  if (/\b(what is|who is|what are|find|look up|search|tell me about|info on|how does|why does|when did|fetch|scrape|grab.*(from|the))\b/.test(t)) matched.add('research');
+
+  return matched.size > 0 ? Array.from(matched) : ['general'];
+}
+
+/** Legacy single-task classifier (kept for backwards compatibility) */
+function classifyTaskType(msg: string): TaskType {
+  const types = classifyTaskTypes(msg);
+  return types[0] || 'general';
 }
 
 function pruneToolsForTask(allTools: ToolDef[], msg: string, slashHints?: string[]): ToolDef[] {
@@ -4456,8 +4483,14 @@ function pruneToolsForTask(allTools: ToolDef[], msg: string, slashHints?: string
     return computerOnly.length > 0 ? computerOnly : allTools.filter(t => t.name === 'use_computer');
   }
 
-  const taskType = classifyTaskType(msg);
-  const allowed = new Set([...ALWAYS_TOOLS, ...TASK_TOOLS[taskType]]);
+  // ✨ MULTI-TASK CLASSIFICATION: Merge tools from ALL matching task types
+  const taskTypes = classifyTaskTypes(msg);
+  const allowed = new Set<string>([...ALWAYS_TOOLS]);
+
+  // Add tools from all matching task types (union set)
+  taskTypes.forEach(tt => {
+    TASK_TOOLS[tt]?.forEach(toolName => allowed.add(toolName));
+  });
 
   // Force-include any tools specified in slashHints (e.g., use_computer from auto-routing)
   if (slashHints && slashHints.length > 0) {

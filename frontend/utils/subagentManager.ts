@@ -239,7 +239,9 @@ function devLog(msg: string, ...args: unknown[]): void {
 // Tool definitions are in subagentTools.ts (imported above).
 // ─────────────────────────────────────────────────────────────
 
-const MAX_SUBAGENT_TOOL_STEPS = 5;
+// Increased from 5 → 15 to allow subagents to complete complex research
+// without hitting the hard step limit mid-task (Phase 1 performance fix)
+const MAX_SUBAGENT_TOOL_STEPS = 15;
 
 // ─────────────────────────────────────────────────────────────
 // SubagentManager — core class
