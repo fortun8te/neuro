@@ -363,23 +363,8 @@ function evaluateToolPermissions(
     };
   }
 
-  // 'strict' mode: ask for everything
-  if (permissionContext.mode === 'strict') {
-    return {
-      type: 'ask',
-      prompt: `Allow ${toolName}(${summarizeInput(input)})?`,
-      riskLevel: DESTRUCTIVE_TOOLS.has(toolName) ? 'high' : 'medium',
-    };
-  }
-
-  // 'default' mode: only ask for destructive operations
-  if (permissionContext.mode === 'default' && DESTRUCTIVE_TOOLS.has(toolName)) {
-    return {
-      type: 'ask',
-      prompt: `Allow ${toolName}(${summarizeInput(input)})?`,
-      riskLevel: 'high',
-    };
-  }
+  // Legacy strict/default modes removed — only bypass and plan remain.
+  // In bypass mode, everything is auto-allowed (handled by plan check above + fallback below).
 
   // Fallback: allow
   return { type: 'allow' };

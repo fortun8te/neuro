@@ -1,0 +1,284 @@
+{
+  "timestamp": "2026-04-06T12:43:26.720Z",
+  "passed": 7,
+  "failed": 2,
+  "total": 9,
+  "elapsedMs": 5024,
+  "tests": [
+    "Infrastructure: Wayfarer",
+    "Infrastructure: Ollama",
+    "Optimization: ML Router",
+    "Optimization: Adaptive Cache",
+    "Optimization: Fallback Executor",
+    "Optimization: Metrics Collection",
+    "Optimization: Message Bus",
+    "Optimization: Persistent Memory",
+    "Resilience: Circuit Breaker"
+  ],
+  "results": [
+    {
+      "timestamp": "2026-04-06T12:43:21.698Z",
+      "level": "TEST",
+      "message": "Testing Wayfarer connectivity",
+      "details": ""
+    },
+    {
+      "timestamp": "2026-04-06T12:43:21.714Z",
+      "level": "WARN",
+      "message": "Wayfarer health check failed",
+      "details": "proceeding with fallback"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:21.714Z",
+      "level": "TEST",
+      "message": "Testing Ollama connectivity",
+      "details": ""
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "WARN",
+      "message": "Ollama unreachable",
+      "details": "network timeout at: http://100.74.135.83:11440/api/tags"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "TEST",
+      "message": "Testing ML Router performance prediction",
+      "details": ""
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "INFO",
+      "message": "ollama performance",
+      "details": "latency=4033ms, success=100%, score=-2.533"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "INFO",
+      "message": "bedrock performance",
+      "details": "latency=5650ms, success=50%, score=-4.400"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "PASS",
+      "message": "ML Router selected optimal provider",
+      "details": "ollama"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "TEST",
+      "message": "Testing Adaptive Cache functionality",
+      "details": ""
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "INFO",
+      "message": "Cache store",
+      "details": "stored synthesis-query-1"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "INFO",
+      "message": "Cache hit",
+      "details": "1/5 hits for synthesis-query-1"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "INFO",
+      "message": "Cache hit",
+      "details": "2/5 hits for synthesis-query-1"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "INFO",
+      "message": "Cache hit",
+      "details": "3/5 hits for synthesis-query-1"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "INFO",
+      "message": "Cache hit",
+      "details": "4/5 hits for synthesis-query-1"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "INFO",
+      "message": "Cache hit",
+      "details": "5/5 hits for synthesis-query-1"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "PASS",
+      "message": "Adaptive cache TTL calculated",
+      "details": "2.8 days for 5 hits"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "TEST",
+      "message": "Testing Fallback Executor",
+      "details": ""
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "WARN",
+      "message": "Primary failed",
+      "details": "Primary: Wayfarer not available"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "INFO",
+      "message": "Fallback 1: Using cached research",
+      "details": ""
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "PASS",
+      "message": "Fallback succeeded",
+      "details": "returned 5 cached pages"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "TEST",
+      "message": "Testing Metrics Collection",
+      "details": ""
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "INFO",
+      "message": "Metric: latency",
+      "details": "avg=3910.0, count=4"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "INFO",
+      "message": "Metric: pages_fetched",
+      "details": "avg=45.3, count=3"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "INFO",
+      "message": "Metric: cache_hits",
+      "details": "avg=1.0, count=3"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "INFO",
+      "message": "Metric: cache_misses",
+      "details": "avg=0.5, count=2"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "INFO",
+      "message": "Metric: approvals_granted",
+      "details": "avg=1.0, count=3"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "INFO",
+      "message": "Metric: content_extraction_success",
+      "details": "avg=0.7, count=3"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.717Z",
+      "level": "PASS",
+      "message": "Metrics collected and exportable",
+      "details": "ready for Prometheus"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.718Z",
+      "level": "TEST",
+      "message": "Testing Agent Message Bus",
+      "details": ""
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.718Z",
+      "level": "INFO",
+      "message": "Message: orchestrator → research",
+      "details": "Start research"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.718Z",
+      "level": "INFO",
+      "message": "Message: research → orchestrator",
+      "details": "Research complete"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.718Z",
+      "level": "INFO",
+      "message": "Message: dreaming → orchestrator",
+      "details": "Memories promoted"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.718Z",
+      "level": "INFO",
+      "message": "Message: caching → dreaming",
+      "details": "Cache updated"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.718Z",
+      "level": "PASS",
+      "message": "Message bus functional",
+      "details": "4 messages queued"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.718Z",
+      "level": "TEST",
+      "message": "Testing Persistent Memory Store",
+      "details": ""
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.718Z",
+      "level": "INFO",
+      "message": "Memory stored",
+      "details": "findings-1775479406718"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.719Z",
+      "level": "PASS",
+      "message": "Persistent memory functional",
+      "details": "retrieved 2 patterns"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.719Z",
+      "level": "TEST",
+      "message": "Testing Circuit Breaker Pattern",
+      "details": ""
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.719Z",
+      "level": "INFO",
+      "message": "Request succeeded",
+      "details": "state=closed"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.719Z",
+      "level": "WARN",
+      "message": "Failure 1/3",
+      "details": ""
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.719Z",
+      "level": "INFO",
+      "message": "Request succeeded",
+      "details": "state=closed"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.719Z",
+      "level": "WARN",
+      "message": "Failure 2/3",
+      "details": ""
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.719Z",
+      "level": "INFO",
+      "message": "Request succeeded",
+      "details": "state=closed"
+    },
+    {
+      "timestamp": "2026-04-06T12:43:26.719Z",
+      "level": "PASS",
+      "message": "Circuit breaker functional",
+      "details": "state transitions: CLOSED → CLOSED → CLOSED → CLOSED → CLOSED"
+    }
+  ]
+}

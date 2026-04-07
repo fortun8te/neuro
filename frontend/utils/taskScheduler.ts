@@ -10,16 +10,24 @@ import type { DBSchema } from 'idb';
 export interface ScheduledTask {
   id: string;
   prompt: string;
+  title?: string;
   runAt: number;  // timestamp in ms when task should run
+  scheduledStart?: number;  // optional custom start time (defaults to runAt)
+  scheduledEnd?: number;  // optional end time
+  duration?: number;  // duration in minutes (if not using scheduledEnd)
+  category?: 'research' | 'maintenance' | 'admin' | 'creative' | 'analysis' | string;
+  priority?: 'low' | 'normal' | 'high' | 'urgent';
   repeat?: {
     interval: number;  // ms between repeats
     maxRuns?: number;  // max times to run (undefined = infinite)
   };
-  status: 'pending' | 'completed' | 'failed' | 'cancelled';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   createdAt: number;
   completedAt?: number;
   error?: string;
   runsCompleted?: number;
+  chatId?: string;
+  queued?: number;
 }
 
 interface TaskSchedulerDB extends DBSchema {
@@ -155,6 +163,15 @@ export async function cancelTask(taskId: string): Promise<void> {
     }
   } catch (e) {
     console.warn('Failed to cancel task:', e);
+  }
+}
+
+export async function deleteTask(taskId: string): Promise<void> {
+  try {
+    const db = await initDB();
+    await db.delete(STORE_NAME, taskId);
+  } catch (e) {
+    console.warn('Failed to delete task:', e);
   }
 }
 

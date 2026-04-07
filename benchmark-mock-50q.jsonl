@@ -1,0 +1,10 @@
+{"id":"1","question":"What is the capital of France?","difficulty":"easy","executionTime":0,"toolUsage":{"total":1,"distinct":1,"diversity":"100%"},"harness":{"score":10,"outOf":10},"verdict":"WARN"}
+{"id":"2","question":"In what year did the Titanic sink?","difficulty":"easy","executionTime":0,"toolUsage":{"total":1,"distinct":1,"diversity":"100%"},"harness":{"score":10,"outOf":10},"verdict":"WARN"}
+{"id":"3","question":"Compare React vs Vue in 2024","difficulty":"medium","executionTime":0,"toolUsage":{"total":3,"distinct":2,"diversity":"67%"},"harness":{"score":10,"outOf":10},"verdict":"PASS"}
+{"id":"4","question":"How has Bitcoin price changed over 5 years?","difficulty":"medium","executionTime":0,"toolUsage":{"total":3,"distinct":3,"diversity":"100%"},"harness":{"score":10,"outOf":10},"verdict":"WARN"}
+{"id":"5","question":"What are the latest AI regulations globally?","difficulty":"hard","executionTime":0,"toolUsage":{"total":5,"distinct":3,"diversity":"60%"},"harness":{"score":10,"outOf":10},"verdict":"PASS"}
+{"id":"6","question":"What Python version is recommended?","difficulty":"easy","executionTime":0,"toolUsage":{"total":1,"distinct":1,"diversity":"100%"},"harness":{"score":10,"outOf":10},"verdict":"WARN"}
+{"id":"7","question":"Explain how ML improves search results","difficulty":"medium","executionTime":0,"toolUsage":{"total":3,"distinct":3,"diversity":"100%"},"harness":{"score":10,"outOf":10},"verdict":"PASS"}
+{"id":"8","question":"Analyze cloud computing trends 2024","difficulty":"hard","executionTime":0,"toolUsage":{"total":5,"distinct":4,"diversity":"80%"},"harness":{"score":10,"outOf":10},"verdict":"PASS"}
+{"id":"9","question":"How do browsers handle JavaScript?","difficulty":"medium","executionTime":0,"toolUsage":{"total":3,"distinct":4,"diversity":"133%"},"harness":{"score":10,"outOf":10},"verdict":"PASS"}
+{"id":"10","question":"Pros and cons of serverless architecture","difficulty":"hard","executionTime":0,"toolUsage":{"total":5,"distinct":4,"diversity":"80%"},"harness":{"score":10,"outOf":10},"verdict":"PASS"}

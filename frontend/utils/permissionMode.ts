@@ -17,29 +17,15 @@ export const PERMISSION_MODES: Array<{
 }> = [
   {
     mode: 'bypass',
-    label: 'Bypass',
-    description: 'Allow all tools without asking. Just do it.',
+    label: 'Auto',
+    description: 'Run all tools automatically. No interruptions.',
     color: '#22c55e',
     icon: 'bypass',
   },
   {
-    mode: 'default',
-    label: 'Default',
-    description: 'Ask before destructive operations. Auto-allow read-only tools.',
-    color: '#eab308',
-    icon: 'default',
-  },
-  {
-    mode: 'strict',
-    label: 'Strict',
-    description: 'Ask before ANY tool execution. Most protective mode.',
-    color: '#ef4444',
-    icon: 'strict',
-  },
-  {
     mode: 'plan',
     label: 'Plan',
-    description: 'Show full execution plan before running. Approve once, execute all.',
+    description: 'Generate a plan first. Review and approve before executing.',
     color: '#3b82f6',
     icon: 'plan',
   },
@@ -56,7 +42,7 @@ export function getPermissionMode(): PermissionMode {
       return stored as PermissionMode;
     }
   } catch { /* localStorage unavailable (incognito / restricted) */ }
-  return 'default';
+  return 'bypass';
 }
 
 /**
@@ -84,4 +70,33 @@ export function onPermissionModeChanged(callback: (mode: PermissionMode) => void
   };
   window.addEventListener('neuro-permission-mode-changed', handler);
   return () => window.removeEventListener('neuro-permission-mode-changed', handler);
+}
+
+/**
+ * Write (destructive) tool names — blocked in plan mode.
+ */
+export const WRITE_TOOLS = new Set([
+  'write_file', 'edit_file', 'create_file', 'delete_file', 'move_file',
+  'file_write', 'file_delete', 'file_move', 'file_rename',
+  'bash', 'execute_code', 'run_command', 'shell', 'terminal', 'shell_exec', 'run_code',
+  'write', 'edit', 'save', 'append_file',
+  'memory_store', 'memory_delete',
+]);
+
+/**
+ * Returns true if the tool name looks like a write/destructive operation.
+ */
+export function isWriteTool(toolName: string): boolean {
+  const lower = toolName.toLowerCase();
+  if (WRITE_TOOLS.has(lower)) return true;
+  return (
+    lower.includes('write') ||
+    lower.includes('edit') ||
+    lower.includes('create') ||
+    lower.includes('delete') ||
+    lower.includes('bash') ||
+    lower.includes('execute') ||
+    lower.includes('shell') ||
+    lower.includes('save')
+  );
 }

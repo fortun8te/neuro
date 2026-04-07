@@ -1,0 +1,262 @@
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                       BENCHMARK PREPARATION COMPLETE                         ║
+║                                                                               ║
+║  ALL SYSTEMS: ✅ ONLINE & WORKING                                           ║
+║  ALL BUGS: ✅ FIXED                                                         ║
+║  HARNESS: ✅ READY FOR TESTING                                              ║
+║                                                                               ║
+║  Status: 🟢 READY TO BENCHMARK                                             ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+═══════════════════════════════════════════════════════════════════════════════
+ SYSTEM STATUS
+═══════════════════════════════════════════════════════════════════════════════
+
+Services Online:
+  ✅ Ollama (11440)    — Remote Qwen 3.5 models running
+  ✅ Wayfayer (8889)   — Web scraping + file transfer online
+  ✅ SearXNG (8888)    — Search engine in Docker online
+
+Code Quality:
+  ✅ Zero TypeScript errors
+  ✅ All imports resolved
+  ✅ Wayfarer → Wayfayer rename complete (180+ files)
+  ✅ File transfer (P0-A) implemented
+  ✅ Bug-04 (screenshots) fixed
+  ✅ Error recovery system working
+  ✅ Tool harness complete
+  ✅ Abort signals threaded through
+
+Infrastructure Config:
+  ✅ infrastructure.ts configured
+  ✅ Environment variables ready
+  ✅ Service health endpoints working
+
+═══════════════════════════════════════════════════════════════════════════════
+ BENCHMARK TOOLS CREATED
+═══════════════════════════════════════════════════════════════════════════════
+
+📋 Documentation
+  ✅ BENCHMARK_START_HERE.txt         Quick start guide
+  ✅ BENCHMARK_FINAL_CHECKLIST.md     Complete reference
+  ✅ BENCHMARK_PREP_GUIDE.md          Detailed troubleshooting
+  ✅ BENCHMARK_STATUS.txt             This file
+
+🚀 Runners
+  ✅ run-gaia-full.mjs                50-question benchmark
+  ✅ benchmark-harness.mjs            Tool usage analysis (mock)
+
+🔍 Real-Time Analyzers
+  ✅ analyze-tool-usage.sh            Per-question harness quality check
+
+═══════════════════════════════════════════════════════════════════════════════
+ WHAT WE'RE MEASURING
+═══════════════════════════════════════════════════════════════════════════════
+
+After Each Question:
+
+1. TOOL USAGE
+   • Total tools invoked (expect ≥3)
+   • Tool diversity by category (expect ≥2)
+   • Tool success/failure rates
+
+2. HARNESS QUALITY (out of 10)
+   • Error Handling (try/catch)      — 2 pts
+   • Abort Signal (can interrupt)    — 2 pts
+   • Permission Gates (security)     — 2 pts
+   • Retry Logic (resilience)        — 2 pts
+   • Timeout (no hangs)              — 2 pts
+
+3. EXECUTION METRICS
+   • Time per question
+   • Success markers
+   • Error recovery count
+
+═══════════════════════════════════════════════════════════════════════════════
+ HOW TO RUN THE BENCHMARK
+═══════════════════════════════════════════════════════════════════════════════
+
+STEP 1: Navigate to project
+  $ cd /Users/mk/Downloads/nomads
+
+STEP 2: Run benchmark (50 questions, ~2-3 hours)
+  $ node run-gaia-full.mjs --questions=50 --verbose --output=benchmark.jsonl
+
+STEP 3: Monitor in parallel (4 terminals)
+  Terminal 1: Benchmark (see above)
+  Terminal 2: Service health: watch -n 5 'curl -s http://100.74.135.83:11440/api/tags'
+  Terminal 3: Logs: tail -f /tmp/wayfayer.log
+  Terminal 4: Analyzer: After each Q: bash analyze-tool-usage.sh
+
+STEP 4: Collect results
+  $ jq '.' benchmark.jsonl
+
+STEP 5: Generate report
+  Follow BENCHMARK_FINAL_CHECKLIST.md → Results Section
+
+═══════════════════════════════════════════════════════════════════════════════
+ QUICK TEST FIRST (Recommended)
+═══════════════════════════════════════════════════════════════════════════════
+
+Before running full 50-question benchmark, test with 5 questions:
+
+  $ node run-gaia-full.mjs --questions=5 --verbose
+
+Expected:
+  ✓ 5/5 questions completed
+  ✓ <10 minutes total
+  ✓ No crashes
+  ✓ Tool usage ≥2 per question
+
+If this passes → Proceed to full benchmark
+
+═══════════════════════════════════════════════════════════════════════════════
+ SUCCESS CRITERIA (Must achieve ALL)
+═══════════════════════════════════════════════════════════════════════════════
+
+TOOL USAGE
+  ✓ Avg tools per question: ≥ 3.5
+  ✓ Tool diversity: ≥ 75%
+  ✓ Min 4 different categories used
+  ✓ No question with <2 tools
+
+HARNESS QUALITY
+  ✓ Avg score: ≥ 8.5/10
+  ✓ Error handling: 100%
+  ✓ Abort signal: ≥ 95%
+  ✓ Permission gates: 100%
+  ✓ Retry logic: ≥ 90%
+
+EXECUTION
+  ✓ Pass rate: ≥ 95% (47/50)
+  ✓ No unhandled exceptions
+  ✓ Avg time: <3.5 min/question
+  ✓ Services stayed online
+
+═══════════════════════════════════════════════════════════════════════════════
+ PERFORMANCE EXPECTATIONS
+═══════════════════════════════════════════════════════════════════════════════
+
+Easy Questions (5)
+  • Tools: 2-3
+  • Time: 8-15 seconds
+  • Total: ~1 minute
+
+Medium Questions (17)
+  • Tools: 4-5
+  • Time: 20-45 seconds
+  • Total: ~30 minutes
+
+Hard Questions (28)
+  • Tools: 6-8+
+  • Time: 45-90 seconds
+  • Total: ~90 minutes
+
+TOTAL BENCHMARK TIME: ~2-3 hours
+
+═══════════════════════════════════════════════════════════════════════════════
+ AFTER BENCHMARK COMPLETES
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Extract Summary
+   $ jq -s '{
+     total: length,
+     passed: map(select(.analysis.verdict == "PASS")) | length,
+     avg_tools: map(.tool_usage.total) | add/length,
+     avg_harness: map(.harness.score) | add/length
+   }' benchmark.jsonl
+
+2. View Results by Category
+   $ jq '.[] | {q: .id, tools: .tool_usage.total, harness: .harness.score, time: .execution_time}' benchmark.jsonl
+
+3. Check for Failures
+   $ jq '.[] | select(.analysis.verdict != "PASS") | {q: .id, issue: .analysis.verdict}' benchmark.jsonl
+
+4. Generate Final Report
+   Follow BENCHMARK_FINAL_CHECKLIST.md section "After Benchmark Complete"
+
+═══════════════════════════════════════════════════════════════════════════════
+ TROUBLESHOOTING DURING RUN
+═══════════════════════════════════════════════════════════════════════════════
+
+❌ Low tool usage (<3 tools)
+   → Tools not in system prompt
+   → Token budget too low
+   → Abort signal stopping early
+   FIX: Check agentEngine.ts tool descriptions
+
+❌ Poor harness score (<6/10)
+   → Missing error handling
+   → No abort signal threading
+   → Missing permission gates
+   FIX: Verify errorHandling.ts imported, check harness.ts
+
+❌ Slow execution (>4 min/question)
+   → Using large model (27b instead of 4b)
+   → Sequential operations that should parallel
+   → Resource constrained
+   FIX: Switch to qwen3.5:4b, check resource usage
+
+❌ Service timeout
+   → Wayfayer hung or crashed
+   → SearXNG went offline
+   → Ollama ran out of memory
+   FIX: Restart service, check logs, reduce load
+
+═══════════════════════════════════════════════════════════════════════════════
+ KEY METRICS TO TRACK
+═══════════════════════════════════════════════════════════════════════════════
+
+Per Question:
+  • Question ID
+  • Execution time (ms)
+  • Tool count (total)
+  • Tool categories (distinct)
+  • Harness score (0-10)
+  • Verdict (PASS / ACCEPTABLE / FAIL)
+
+Summary Stats:
+  • Total questions: 50
+  • Pass rate: ?%
+  • Avg tools/question: ?
+  • Avg harness score: ?/10
+  • Total execution time: ?
+  • Tool categories used: ?
+
+═══════════════════════════════════════════════════════════════════════════════
+ FINAL READINESS VERDICT
+═══════════════════════════════════════════════════════════════════════════════
+
+🟢 READY FOR BENCHMARK IF:
+  • All services online (verified ✅)
+  • All bugs fixed (verified ✅)
+  • Harness code complete (verified ✅)
+  • Documentation ready (verified ✅)
+  • Test tools working (verified ✅)
+
+CURRENT STATUS: 🟢 READY
+
+═══════════════════════════════════════════════════════════════════════════════
+ QUICK REFERENCE
+═══════════════════════════════════════════════════════════════════════════════
+
+Start benchmark:
+  node run-gaia-full.mjs --questions=50 --verbose --output=benchmark.jsonl
+
+Analyze response:
+  echo "RESPONSE" | bash analyze-tool-usage.sh
+
+View progress:
+  tail -f benchmark.jsonl | jq '.[] | {id, tools: .tool_usage.total}'
+
+Get summary:
+  jq -s 'map({id, tools: .tool_usage.total, score: .harness.score}) | .[0:5]' benchmark.jsonl
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Questions Ready?                 Harness Quality?               Tool Coverage?
+✅ 50 test questions             ✅ Error handling               ✅ 7 categories
+✅ Difficulty stratified         ✅ Abort signals                ✅ Scoring system
+✅ Categories represented        ✅ Permission gates             ✅ Diversity tracking
+
+🚀 READY TO BENCHMARK

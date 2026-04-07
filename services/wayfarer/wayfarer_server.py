@@ -1077,6 +1077,120 @@ class BatchRequest(BaseModel):
     extract_mode: str = "article"
 
 
+@app.post("/execute")
+async def execute_code(request: Request):
+    """Execute a code snippet in python, javascript (node), or bash.
+    Used by the Neuro agent's run_code and shell_exec tools."""
+    import subprocess as _sp
+    body = await request.json()
+    language = body.get("language", "bash").lower()
+    code = body.get("code", body.get("command", ""))
+    timeout = min(int(body.get("timeout", 30)), 120)
+
+    if not code:
+        return {"success": False, "output": "No code provided.", "exit_code": 1}
+
+    # Safety: block obviously destructive commands
+    import re as _re
+    if _re.search(r'\brm\s+-rf\s+[/~]|sudo\s+rm|mkfs|dd\s+if=|:\(\)\s*\{', code):
+        return {"success": False, "output": "Blocked: potentially destructive command.", "exit_code": 1}
+
+    try:
+        if language in ("python", "py"):
+            cmd = ["python3", "-c", code]
+        elif language in ("javascript", "js", "node"):
+            cmd = ["node", "-e", code]
+        elif language in ("bash", "sh", "shell"):
+            cmd = ["bash", "-c", code]
+        else:
+            return {"success": False, "output": f"Unsupported language: {language}. Use python, javascript, or bash.", "exit_code": 1}
+
+        result = _sp.run(cmd, capture_output=True, text=True, timeout=timeout, cwd="/tmp")
+        raw = (result.stdout + result.stderr).strip()
+        if len(raw) > 5000:
+            raw = raw[:2500] + "\n[...truncated...]\n" + raw[-500:]
+
+        return {
+            "success": result.returncode == 0,
+            "output": raw or "(no output)",
+            "exit_code": result.returncode,
+            "stdout": (result.stdout or "")[:3000],
+            "stderr": (result.stderr or "")[:1000],
+        }
+    except _sp.TimeoutExpired:
+        return {"success": False, "output": f"Code execution timed out after {timeout}s.", "exit_code": -1}
+    except Exception as e:
+        return {"success": False, "output": f"Execution error: {str(e)}", "exit_code": -1}
+
+
+@app.post("/file/read")
+async def file_read(request: Request):
+    """Read a file from disk. Used by the Neuro agent's file_read tool."""
+    import os
+    body = await request.json()
+    path = body.get("path", "")
+    max_lines = int(body.get("maxLines", 200))
+    if not path:
+        return {"content": "", "error": "No path provided."}
+    try:
+        path = os.path.expanduser(path)
+        if not os.path.isfile(path):
+            return {"content": "", "error": f"File not found: {path}"}
+        with open(path, "r", errors="replace") as f:
+            lines = []
+            for i, line in enumerate(f):
+                if i >= max_lines:
+                    lines.append(f"\n[...truncated at {max_lines} lines]")
+                    break
+                lines.append(line)
+        content = "".join(lines)
+        return {"content": content[:50000]}
+    except Exception as e:
+        return {"content": "", "error": str(e)}
+
+
+@app.post("/file/write")
+async def file_write(request: Request):
+    """Write a file to disk. Used by the Neuro agent's file_write tool."""
+    import os
+    body = await request.json()
+    path = body.get("path", "")
+    content = body.get("content", "")
+    if not path:
+        return {"success": False, "error": "No path provided."}
+    try:
+        path = os.path.expanduser(path)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(content)
+        return {"success": True, "written": len(content)}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/file/list")
+async def file_list(request: Request):
+    """List files in a directory. Used by the Neuro agent's file_browse tool."""
+    import os
+    body = await request.json()
+    dir_path = body.get("dir", "")
+    if not dir_path:
+        return {"entries": [], "error": "No directory provided."}
+    try:
+        dir_path = os.path.expanduser(dir_path)
+        if not os.path.isdir(dir_path):
+            return {"entries": [], "error": f"Not a directory: {dir_path}"}
+        entries = []
+        for name in sorted(os.listdir(dir_path)):
+            full = os.path.join(dir_path, name)
+            is_dir = os.path.isdir(full)
+            size = 0 if is_dir else os.path.getsize(full)
+            entries.append({"name": name, "isDir": is_dir, "size": size})
+        return {"entries": entries[:200]}
+    except Exception as e:
+        return {"entries": [], "error": str(e)}
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}

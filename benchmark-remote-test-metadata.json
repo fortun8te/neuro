@@ -1,0 +1,76 @@
+{
+  "benchmark": "GAIA",
+  "harness": "NEURO 5-Phase",
+  "timestamp": "2026-04-04T17:37:01.122Z",
+  "model": "qwen3.5 ensemble",
+  "totalQuestions": 5,
+  "accuracy": 0,
+  "totalTimeSeconds": 375.033,
+  "avgTimePerQuestion": 0,
+  "byDifficulty": {
+    "easy": {
+      "correct": 0,
+      "total": 5
+    }
+  },
+  "byCategory": {
+    "geography": {
+      "correct": 0,
+      "total": 2
+    },
+    "history": {
+      "correct": 0,
+      "total": 1
+    },
+    "science": {
+      "correct": 0,
+      "total": 1
+    },
+    "art": {
+      "correct": 0,
+      "total": 1
+    }
+  },
+  "results": [
+    {
+      "task_id": "1",
+      "difficulty": "easy",
+      "category": "geography",
+      "model_answer": "ERROR",
+      "expected_answer": "Paris",
+      "score": 0
+    },
+    {
+      "task_id": "2",
+      "difficulty": "easy",
+      "category": "history",
+      "model_answer": "ERROR",
+      "expected_answer": "1912",
+      "score": 0
+    },
+    {
+      "task_id": "3",
+      "difficulty": "easy",
+      "category": "geography",
+      "model_answer": "ERROR",
+      "expected_answer": "7",
+      "score": 0
+    },
+    {
+      "task_id": "4",
+      "difficulty": "easy",
+      "category": "science",
+      "model_answer": "ERROR",
+      "expected_answer": "Au",
+      "score": 0
+    },
+    {
+      "task_id": "5",
+      "difficulty": "easy",
+      "category": "art",
+      "model_answer": "ERROR",
+      "expected_answer": "Leonardo da Vinci",
+      "score": 0
+    }
+  ]
+}

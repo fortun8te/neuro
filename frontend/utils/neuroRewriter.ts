@@ -29,7 +29,7 @@ const MIN_REWRITE_LENGTH = 3;         // Don't rewrite if input is tiny
 
 // Max input length for NEURO — longer prompts trigger thinking leaks
 // Truncate the original response to this before asking for rewrite
-const MAX_REWRITE_INPUT = 300;
+const MAX_REWRITE_INPUT = 600;
 
 // Patterns that indicate NEURO leaked its thinking process instead of responding
 // Be careful: "okay so" and "first i" are normal GenZ speech — only flag structured analysis patterns
@@ -380,7 +380,7 @@ export async function rewriteWithNeuro(
           {
             model: neuroModel,
             temperature: 0.7,
-            num_predict: Math.min(originalResponse.length * 2, 300),
+            num_predict: Math.min(truncatedInput.length * 2, 500),
             think: false,
             signal,
             onChunk: (c: string) => { response += c; },
@@ -412,7 +412,9 @@ export async function rewriteWithNeuro(
       }
 
       // Quick quality check before verification
-      if (!validateRewrite(originalResponse, rewritten)) {
+      // Use truncatedInput as the reference length — that's what NEURO actually saw,
+      // so the 40-200% bounds should be relative to what it was asked to rewrite.
+      if (!validateRewrite(truncatedInput, rewritten)) {
         log.warn('Rewrite failed quality checks');
         if (attempt < MAX_RETRIES) {
           // Retry with lower temperature for more conservative output

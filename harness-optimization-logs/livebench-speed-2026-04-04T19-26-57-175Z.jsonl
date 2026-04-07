@@ -1,0 +1,7 @@
+{"event":"benchmark_start","timestamp":"2026-04-04T19:26:57.176Z","questionsCount":5}
+{"event":"question_complete","id":"lb-1","category":"policy","question":"What are the latest developments in affordable housing policy in the US in 2026?","timeMs":1952,"pagesFetched":10,"contentBytes":0,"sources":0,"timestamp":"2026-04-04T19:26:59.131Z"}
+{"event":"question_complete","id":"lb-2","category":"ai","question":"How is artificial general intelligence (AGI) defined in current machine learning research?","timeMs":1443,"pagesFetched":10,"contentBytes":0,"sources":0,"timestamp":"2026-04-04T19:27:00.574Z"}
+{"event":"question_complete","id":"lb-3","category":"climate","question":"What new climate technologies have emerged for carbon capture in the past year?","timeMs":2394,"pagesFetched":10,"contentBytes":0,"sources":0,"timestamp":"2026-04-04T19:27:02.969Z"}
+{"event":"question_complete","id":"lb-4","category":"energy","question":"Which countries are leading in renewable energy adoption by percentage in 2026?","timeMs":1672,"pagesFetched":3,"contentBytes":0,"sources":0,"timestamp":"2026-04-04T19:27:04.642Z"}
+{"event":"question_complete","id":"lb-5","category":"medicine","question":"What are the current treatments for Alzheimers disease in clinical trials?","timeMs":5577,"pagesFetched":10,"contentBytes":0,"sources":0,"timestamp":"2026-04-04T19:27:10.220Z"}
+{"event":"benchmark_complete","successfulCount":5,"totalCount":5,"avgTimeMs":2608,"timestamp":"2026-04-04T19:27:10.221Z"}

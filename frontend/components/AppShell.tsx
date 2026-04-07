@@ -14,9 +14,10 @@ import { SettingsModal } from './SettingsModal';
 import { LoginScreen } from './LoginScreen';
 import { AgentPanel } from './AgentPanel';
 import { HomeScreen } from './HomeScreen';
+import TasksPage from './TasksPage';
 import { SettingsIcon, LogOutIcon, ChevronDown, SidebarIcon } from './Icons';
 import BlobAvatar, { getAgentColor } from './BlobAvatar';
-import { getUserAvatarSeed } from './UserAvatar';
+import { getUserAvatarSeed, getUserAvatarColor, getUserInitials } from './UserAvatar';
 import { healthMonitor } from '../utils/healthMonitor';
 import { ollamaService } from '../utils/ollama';
 import { GlassFilter } from './LiquidGlass';
@@ -128,6 +129,7 @@ export function AppShell() {
     return parts[0] === 'neuro' && parts[1] ? parts[1] : null;
   })();
 
+  const [activeView, setActiveView] = useState<'chat' | 'tasks'>('chat');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showHome, setShowHome] = useState(!urlChatId);
   const [showSettings, setShowSettings] = useState(false);
@@ -135,18 +137,27 @@ export function AppShell() {
   const [chats, setChats] = useState<ConversationSummary[]>([]);
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const [avatarSeed, setAvatarSeed] = useState(() => getUserAvatarSeed());
+  const [avatarColor, setAvatarColor] = useState(() => getUserAvatarColor());
   const [initialMessage, setInitialMessage] = useState<string | null>(null);
   const newChatLockRef = useRef(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
-  // Listen for avatar seed changes from Settings
+  // Listen for avatar seed and color changes from Settings
   useEffect(() => {
-    const handler = (e: Event) => {
+    const seedHandler = (e: Event) => {
       const seed = (e as CustomEvent).detail;
       if (seed) setAvatarSeed(seed);
     };
-    window.addEventListener('neuro-avatar-seed-changed', handler);
-    return () => window.removeEventListener('neuro-avatar-seed-changed', handler);
+    const colorHandler = (e: Event) => {
+      const color = (e as CustomEvent).detail;
+      if (color) setAvatarColor(color);
+    };
+    window.addEventListener('neuro-avatar-seed-changed', seedHandler);
+    window.addEventListener('neuro-avatar-color-changed', colorHandler);
+    return () => {
+      window.removeEventListener('neuro-avatar-seed-changed', seedHandler);
+      window.removeEventListener('neuro-avatar-color-changed', colorHandler);
+    };
   }, []);
 
   // Kick off health checks and task scheduler
@@ -285,7 +296,7 @@ export function AppShell() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 2, userSelect: 'none', flex: 1, minWidth: 0 }}>
                 <BlobAvatar
                   seed={avatarSeed}
-                  color="#374151"
+                  color={avatarColor}
                   size={28}
                   animated={animationsEnabled}
                 />
@@ -367,8 +378,9 @@ export function AppShell() {
               >
                 <BlobAvatar
                   seed={avatarSeed}
+                  color={avatarColor}
                   size={26}
-                  initials={(user?.name?.[0] || 'G').toUpperCase()}
+                  initials={getUserInitials(user?.name)}
                   animated={animationsEnabled}
                 />
                 <span style={{
@@ -411,8 +423,9 @@ export function AppShell() {
                     }}>
                       <BlobAvatar
                         seed={avatarSeed}
+                        color={avatarColor}
                         size={36}
-                        initials={(user?.name?.[0] || 'G').toUpperCase()}
+                        initials={getUserInitials(user?.name)}
                         animated={animationsEnabled}
                       />
                       <div>
@@ -516,6 +529,30 @@ export function AppShell() {
             </svg>
           </button>
 
+          {/* Chat / Tasks toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2, background: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', borderRadius: 8, padding: 2 }}>
+            <button
+              onClick={() => setActiveView('chat')}
+              style={{
+                fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 6,
+                background: activeView === 'chat' ? (isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)') : 'transparent',
+                color: activeView === 'chat' ? (isDarkMode ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.8)') : (isDarkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)'),
+                border: 'none', cursor: 'pointer', transition: 'all 0.15s ease',
+                fontFamily: FONT_FAMILY,
+              }}
+            >Chat</button>
+            <button
+              onClick={() => setActiveView('tasks')}
+              style={{
+                fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 6,
+                background: activeView === 'tasks' ? (isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)') : 'transparent',
+                color: activeView === 'tasks' ? (isDarkMode ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.8)') : (isDarkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)'),
+                border: 'none', cursor: 'pointer', transition: 'all 0.15s ease',
+                fontFamily: FONT_FAMILY,
+              }}
+            >Tasks</button>
+          </div>
+
           <div style={{ flex: 1 }} />
 
           {/* Network button — visible when in a chat */}
@@ -563,6 +600,8 @@ export function AppShell() {
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {!user && !authLoading ? (
             <LoginScreen onLogin={() => {}} onSignup={() => {}} />
+          ) : activeView === 'tasks' ? (
+            <TasksPage />
           ) : showHome ? (
             <HomeScreen
               onContinue={() => {

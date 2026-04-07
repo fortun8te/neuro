@@ -10,7 +10,8 @@ import type { UserProfile } from '../services/auth';
 import { INFRASTRUCTURE } from '../config/infrastructure';
 import { costTracker } from '../utils/costTracker';
 import BlobAvatar from './BlobAvatar';
-import { getUserAvatarSeed } from './UserAvatar';
+import { getUserAvatarSeed, getUserAvatarColor, setUserAvatarColor, getUserInitials } from './UserAvatar';
+import { AvatarColorPicker } from './AvatarColorPicker';
 import { SunIcon, MoonIcon, LogOutIcon } from './Icons';
 import { FileSyncStatus } from './FileSyncStatus';
 
@@ -46,6 +47,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [avatarSeed, setAvatarSeed] = useState(() => getUserAvatarSeed());
+  const [avatarColor, setAvatarColorState] = useState(() => getUserAvatarColor());
 
   // Agent settings
   const [neuroRewriteEnabled, setNeuroRewriteEnabled] = useState(
@@ -297,8 +299,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
                     <BlobAvatar
                       seed={avatarSeed}
+                      color={avatarColor}
                       size={72}
-                      initials={(user?.name?.[0] || 'G').toUpperCase()}
+                      initials={getUserInitials(user?.name)}
                       animated={animationsEnabled}
                     />
                     <button
@@ -357,6 +360,15 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     )}
                   </div>
                 </div>
+
+                {/* Avatar color */}
+                <AvatarColorPicker
+                  value={avatarColor}
+                  onChange={(color) => {
+                    setAvatarColorState(color);
+                    setUserAvatarColor(color);
+                  }}
+                />
 
                 {/* Divider */}
                 <div style={{ height: 1, background: c.border }} />

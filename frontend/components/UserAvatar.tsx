@@ -8,6 +8,8 @@ import BlobAvatar from './BlobAvatar'
 import type { UserProfile } from '../services/auth'
 
 const AVATAR_SEED_KEY = 'neuro_user_avatar_seed';
+const AVATAR_COLOR_KEY = 'neuro_user_avatar_color';
+const DEFAULT_AVATAR_COLOR = '#8b5cf6'; // violet
 
 /**
  * Returns the persistent avatar seed for the user.
@@ -28,6 +30,41 @@ export function getUserAvatarSeed(): string {
   }
 }
 
+/**
+ * Returns the persistent avatar color for the user.
+ * Defaults to violet (#8b5cf6) if none is set.
+ */
+export function getUserAvatarColor(): string {
+  try {
+    return localStorage.getItem(AVATAR_COLOR_KEY) || DEFAULT_AVATAR_COLOR;
+  } catch {
+    return DEFAULT_AVATAR_COLOR;
+  }
+}
+
+/**
+ * Sets and persists the user avatar color, dispatching an event so all listeners update.
+ */
+export function setUserAvatarColor(color: string): void {
+  try {
+    localStorage.setItem(AVATAR_COLOR_KEY, color);
+    window.dispatchEvent(new CustomEvent('neuro-avatar-color-changed', { detail: color }));
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Extracts up to 2 initials from a display name.
+ * "Michael Katz" -> "MK", "Alice" -> "A", "" -> "?"
+ */
+export function getUserInitials(name?: string): string {
+  if (!name?.trim()) return '?';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0][0].toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 interface UserAvatarProps {
   user: UserProfile
   size?: number
@@ -35,15 +72,9 @@ interface UserAvatarProps {
 }
 
 export function UserAvatar({ user, size = 32, onClick }: UserAvatarProps) {
-  const initials = user.name
-    .split(' ')
-    .map(w => w[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2)
-
-  // Get consistent avatar seed from localStorage — creates and persists one if missing
+  const initials = getUserInitials(user.name)
   const avatarSeed = getUserAvatarSeed()
+  const avatarColor = getUserAvatarColor()
 
   return (
     <button
@@ -66,7 +97,7 @@ export function UserAvatar({ user, size = 32, onClick }: UserAvatarProps) {
     >
       <BlobAvatar
         seed={avatarSeed}
-        color="#8b5cf6"
+        color={avatarColor}
         size={size}
         initials={initials}
         animated={false}

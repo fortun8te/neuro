@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "mac-desktop": {
+      "command": "/opt/homebrew/bin/python3.11",
+      "args": ["/Users/mk/Downloads/nomads/mac_bridge/mcp_server.py"],
+      "env": {
+        "BRIDGE_URL": "http://localhost:8891",
+        "OLLAMA_URL": "http://100.74.135.83:11440",
+        "VISION_MODEL": "gemma3:4b"
+      }
+    }
+  }
+}

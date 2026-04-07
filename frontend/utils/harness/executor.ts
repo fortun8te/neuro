@@ -327,7 +327,7 @@ export function buildToolUseContext(options: {
     tools: options.tools,
     messages: options.messages ?? [],
     permissionContext: {
-      mode: options.permissionMode ?? 'default',
+      mode: options.permissionMode ?? 'bypass',
       alwaysAllowRules: options.permissionRules?.alwaysAllowRules ?? {},
       alwaysDenyRules: options.permissionRules?.alwaysDenyRules ?? {},
       alwaysAskRules: options.permissionRules?.alwaysAskRules ?? {},

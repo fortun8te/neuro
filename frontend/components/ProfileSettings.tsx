@@ -8,15 +8,8 @@ import type { UserProfile } from '../services/auth'
 import { updateProfile, uploadAvatar } from '../services/auth'
 import { useTheme } from '../context/ThemeContext'
 import BlobAvatar from './BlobAvatar'
-import { getUserAvatarSeed } from './UserAvatar'
+import { getUserAvatarSeed, getUserAvatarColor, getUserInitials } from './UserAvatar'
 import { SunIcon, MoonIcon } from './Icons'
-
-function getInitials(name?: string): string {
-  if (!name) return '?';
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return parts[0][0].toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
 
 interface ProfileSettingsProps {
   user: UserProfile
@@ -48,9 +41,6 @@ export function ProfileSettings({ user, isOpen, onClose, onUpdate, onLogout }: P
   if (!isOpen) return null
 
   const accent = isDarkMode ? '#3b82f6' : '#374151'
-  const initials = name
-    ? name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
-    : 'N'
 
   return (
     <>
@@ -127,8 +117,9 @@ export function ProfileSettings({ user, isOpen, onClose, onUpdate, onLogout }: P
           }}>
             <BlobAvatar
               seed={getUserAvatarSeed()}
+              color={getUserAvatarColor()}
               size={80}
-              initials={getInitials(user.name)}
+              initials={getUserInitials(user.name)}
               animated={animationsEnabled}
             />
           </div>

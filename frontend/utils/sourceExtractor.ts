@@ -16,6 +16,8 @@ export interface Source {
   domain: string;
   snippet?: string;
   favicon?: string;
+  fetchedAt?: number;
+  relevanceScore?: number;
 }
 
 /**

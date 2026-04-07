@@ -3,7 +3,14 @@ import React from 'react';
 interface State { hasError: boolean; error: string }
 
 export class ErrorBoundary extends React.Component<
-  { children: React.ReactNode; fallback?: React.ReactNode; onReset?: () => void },
+  {
+    children: React.ReactNode;
+    fallback?: React.ReactNode;
+    onReset?: () => void;
+    onError?: (error: Error, info: React.ErrorInfo) => void;
+    level?: string;
+    name?: string;
+  },
   State
 > {
   state: State = { hasError: false, error: '' };
@@ -13,7 +20,9 @@ export class ErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error('[ErrorBoundary]', error, info.componentStack);
+    const label = this.props.name || 'ErrorBoundary';
+    console.error(`[${label}]`, error, info.componentStack);
+    this.props.onError?.(error, info);
   }
 
   render() {

@@ -25,7 +25,7 @@
  * — strict: Ask before ANY tool execution. Most protective (🔴 red)
  * — plan: Show full execution plan before running. Approve once, then auto-execute (📋 blue)
  */
-export type PermissionMode = 'bypass' | 'default' | 'strict' | 'plan';
+export type PermissionMode = 'bypass' | 'plan';
 
 /**
  * Per-tool permission rules using glob patterns for fine-grained control.
@@ -48,7 +48,7 @@ export type ToolPermissionContext = {
 };
 
 export const getDefaultPermissionContext = (): ToolPermissionContext => ({
-  mode: 'default',
+  mode: 'bypass',
   alwaysAllowRules: {},
   alwaysDenyRules: {},
   alwaysAskRules: {},

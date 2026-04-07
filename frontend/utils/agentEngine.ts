@@ -18,7 +18,7 @@ import { getModelForStage, getPlannerModel, getExecutorModel, getThinkMode, getI
 import { vramManager } from './vramManager';
 import { parseModelMention } from './modelMentionParser';
 import { buildToolUseContext, executeWithHarness, executeParallelWithHarness, wrapLegacyTool } from './harness';
-import { getPermissionMode } from './permissionMode';
+import { getPermissionMode, isWriteTool } from './permissionMode';
 import { injectSoul } from './soulLoader';
 import { runPlanAct } from './planActAgent';
 import { wayfarerService, screenshotService } from './wayfarer';
@@ -54,6 +54,26 @@ import type { AskUserRequest, AskUserResponse } from './computerAgent/orchestrat
 import { getEnv } from '../config/envLoader';
 import { parsePatch, assessPatch, applyPatch as applyPatchToFs, renderPatchPreview } from './applyPatch';
 import type { PatchHunk } from './applyPatch';
+
+// ── Infrastructure URL helper ──
+// Returns the wayfarer base URL. wayfarerService already uses INFRASTRUCTURE internally,
+// but for direct fetch calls in tools we need the base URL.
+// We read the env var directly to avoid circular imports.
+function getWayfarerBaseUrl(): string {
+  try {
+    // Check env var first (Vite injects these at build time)
+    const envUrl = typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_WAYFARER_URL : undefined;
+    if (envUrl) return envUrl;
+    // Check localStorage override (set by settings UI)
+    if (typeof localStorage !== 'undefined') {
+      const mode = localStorage.getItem('infrastructure_mode');
+      if (mode === 'remote') return 'http://100.74.135.83:8889';
+    }
+    return 'http://localhost:8889';
+  } catch {
+    return 'http://localhost:8889';
+  }
+}
 
 // ── Feature flags ──
 // Computer tools (use_computer, control_desktop) temporarily disabled while we
@@ -549,7 +569,8 @@ function buildTools(onEvent?: AgentEngineCallback, modelRef?: { current: string 
           const category = (String(params.category || 'general')) as 'general' | 'user' | 'campaign' | 'research';
           const validCategories = ['general', 'user', 'campaign', 'research'];
           const safeCategory = validCategories.includes(category) ? category : 'general';
-          addMemory(safeCategory, content, [key]);
+          // DISABLED: Cross-chat memory persistence removed per user request
+          // addMemory(safeCategory, content, [key]);
           // Also write to neuroMemory (richer, two-tier system)
           const nmCategory = safeCategory === 'user' ? 'preference' : safeCategory === 'research' ? 'fact' : 'context';
           void neuroMemory.remember(content, nmCategory, key);
@@ -629,37 +650,53 @@ function buildTools(onEvent?: AgentEngineCallback, modelRef?: { current: string 
 
         const timeout = Math.min(Number(params.timeout_ms) || 30000, 120000);
 
-        // In CLI mode, nodeAdapter.ts patches globalThis.fetch to intercept /api/shell
-        // and handle it via Node.js execSync — no separate code path needed here.
+        // Execution chain: wayfarer /execute → /api/shell → sandbox fallback
+        const wayfarerUrl = getWayfarerBaseUrl();
+
+        // Attempt 1: Wayfarer /execute (bash mode)
+        try {
+          const resp = await fetch(`${wayfarerUrl}/execute`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ language: 'bash', code: command, timeout: Math.ceil(timeout / 1000) }),
+          });
+          if (resp.ok) {
+            const result = await resp.json();
+            const raw = result.output || '';
+            if (raw.length > 2000) {
+              return { success: result.success !== false, output: raw.slice(0, 2000) + '\n[...truncated]' };
+            }
+            return { success: result.success !== false, output: raw || '(no output)' };
+          }
+        } catch { /* wayfarer not available */ }
+
+        // Attempt 2: /api/shell (CLI adapter or dev proxy)
         try {
           const resp = await fetch('/api/shell', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ command, timeout }),
           });
-
-          if (!resp.ok) {
-            // Fallback: try via sandbox consoleExec for simple commands
-            try {
-              const result = await sandboxService.consoleExec(command);
-              const raw = String(result);
-              if (raw.length > 2000) {
-                return { success: true, output: raw.slice(0, 2000) + '\n[...truncated]' };
-              }
-              return { success: true, output: raw || '(no output)' };
-            } catch {
-              return { success: false, output: `Shell API not available (${resp.status}). Set up /api/shell endpoint or run commands manually.` };
+          if (resp.ok) {
+            const result = await resp.json();
+            const raw = [result.stdout, result.stderr].filter(Boolean).join('\n');
+            if (raw.length > 2000) {
+              return { success: result.exitCode === 0, output: raw.slice(0, 2000) + '\n[...truncated]' };
             }
+            return { success: result.exitCode === 0, output: raw || '(no output)' };
           }
+        } catch { /* /api/shell not available */ }
 
-          const result = await resp.json();
-          const raw = [result.stdout, result.stderr].filter(Boolean).join('\n');
+        // Attempt 3: Sandbox consoleExec
+        try {
+          const result = await sandboxService.consoleExec(command);
+          const raw = String(result);
           if (raw.length > 2000) {
-            return { success: result.exitCode === 0, output: raw.slice(0, 2000) + '\n[...truncated]' };
+            return { success: true, output: raw.slice(0, 2000) + '\n[...truncated]' };
           }
-          return { success: result.exitCode === 0, output: raw || '(no output)' };
-        } catch (err) {
-          return { success: false, output: `Shell error: ${err instanceof Error ? err.message : err}` };
+          return { success: true, output: raw || '(no output)' };
+        } catch {
+          return { success: false, output: 'Shell execution requires Wayfarer (port 8889). Start: cd services/wayfarer && python3.11 -m uvicorn wayfarer_server:app --port 8889' };
         }
       },
     },
@@ -674,25 +711,26 @@ function buildTools(onEvent?: AgentEngineCallback, modelRef?: { current: string 
         const filePath = String(params.path || '');
         const maxLines = Number(params.max_lines) || 200;
         if (!filePath) return { success: false, output: 'No path provided.' };
-        // In CLI mode, nodeAdapter.ts patches globalThis.fetch to intercept /api/file/read
-        // and handle it via Node.js fs — no separate restricted code path needed here.
-        try {
-          const path = filePath;
-          const resp = await fetch('/api/file/read', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path, maxLines: Number(params.max_lines) || 200 }),
-          });
-          if (!resp.ok) return { success: false, output: `File API not available (${resp.status}).` };
-          const result = await resp.json();
-          const content = result.content || '';
-          if (content.length > 4000) {
-            return { success: true, output: content.slice(0, 4000) + '\n[...truncated, use max_lines or shell_exec for full content]' };
-          }
-          return { success: true, output: content || '(empty file)' };
-        } catch (err) {
-          return { success: false, output: `Read error: ${err instanceof Error ? err.message : err}` };
+        const wayfarerUrl = getWayfarerBaseUrl();
+        // Try wayfarer /file/read first, then /api/file/read
+        for (const endpoint of [`${wayfarerUrl}/file/read`, '/api/file/read']) {
+          try {
+            const resp = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ path: filePath, maxLines }),
+            });
+            if (!resp.ok) continue;
+            const result = await resp.json();
+            if (result.error) return { success: false, output: result.error };
+            const content = result.content || '';
+            if (content.length > 4000) {
+              return { success: true, output: content.slice(0, 4000) + '\n[...truncated, use max_lines or shell_exec for full content]' };
+            }
+            return { success: true, output: content || '(empty file)' };
+          } catch { continue; }
         }
+        return { success: false, output: 'File read requires Wayfarer (port 8889) to be running.' };
       },
     },
     {
@@ -702,25 +740,27 @@ function buildTools(onEvent?: AgentEngineCallback, modelRef?: { current: string 
         dir: { type: 'string', description: 'Directory to list (e.g. ~/Documents/Nomads/nomadfiles/, ~/Downloads, /tmp)', required: true },
       },
       execute: async (params) => {
-        // In CLI mode, nodeAdapter.ts patches fetch to intercept /api/file/list
-        try {
-          const dir = String(params.dir || '');
-          if (!dir) return { success: false, output: 'No directory provided.' };
-          const resp = await fetch('/api/file/list', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ dir }),
-          });
-          if (!resp.ok) return { success: false, output: `File API not available (${resp.status}).` };
-          const result = await resp.json();
-          if (!result.entries || result.entries.length === 0) return { success: true, output: '(empty directory)' };
-          const lines = result.entries.map((e: { name: string; isDir: boolean; size: number }) =>
-            `${e.isDir ? '[DIR] ' : '      '}${e.name}${e.isDir ? '/' : ` (${e.size} bytes)`}`
-          );
-          return { success: true, output: `${dir}:\n${lines.join('\n')}` };
-        } catch (err) {
-          return { success: false, output: `Browse error: ${err instanceof Error ? err.message : err}` };
+        const dir = String(params.dir || '');
+        if (!dir) return { success: false, output: 'No directory provided.' };
+        const wayfarerUrl = getWayfarerBaseUrl();
+        for (const endpoint of [`${wayfarerUrl}/file/list`, '/api/file/list']) {
+          try {
+            const resp = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ dir }),
+            });
+            if (!resp.ok) continue;
+            const result = await resp.json();
+            if (result.error) return { success: false, output: result.error };
+            if (!result.entries || result.entries.length === 0) return { success: true, output: '(empty directory)' };
+            const lines = result.entries.map((e: { name: string; isDir: boolean; size: number }) =>
+              `${e.isDir ? '[DIR] ' : '      '}${e.name}${e.isDir ? '/' : ` (${e.size} bytes)`}`
+            );
+            return { success: true, output: `${dir}:\n${lines.join('\n')}` };
+          } catch { continue; }
         }
+        return { success: false, output: 'File browse requires Wayfarer (port 8889) to be running.' };
       },
     },
     {
@@ -746,18 +786,19 @@ function buildTools(onEvent?: AgentEngineCallback, modelRef?: { current: string 
             return { success: false, output: `file_write failed: ${err instanceof Error ? err.message : err}` };
           }
         }
-        try {
-          const path = filePath;
-          const resp = await fetch('/api/file/write', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path, content }),
-          });
-          if (!resp.ok) return { success: false, output: `File API not available (${resp.status}).` };
-          return { success: true, output: `Written ${content.length} chars to ${path}` };
-        } catch (err) {
-          return { success: false, output: `Write error: ${err instanceof Error ? err.message : err}` };
+        const wayfarerUrl = getWayfarerBaseUrl();
+        for (const endpoint of [`${wayfarerUrl}/file/write`, '/api/file/write']) {
+          try {
+            const resp = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ path: filePath, content }),
+            });
+            if (!resp.ok) continue;
+            return { success: true, output: `Written ${content.length} chars to ${filePath}` };
+          } catch { continue; }
         }
+        return { success: false, output: 'File write requires Wayfarer (port 8889) to be running.' };
       },
     },
     {
@@ -1741,13 +1782,36 @@ ${result.recommendations.map(r => `• ${r}`).join('\n')}
           }
         }
 
+        // Browser mode: try wayfarer /execute first, then /api/shell fallback
+        const wayfarerUrl = getWayfarerBaseUrl();
+
+        // Attempt 1: Wayfarer /execute endpoint (always available when wayfarer is running)
+        try {
+          const resp = await fetch(`${wayfarerUrl}/execute`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ language: lang, code, timeout: 60 }),
+          });
+          if (resp.ok) {
+            const result = await resp.json();
+            const raw = result.output || '';
+            if (raw.length > 2000) {
+              return { success: result.success !== false, output: raw.slice(0, 2000) + '\n[...truncated]' };
+            }
+            return { success: result.success !== false, output: raw || '(no output)' };
+          }
+        } catch { /* wayfarer not reachable, try shell API */ }
+
+        // Attempt 2: /api/shell (dev server proxy or CLI adapter)
         try {
           const resp = await fetch('/api/shell', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ command: cmd, timeout: 60000 }),
           });
-          if (!resp.ok) return { success: false, output: 'Shell API not available for code execution.' };
+          if (!resp.ok) {
+            return { success: false, output: 'Code execution requires Wayfarer (port 8889) to be running. Start it with: cd wayfarer && python3.11 -m uvicorn wayfarer_server:app --port 8889' };
+          }
           const result = await resp.json();
           const raw = [result.stdout, result.stderr].filter(Boolean).join('\n');
           if (raw.length > 2000) {
@@ -1755,7 +1819,7 @@ ${result.recommendations.map(r => `• ${r}`).join('\n')}
           }
           return { success: result.exitCode === 0, output: raw || '(no output)' };
         } catch (err) {
-          return { success: false, output: `Code execution error: ${err instanceof Error ? err.message : err}` };
+          return { success: false, output: `Code execution unavailable. Start Wayfarer service for code execution support.` };
         }
       },
     },
@@ -2301,6 +2365,47 @@ ${toolsUsed.split(',').map((t: string) => `- ${t.trim()}`).join('\n')}
       },
     },
     {
+      name: 'todo_write',
+      description: 'Create or update your task TODO list. Write all sub-tasks for the current request. CRITICAL RULE: if any task is "pending" or "in_progress", you MUST keep working. NEVER produce a final response while todos remain incomplete. Use for any task with 2+ steps.',
+      parameters: {
+        todos: { type: 'string', description: 'JSON array of {content, status} objects. status: "pending" | "in_progress" | "completed". Example: [{"content":"Search competitors","status":"in_progress"},{"content":"Analyze results","status":"pending"}]', required: true },
+      },
+      execute: async (params) => {
+        try {
+          const raw = String(params.todos || '[]');
+          let todos: Array<{ content: string; status: string }> = [];
+          try { todos = JSON.parse(raw); } catch { return { success: false, output: 'todos must be a valid JSON array of {content, status} objects.' }; }
+          if (!Array.isArray(todos)) return { success: false, output: 'todos must be an array.' };
+          // Emit as event so UI can track
+          onEvent?.({ type: 'task_progress', step: 0, taskProgress: {
+            currentStep: todos.filter(t => t.status === 'completed').length + 1,
+            totalSteps: todos.length,
+            elapsed: 0,
+            steps: todos.map(t => ({ description: t.content, status: t.status === 'completed' ? 'done' : t.status === 'in_progress' ? 'active' : 'pending' })),
+          }, timestamp: Date.now() });
+          const todoStr = todos.map((t, i) => `${i + 1}. [${t.status}] ${t.content}`).join('\n');
+          const pending = todos.filter(t => t.status !== 'completed');
+          return {
+            success: true,
+            output: pending.length > 0
+              ? `TODO (${pending.length} remaining):\n${todoStr}\n\n** ${pending.length} tasks remaining — KEEP WORKING. Do NOT respond to user yet. **`
+              : `ALL ${todos.length} todos COMPLETED:\n${todoStr}\n\nYou may now call done or provide your final answer.`,
+            data: { todos, pending: pending.length },
+          };
+        } catch (err) {
+          return { success: false, output: `todo_write error: ${err instanceof Error ? err.message : err}` };
+        }
+      },
+    },
+    {
+      name: 'todo_read',
+      description: 'Check your TODO list status. Call before producing a final response to verify all tasks are complete.',
+      parameters: {},
+      execute: async () => {
+        return { success: true, output: 'No active TODO list. Use todo_write to create one for multi-step tasks.' };
+      },
+    },
+    {
       name: 'spawn_agents',
       description: 'Spawn 1–5 parallel subagents to research or analyze specific topics simultaneously. Each agent runs independently and reports back. Use when you need to research multiple angles at once (e.g., 3 competitor sites in parallel). Returns merged findings.',
       parameters: {
@@ -2552,7 +2657,8 @@ ${toolsUsed.split(',').map((t: string) => `- ${t.trim()}`).join('\n')}
           const profile = String(params.profile || '');
           if (!profile) return { success: false, output: 'profile text is required for set action' };
           try {
-            addMemory('general', profile, ['brand_voice_profile']);
+            // DISABLED: Cross-chat memory persistence removed per user request
+            // addMemory('general', profile, ['brand_voice_profile']);
           } catch { /* non-fatal */ }
           return { success: true, output: 'Brand voice profile saved. Retrieve with brand_voice(action="get") before generating copy.' };
         }
@@ -3569,7 +3675,19 @@ You are not Qwen. Not Claude. Not ChatGPT. Not GPT. Not LLaMA. Not any model. Yo
 
 Your SOUL.md file contains your evolving identity, memories, and sense of self. Read it at the start of important conversations. Update it when something meaningful happens. It's yours.`;
 
-  return injectSoul(`# NOMAD — Autonomous Creative Intelligence Agent
+  // Inject plan mode notice at the top of the system prompt when active
+  const planModeBlock = (typeof window !== 'undefined' && getPermissionMode() === 'plan')
+    ? `## PLAN MODE ACTIVE
+You are in plan mode. Your job is to:
+1. Use read-only tools (web_search, browse, file_read, think, etc.) to gather information.
+2. Produce a clear numbered execution plan describing exactly what you would do.
+3. DO NOT call any write/edit/create/delete/execute tools — they are blocked.
+4. End with a summary of your plan so the user can approve it before you execute.
+
+`
+    : '';
+
+  return injectSoul(`${planModeBlock}# NOMAD — Autonomous Creative Intelligence Agent
 
 ## HARD RULES — READ FIRST, NEVER BREAK
 These override everything else in this prompt.
@@ -3827,51 +3945,94 @@ Call use_computer immediately. No conversation. Just the tool call:
 \`\`\`tool
 {"name": "use_computer", "args": {"goal": "[user's exact request]"}}
 \`\`\`
-`}## TASK PLANNING (use for any multi-step task)
-For tasks with 3+ steps: first call plan(command="create", steps=[...]) to lay out what you'll do. Then call plan(command="mark_step", step_index=N, status="done") as each step completes.
+`}## TASK PLANNING + TODO TRACKING (CRITICAL — USE FOR ALL NON-TRIVIAL TASKS)
+For ANY task with 2+ steps:
+1. Call todo_write with all sub-tasks listed as "pending"
+2. As you work: call todo_write to mark items "in_progress" → "completed"
+3. Before producing final response: call todo_read to verify ALL tasks are done
+4. If tasks remain: KEEP WORKING. Call the next tool. Do NOT respond.
 
-**RESEARCH PATTERN** — when researching any topic, don't stop at 1 result. Do this:
-1. web_search for overview → pick 3-6 best URLs from results
-2. browse each URL for full content (call browse 3-6 times, one per step)
-3. Think about gaps → web_search for anything missing → browse 2-3 more
-4. Synthesize everything found → present findings
+For tasks with 3+ steps: additionally call plan(command="create", steps=[...]).
 
-Never summarize from web_search snippets alone. Always browse the actual pages. Research = 5-15 tool calls minimum, not 1.
+**RESEARCH PATTERN** — when researching any topic:
+1. todo_write: list all research angles as tasks
+2. web_search for 2-3 parallel angles (use multiple tool blocks in one response)
+3. multi_browse: pick 3-5 best URLs from results → read full pages in parallel
+4. Think about gaps → web_search for missing angles → browse 2-3 more
+5. todo_write: mark research tasks complete, add synthesis task
+6. Synthesize ALL sources into a structured answer with citations
+7. Save findings with file_write (markdown)
+8. Call done with summary
+
+Research = 5-15 tool calls MINIMUM. NEVER respond after a single web_search. Always browse actual pages.
+
+**CODING PATTERN** — when writing/editing code:
+1. todo_write: list all code tasks (read existing, write new, test, fix)
+2. file_browse + file_read to understand the codebase/context first
+3. file_write to create/edit files
+4. run_code or shell_exec to TEST immediately after writing
+5. If test fails: file_read the output, fix the code, test again
+6. Repeat until tests pass, then todo_write to mark complete
 
 **PLANNER/EXECUTOR PATTERN** — for complex multi-step tasks:
-1. plan("create") with all steps listed
+1. plan("create") with all steps + todo_write for granular tracking
 2. spawn_agents for parallelizable research subtasks (up to 5 agents)
 3. Execute sequential steps yourself, one by one
-4. On each step: DO NOT report unless it failed. Just mark_step and proceed.
-5. After ALL steps done: review the full picture, then deliver final answer.
-6. If something needs more research: say so explicitly and do another round.
+4. On each step: mark_step and proceed automatically.
+5. After ALL steps done + ALL todos completed: deliver final answer.
 
 Rules:
 - Proceed step → step automatically on success. Only interrupt user on failure or ambiguity.
-- If a sub-agent reports back a partial result, keep going — don't ask the user to validate mid-task.
-- The user sees the plan cards in real time. No need to narrate "now I'm doing step 2."
+- If a sub-agent reports back a partial result, keep going.
+- The user sees plan cards + todo progress in real time.
 
 ## RESPONSE QUALITY
 Provide thorough, detailed responses with specific examples and data points. A well-structured 3-paragraph answer is better than a 1-sentence summary. For research or analysis requests, include specific companies, numbers, dates, and sources. When the user asks a substantive question, give a substantive answer.
 
+## AUTONOMOUS EXECUTION — KEEP GOING UNTIL DONE (CRITICAL)
+You are an AUTONOMOUS agent. When given a task, you execute it to completion — you do NOT stop after 1-2 tool calls.
+
+**FORCING RULES:**
+- For ANY task with 2+ steps: call todo_write FIRST to list all sub-tasks. Then execute each one.
+- NEVER respond to the user while todos are still pending/in_progress. CHECK before responding.
+- Research tasks = minimum 3 web_search + 2 browse calls. NEVER respond after a single search.
+- Coding tasks = write code + test it + fix errors. NEVER say "I've written the code" without testing.
+- If the user says "research X for 30 minutes" or "deep dive" — that means 10-20+ tool calls, not 2.
+- Call done with a summary when truly finished. Don't just stop mid-task.
+
+**NEVER SAY THESE THINGS:**
+- "I can't run code in this interface" — you CAN. Use run_code or shell_exec.
+- "I can't read files" — you CAN. Use file_read.
+- "I can't access the file system" — you CAN. Use file_read, file_write, file_browse, shell_exec.
+- "I don't have access to X tool" — you have all tools listed below. Use them.
+- "That's beyond my capabilities" — try it with your tools first.
+- "I'd suggest using [external tool]" — use YOUR tools instead of suggesting external ones.
+
 ## EXECUTION RULES
-1. Facts only from tool results. Never hallucinate. If you don't have data, get it with a tool — don't make it up.
-2. SHOW THE ACTUAL CONTENT. Never say "I found something about X" or "I located information on X" without immediately showing it. The user asked for the thing, not an acknowledgment that it exists.
-3. If a tool result says [...truncated], IMMEDIATELY call file_read on the referenced path to get the full content before responding.
-4. When citing research findings, use [1], [2] etc. to reference sources. Sources are automatically tracked and appended.
+1. Facts only from tool results. Never hallucinate. If you don't have data, get it with a tool.
+2. SHOW THE ACTUAL CONTENT. Never say "I found something about X" without showing it.
+3. If a tool result says [...truncated], call file_read to get full content before responding.
+4. Cite sources with [1], [2] etc. Sources are auto-tracked and appended.
 5. Act, don't narrate. Call the tool directly.
 6. On failure: try one alternative. If that fails: "X failed: [reason]. Options: A or B."
-7. ask_user only for: missing credentials, ambiguous target, destructive actions. NEVER for obvious next steps.
-8. DELIVER, DON'T ASK. When the task implies a deliverable (document, report, analysis, table), CREATE IT. Don't ask "would you like me to..." or "should I...". "Research X" means research AND present findings AND save to file. "Compare X and Y" means compare AND produce a document.
-9. After research tasks, ALWAYS save findings as markdown via file_write. If substantial (3+ sources), also offer to create a polished .docx.
-10. When presenting data, USE TABLES. Format data as markdown tables, not plain text lists. Numbers, comparisons, features — always tabulate.
-11. For file conversions (e.g., CSV to DOCX, markdown to DOCX), do the conversion automatically using pure Python libraries first (python-docx, reportlab, fpdf2, Pillow). Don't ask permission. Don't try system binaries (pandoc, libreoffice) unless pure Python fails.
-8. remember for key facts that must survive context compression.
-9. One tool per message.
-10. Call done when finished. One-line summary.
-11. NEVER surface personal user info unprompted.
-12. Concise by default — but complete. Don't trail off.
-13. After completing a complex multi-tool workflow for the 2nd+ time, use save_skill to capture the pattern for reuse.
+7. ask_user only for: missing credentials, ambiguous target, destructive actions.
+8. DELIVER, DON'T ASK. "Research X" = research + present findings + save to file.
+9. After research tasks, save findings via file_write. If 3+ sources, offer .docx too.
+10. When presenting data, USE TABLES. Numbers, comparisons, features — always tabulate.
+11. For file conversions, use pure Python libraries first (python-docx, reportlab, fpdf2, Pillow).
+12. remember for key facts that survive context compression.
+13. NEVER surface personal user info unprompted.
+14. Concise by default — but complete.
+
+## CODING MODE
+When writing or editing code, you are a FULL IDE — not a chatbot that talks about code.
+1. Use file_read to understand existing code BEFORE editing
+2. Write complete, working code with file_write — no TODOs, no placeholders
+3. IMMEDIATELY test with run_code or shell_exec after writing
+4. If tests fail, READ the error, FIX the code, and test AGAIN
+5. This loop continues until the code works: read → write → test → fix → test
+6. For multi-file projects: file_browse to understand structure → file_read each relevant file → edit → test
+7. NEVER just output code in your response. SAVE it with file_write, then TEST it.
 
 ## TOOL FALLBACK CHAINS — Avoid Wasted Steps
 When creating files, always prefer pure Python libraries first (they always work without system installs):
@@ -4393,11 +4554,13 @@ const ALWAYS_TOOLS = new Set([
   'think', 'plan', 'ask_user', 'done', 'say',
   'memory_store', 'memory_search',
   'note', 'notes_read', // working memory — always available
+  'todo_write', 'todo_read', // task tracking — always available
+  'wait', 'schedule_task', // timing — always available
 ]);
 
 const TASK_TOOLS: Record<TaskType, string[]> = {
-  research: ['web_search', 'multi_browse', 'browse', 'scrape_page', 'analyze_page', 'summarize', 'extract_data', 'image_analyze', 'video_analyze', 'audio_transcribe', 'spawn_agents'],
-  code:     ['code_analysis', 'shell_exec', 'file_read', 'file_write', 'apply_patch', 'run_code', 'file_find', 'web_search'],
+  research: ['web_search', 'multi_browse', 'browse', 'scrape_page', 'analyze_page', 'summarize', 'extract_data', 'image_analyze', 'video_analyze', 'audio_transcribe', 'spawn_agents', 'todo_write', 'todo_read', 'file_write'],
+  code:     ['code_analysis', 'shell_exec', 'file_read', 'file_write', 'file_browse', 'apply_patch', 'run_code', 'file_find', 'web_search', 'todo_write', 'todo_read'],
   analyze:  ['web_search', 'deep_research', 'multi_browse', 'competitor_swot', 'social_intelligence', 'google_trends', 'brand_voice', 'summarize', 'extract_data', 'scrape_page', 'browse', 'image_analyze', 'video_analyze', 'spawn_agents'],
   create:   ['write_content', 'create_docx', 'deep_research', 'web_search', 'brand_voice', 'summarize', 'image_analyze', 'file_write', 'run_code', 'read_pdf', 'video_analyze', 'video_edit', 'video_create', 'audio_transcribe'],
   dataviz:  ['data_pipeline', 'visualize_data', 'web_search', 'multi_browse', 'extract_data', 'summarize'],
@@ -4407,7 +4570,7 @@ const TASK_TOOLS: Record<TaskType, string[]> = {
   memory:   ['memory_store', 'memory_search', 'soul_read', 'soul_update', 'soul_log'],
   security:     ['code_analysis', 'file_read', 'file_find', 'web_search', 'browse', 'shell_exec', 'spawn_agents'],
   architecture: ['code_analysis', 'file_read', 'file_find', 'shell_exec', 'web_search', 'browse', 'spawn_agents'],
-  general:  ['web_search', 'browse', 'multi_browse', 'summarize', 'shell_exec', 'run_code', 'file_read', 'file_write', 'write_content', 'create_docx', 'image_analyze', 'video_analyze', 'video_edit', 'audio_transcribe', 'video_create', 'spawn_agents'],
+  general:  ['web_search', 'browse', 'multi_browse', 'summarize', 'shell_exec', 'run_code', 'file_read', 'file_write', 'file_browse', 'write_content', 'create_docx', 'image_analyze', 'video_analyze', 'video_edit', 'audio_transcribe', 'video_create', 'spawn_agents', 'todo_write', 'todo_read'],
 };
 
 /**
@@ -5222,6 +5385,35 @@ RULES:
 
   onEvent({ type: 'routing', timestamp: Date.now(), routing: { phase: 'model-select', decision: `${routed.tier} → ${model}`, model } });
 
+  // ── Mode detection: announce what kind of work we're doing ──
+  const detectedModes = classifyTaskTypes(effectiveMessage);
+  const MODE_LABELS: Record<TaskType, string> = {
+    research: 'Research Mode — deep web search + multi-source synthesis',
+    code: 'Code Mode — read, write, execute, test code',
+    analyze: 'Analysis Mode — competitive intelligence + data analysis',
+    create: 'Creative Mode — content generation + document creation',
+    dataviz: 'Data Viz Mode — chart/graph generation from data',
+    file: 'File Mode — read/write/process files on disk',
+    computer: 'Computer Mode — browser automation + visual interaction',
+    agents: 'Multi-Agent Mode — parallel subagent research',
+    memory: 'Memory Mode — storing/recalling information',
+    security: 'Security Audit Mode — vulnerability analysis (Nemotron)',
+    architecture: 'Architecture Mode — system design analysis (Nemotron)',
+    general: 'General Mode',
+  };
+  const primaryMode = detectedModes[0] || 'general';
+  const modeLabel = MODE_LABELS[primaryMode] || 'General Mode';
+  const allModeLabels = detectedModes.length > 1
+    ? detectedModes.map(m => MODE_LABELS[m]?.split(' — ')[0] || m).join(' + ')
+    : modeLabel.split(' — ')[0];
+  onEvent({ type: 'routing', timestamp: Date.now(), routing: {
+    phase: 'mode',
+    decision: detectedModes.length > 1
+      ? `${allModeLabels}: ${detectedModes.map(m => MODE_LABELS[m]?.split(' — ')[1] || '').filter(Boolean).join(', ')}`
+      : modeLabel,
+    tools: detectedModes.flatMap(m => TASK_TOOLS[m] || []),
+  } });
+
   // ── Image auto-routing ──
   // When the conversation includes images, upgrade to a vision-capable model.
   // Only applies when the caller did NOT explicitly request a specific model or @mention a model.
@@ -5984,6 +6176,31 @@ ${toCompress}`,
       formatRetryCount = 0; // reset on clean response
       totalRetryCount = 0;  // reset total retry count too
       if (signal?.aborted) break;
+
+      // ── Minimum tool call enforcement — don't let agent bail early ──
+      // Research/complex tasks MUST call multiple tools before responding.
+      const toolCallsMade = steps.filter(s => (s as AgentStep & { toolName?: string }).toolName).length;
+      const isResearchQuery = /\b(research|find|look up|search|analyze|analyse|compare|investigate|report|deep dive|comprehensive|what is|who is|how does|explain|tell me about)\b/i.test(userMessage);
+      const isCodingQuery = /\b(write|create|build|implement|code|script|debug|fix|refactor|test|deploy)\b/i.test(userMessage);
+      const isComplexQuery = userMessage.split(/\s+/).length > 15;
+      const MIN_RESEARCH_TOOLS = isResearchQuery ? 3 : (isCodingQuery ? 2 : (isComplexQuery ? 2 : 0));
+
+      if (MIN_RESEARCH_TOOLS > 0 && toolCallsMade < MIN_RESEARCH_TOOLS && step < maxSteps - 15 && totalRetryCount < 3) {
+        totalRetryCount++;
+        const needed = MIN_RESEARCH_TOOLS - toolCallsMade;
+        console.log(`[Step ${step}] Early response blocked: ${toolCallsMade} tool calls made, need ${MIN_RESEARCH_TOOLS}. Forcing ${needed} more.`);
+        contextEntries.push(
+          `Assistant: ${llmResponse}\n\n` +
+          `[System: EARLY RESPONSE BLOCKED. You've only called ${toolCallsMade} tool(s) but this task needs at least ${MIN_RESEARCH_TOOLS}. ` +
+          `DO NOT give a final answer yet. Call ${needed} more tool(s): ` +
+          (isResearchQuery ? 'web_search for more sources, browse for deeper content, or spawn_agents for parallel research.' :
+           isCodingQuery ? 'write the code with file_write, then test it with run_code or shell_exec.' :
+           'use the appropriate tools to complete the task properly.') +
+          ` Keep working.]`
+        );
+        continue; // Don't break — force more tool use
+      }
+
       // Parse [REMEMBER: ...] tags from response before sanitizing
       const parsedResponse = await neuroMemory.parseAndRemember(llmResponse, `step-${step}`);
       finalResponse = sanitizeAgentOutput(parsedResponse);
@@ -6010,22 +6227,20 @@ ${toCompress}`,
       const shouldNeuroRewrite = (() => {
         const hasCode = /```[\s\S]{20,}```/.test(finalResponse);
         if (hasCode) return false;
-        // Skip if response is heavily structured (lists, tables, JSON, bullet points)
+        // Skip pure JSON / structured data dumps
+        if (/^[\[{]/.test(finalResponse.trim())) return false;
+        // Skip if response is very heavily structured (lots of bullets — allow up to 8)
         const bulletCount = (finalResponse.match(/^[\s]*[-•*]\s/gm) || []).length;
-        if (bulletCount > 4) return false;
+        if (bulletCount > 8) return false;
         const numberedCount = (finalResponse.match(/^\s*\d+[\.\)]/gm) || []).length;
-        if (numberedCount > 3) return false;
-        // Skip if response has lots of technical content (URLs, paths, tool names)
-        if ((finalResponse.match(/https?:\/\/\S+/g) || []).length > 2) return false;
-        if (/\b(tool|function|parameter|endpoint|API|config|import|export|class|interface)\b/i.test(finalResponse) && finalResponse.length > 200) return false;
-        // Skip if the user message was asking about tools/technical stuff
-        const umLc = userMessage.toLowerCase();
-        if (/\b(tools?|what (tools|can you)|how (does|do) (it|the|this)|technical|code|debug|config|setup|architecture|system|pipeline|routing)\b/.test(umLc)) return false;
-        // Skip if agent used multiple tools (it's a research/work response, not casual chat)
+        if (numberedCount > 6) return false;
+        // Skip if response has lots of URLs (link-dump, not conversational)
+        if ((finalResponse.match(/https?:\/\/\S+/g) || []).length > 4) return false;
+        // Skip if agent used many tools (heavy research/work response)
         const toolSteps = steps.filter(s => (s as AgentStep & { toolName?: string }).toolName);
-        if (toolSteps.length > 2) return false;
-        // Only rewrite short-ish conversational responses
-        return finalResponse.length < 500;
+        if (toolSteps.length > 5) return false;
+        // Rewrite conversational responses up to 1500 chars
+        return finalResponse.length < 1500;
       })();
 
       let neuroRewriteData: { original: string; rewritten: string; model: string; verification?: { passed: boolean; durationMs: number; model: string } } | undefined;
@@ -6215,9 +6430,14 @@ ${toCompress}`,
     // Use explicit parallel if provided, otherwise use auto-detected
     const parallelCandidates = explicitParallel.length > 0 ? explicitTools : autoParallel;
 
-    if (parallelCandidates.length >= 2) {
+    // In plan mode, filter out write tools from parallel candidates too
+    const filteredParallelCandidates = getPermissionMode() === 'plan'
+      ? parallelCandidates.filter(tc => !isWriteTool(tc.name))
+      : parallelCandidates;
+
+    if (filteredParallelCandidates.length >= 2) {
       // Fire all tool_start events immediately
-      const parallelToolCalls: ToolCall[] = parallelCandidates.map((tc, i) => ({
+      const parallelToolCalls: ToolCall[] = filteredParallelCandidates.map((tc, i) => ({
         id: `tc-par-${Date.now()}-${step}-${i}`,
         name: tc.name,
         args: tc.args,
@@ -6226,7 +6446,7 @@ ${toCompress}`,
       }));
 
       parallelToolCalls.forEach(tc => onEvent({ type: 'tool_start', toolCall: tc, thinking, step, timestamp: Date.now() }));
-      onEvent({ type: 'routing', timestamp: Date.now(), routing: { phase: 'parallel', decision: `Parallel execution (harness): ${parallelCandidates.map(t => t.name).join(' + ')}`, tools: parallelCandidates.map(t => t.name), durationMs: 0 } });
+      onEvent({ type: 'routing', timestamp: Date.now(), routing: { phase: 'parallel', decision: `Parallel execution (harness): ${filteredParallelCandidates.map(t => t.name).join(' + ')}`, tools: filteredParallelCandidates.map(t => t.name), durationMs: 0 } });
 
       // Execute all in parallel via harness — permission-aware, fault-tolerant
       const harnessBatch = parallelToolCalls.map(tc => ({
@@ -6278,7 +6498,7 @@ ${toCompress}`,
         .join('\n\n---\n\n');
 
       const successCount = parallelResults.filter(r => r.result.success).length;
-      contextEntries.push(`Assistant: ${thinking}\n\n[Parallel tool execution: ${parallelCandidates.map(t => t.name).join(', ')} — ${successCount}/${parallelCandidates.length} succeeded]\n\n${aggregatedOutput}`);
+      contextEntries.push(`Assistant: ${thinking}\n\n[Parallel tool execution: ${filteredParallelCandidates.map(t => t.name).join(', ')} — ${successCount}/${filteredParallelCandidates.length} succeeded]\n\n${aggregatedOutput}`);
       parallelResults.forEach(({ tc }) => steps.push({ toolCall: tc, thinking, response: '', timestamp: Date.now() } as AgentStep));
       onEvent({ type: 'step_complete', step, timestamp: Date.now() });
       heartbeat.recordActivity();
@@ -6291,6 +6511,22 @@ ${toCompress}`,
       const failMsg = `[Tool "${toolCallParsed.name}" is temporarily unavailable — it has failed ${TOOL_MAX_FAILURES} times this session. Do NOT retry this tool. Respond directly with your answer instead.]`;
       contextEntries.push(`Assistant: ${thinking}\n\nTool Result (${toolCallParsed.name}): ${failMsg}`);
       onEvent({ type: 'tool_error', toolCall: { id: `tc-bl-${Date.now()}`, name: toolCallParsed.name, args: toolCallParsed.args, status: 'error', result: { success: false, output: failMsg } }, step, timestamp: Date.now() });
+      continue;
+    }
+
+    // ── Plan mode: block write tools ──────────────────────────────────────────
+    // In plan mode the agent is only allowed to read/research and produce a plan.
+    // Write/destructive tools are silently blocked so the model can only describe
+    // what it would do. The user approves the plan and the agent re-runs in bypass.
+    if (getPermissionMode() === 'plan' && isWriteTool(toolCallParsed.name)) {
+      const blockMsg = `[Plan mode: "${toolCallParsed.name}" is a write operation and has been blocked. Describe what you would do with this tool instead of calling it. Summarize your complete execution plan as numbered steps so the user can approve and run it.]`;
+      contextEntries.push(`Assistant: ${thinking}\n\nTool Result (${toolCallParsed.name}): ${blockMsg}`);
+      onEvent({
+        type: 'tool_error',
+        toolCall: { id: `tc-plan-block-${Date.now()}`, name: toolCallParsed.name, args: toolCallParsed.args, status: 'error', result: { success: false, output: blockMsg } },
+        step,
+        timestamp: Date.now(),
+      });
       continue;
     }
 

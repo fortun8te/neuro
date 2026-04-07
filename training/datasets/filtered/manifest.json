@@ -1,0 +1,16 @@
+{
+  "train": "/Users/mk/Downloads/nomads/training/datasets/filtered/train.jsonl",
+  "val": "/Users/mk/Downloads/nomads/training/datasets/filtered/val.jsonl",
+  "total_examples": 5,
+  "train_count": 4,
+  "val_count": 1,
+  "sources": [
+    "synthetic"
+  ],
+  "platforms": [
+    "macos"
+  ],
+  "quality_score": 67.1,
+  "val_split": 0.1,
+  "seed": 42
+}

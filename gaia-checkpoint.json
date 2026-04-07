@@ -1,0 +1,73 @@
+{
+  "startTime": 1775323846089,
+  "completedCount": 5,
+  "results": [
+    {
+      "task_id": "1",
+      "question": "What is the capital of France?",
+      "difficulty": "easy",
+      "category": "geography",
+      "model_answer": "ERROR",
+      "expected_answer": "Paris",
+      "confidence": 0,
+      "phases_completed": 1,
+      "total_time_ms": 0,
+      "success": false
+    },
+    {
+      "task_id": "2",
+      "question": "In what year did the Titanic sink?",
+      "difficulty": "easy",
+      "category": "history",
+      "model_answer": "ERROR",
+      "expected_answer": "1912",
+      "confidence": 0,
+      "phases_completed": 1,
+      "total_time_ms": 0,
+      "success": false
+    },
+    {
+      "task_id": "3",
+      "question": "How many continents are there on Earth?",
+      "difficulty": "easy",
+      "category": "geography",
+      "model_answer": "ERROR",
+      "expected_answer": "7",
+      "confidence": 0,
+      "phases_completed": 1,
+      "total_time_ms": 0,
+      "success": false
+    },
+    {
+      "task_id": "4",
+      "question": "What is the chemical symbol for gold?",
+      "difficulty": "easy",
+      "category": "science",
+      "model_answer": "ERROR",
+      "expected_answer": "Au",
+      "confidence": 0,
+      "phases_completed": 1,
+      "total_time_ms": 0,
+      "success": false
+    },
+    {
+      "task_id": "5",
+      "question": "Who wrote the Mona Lisa?",
+      "difficulty": "easy",
+      "category": "art",
+      "model_answer": "ERROR",
+      "expected_answer": "Leonardo da Vinci",
+      "confidence": 0,
+      "phases_completed": 1,
+      "total_time_ms": 0,
+      "success": false
+    }
+  ],
+  "dataset": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5"
+  ]
+}

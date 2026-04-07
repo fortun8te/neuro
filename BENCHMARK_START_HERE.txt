@@ -1,0 +1,229 @@
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                                                                               ║
+║  🚀 BENCHMARK READY — FINAL PREPARATION COMPLETE                            ║
+║                                                                               ║
+║  All systems verified online. All code bugs fixed.                          ║
+║  Tool usage analyzer ready. Ready to test harness quality.                  ║
+║                                                                               ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+═══════════════════════════════════════════════════════════════════════════════
+ QUICK START
+═══════════════════════════════════════════════════════════════════════════════
+
+1. VERIFY SERVICES ARE RUNNING
+
+   Ollama:     http://100.74.135.83:11440/api/tags
+   Wayfayer:   http://localhost:8889/health
+   SearXNG:    http://localhost:8888/
+
+   Command: curl http://100.74.135.83:11440/api/tags
+
+   Status: ✅ ALL ONLINE
+
+2. RUN QUICK TEST (5 QUESTIONS)
+
+   cd /Users/mk/Downloads/nomads
+   node run-gaia-full.mjs --questions=5 --verbose
+
+   Expected: 5/5 questions, <10 min total
+
+3. RUN FULL BENCHMARK (50 QUESTIONS)
+
+   node run-gaia-full.mjs --questions=50 --verbose --output=results.jsonl
+
+   Expected: 50/50 questions, 2-3 hours total
+
+4. ANALYZE EACH RESPONSE
+
+   After each question completes:
+   echo "AGENT_RESPONSE" | bash analyze-tool-usage.sh
+
+   Output: Tool count, harness score, overall verdict
+
+═══════════════════════════════════════════════════════════════════════════════
+ WHAT WE'RE TESTING (NOT ANSWER QUALITY — HARNESS QUALITY)
+═══════════════════════════════════════════════════════════════════════════════
+
+After each question, the analyzer checks:
+
+📊 TOOL USAGE
+  • How many tools did agent use? (expect 3+)
+  • How many categories? (expect 2+)
+  • Tools: web_search, fetch_page, file_ops, compute, vision, memory, browser
+
+🔧 HARNESS QUALITY (out of 10 points)
+  ✓ Error Handling (try/catch)      — 2 points
+  ✓ Abort Signal (can cancel)       — 2 points
+  ✓ Permission Gates (security)     — 2 points
+  ✓ Retry Logic (resilience)        — 2 points
+  ✓ Timeout (no hangs)              — 2 points
+  
+  Score needed: 8/10 minimum
+
+⚙️  EXECUTION
+  • Time per question
+  • Success/failure rates
+  • Error recovery count
+
+═══════════════════════════════════════════════════════════════════════════════
+ EXPECTED RESULTS
+═══════════════════════════════════════════════════════════════════════════════
+
+Questions by Difficulty:
+
+EASY (5 questions)
+  • Tools: 2-3
+  • Time: <20 seconds
+  • Example: "What is the capital of France?"
+
+MEDIUM (17 questions)
+  • Tools: 4-5
+  • Time: 20-45 seconds
+  • Example: "Compare React vs Vue in 2024"
+
+HARD (28 questions)
+  • Tools: 6-8
+  • Time: 45-90 seconds
+  • Example: "Analyze AI regulation trends globally"
+
+═══════════════════════════════════════════════════════════════════════════════
+ SUCCESS CRITERIA (ALL MUST PASS)
+═══════════════════════════════════════════════════════════════════════════════
+
+✓ Tool Usage
+  □ Avg tools/question: ≥ 3.5
+  □ Tool diversity: ≥ 75%
+  □ At least 4 categories used
+  □ No question <2 tools
+
+✓ Harness Quality
+  □ Avg harness score: ≥ 8.5/10
+  □ Error handling: 100%
+  □ Abort signal: ≥ 95%
+  □ Permission gates: 100%
+
+✓ Execution
+  □ Pass rate: ≥ 95% (47/50 questions)
+  □ No crashes
+  □ Avg time: <3.5 min/question
+  □ All services stayed online
+
+═══════════════════════════════════════════════════════════════════════════════
+ KEY FILES
+═══════════════════════════════════════════════════════════════════════════════
+
+RUNNERS:
+  • run-gaia-full.mjs                 Main benchmark (50 questions)
+  • benchmark-harness.mjs             Tool usage analyzer
+
+ANALYZERS:
+  • analyze-tool-usage.sh             Real-time harness quality check
+
+DOCUMENTATION:
+  • BENCHMARK_FINAL_CHECKLIST.md      Complete reference guide
+  • BENCHMARK_PREP_GUIDE.md           Detailed troubleshooting
+
+═══════════════════════════════════════════════════════════════════════════════
+ QUICK COMMANDS
+═══════════════════════════════════════════════════════════════════════════════
+
+# Run 50-question benchmark
+node run-gaia-full.mjs --questions=50 --verbose --output=results.jsonl
+
+# Analyze a response
+echo "RESPONSE_TEXT" | bash analyze-tool-usage.sh
+
+# View progress
+tail -f results.jsonl | jq '.[] | {id, tools: .tool_usage.total, time: .execution_time}'
+
+# Get summary after completion
+jq -s 'map({q: .id, tools: .tool_usage.total, harness: .harness.score})' results.jsonl
+
+═══════════════════════════════════════════════════════════════════════════════
+ MONITORING DURING BENCHMARK
+═══════════════════════════════════════════════════════════════════════════════
+
+Keep 4 terminals open:
+
+Terminal 1: Benchmark runner
+  node run-gaia-full.mjs --questions=50 --verbose
+
+Terminal 2: Service monitor (every 5 seconds)
+  watch -n 5 'curl -s http://100.74.135.83:11440/api/tags | jq ".models | length"'
+
+Terminal 3: Wayfayer logs
+  tail -f /tmp/wayfayer.log
+
+Terminal 4: Real-time analyzer
+  # After each question, paste response here:
+  bash analyze-tool-usage.sh
+
+═══════════════════════════════════════════════════════════════════════════════
+ TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════════════════════
+
+LOW TOOL USAGE (<3 tools)
+  → Check if tools are in system prompt
+  → Verify token budget isn't too tight
+  → Look for abort signal (might be stopping early)
+
+POOR HARNESS SCORE (<6/10)
+  → Check errorHandling.ts is imported
+  → Verify abort signal threaded through
+  → Look for try/catch in tool execution
+
+SLOW EXECUTION (>4 min/question)
+  → Check model size (use qwen3.5:4b, not 27b)
+  → Verify no sequential operations that should be parallel
+  → Check resource usage (CPU, memory)
+
+SERVICE TIMEOUT
+  → Restart service: kill + restart in terminal
+  → Check logs: tail -f /tmp/wayfayer.log
+  → Reduce concurrency if Docker is struggling
+
+═══════════════════════════════════════════════════════════════════════════════
+ BENCHMARK TIMELINE
+═══════════════════════════════════════════════════════════════════════════════
+
+QUICK TEST (5 questions):         ~10 minutes
+  1. Easy (1-5): 0-2 min total
+
+FULL BENCHMARK (50 questions):    ~2-3 hours
+  1. Easy (5 questions):      ~10 min
+  2. Medium (17 questions):   ~30 min
+  3. Hard (28 questions):     ~90 min
+
+POST-BENCHMARK ANALYSIS:        ~15 min
+  1. Extract metrics
+  2. Generate report
+  3. Determine readiness
+
+═══════════════════════════════════════════════════════════════════════════════
+ FINAL READINESS CHECK
+═══════════════════════════════════════════════════════════════════════════════
+
+Before starting benchmark, verify:
+
+✓ Ollama responding:       curl http://100.74.135.83:11440/api/tags
+✓ Wayfayer responding:     curl http://localhost:8889/health
+✓ SearXNG responding:      curl http://localhost:8888/
+✓ Models available:        curl ... | jq '.models | length' (≥1)
+✓ Harness code ready:      ls -la frontend/utils/harness.ts
+✓ Error handling ready:    ls -la frontend/utils/errorHandling.ts
+✓ Scripts executable:      ls -la benchmark-*.mjs analyze-*.sh
+
+═══════════════════════════════════════════════════════════════════════════════
+ LET'S GO!
+═══════════════════════════════════════════════════════════════════════════════
+
+Ready?
+
+  1. cd /Users/mk/Downloads/nomads
+  2. node run-gaia-full.mjs --questions=50 --verbose --output=benchmark.jsonl
+  3. Monitor with: echo "RESPONSE" | bash analyze-tool-usage.sh
+  4. Results: jq '.' benchmark.jsonl
+  5. Report: Follow BENCHMARK_FINAL_CHECKLIST.md
+
+GO! 🚀

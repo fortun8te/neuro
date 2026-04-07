@@ -1,26 +1,31 @@
 /**
- * Canvas Side Panel — Document preview & editing with live updates
+ * Canvas Side Panel — OpenAI Canvas-style document preview with code execution
  *
- * Slides in from right side (45% of viewport) when agent generates documents.
- * Supports DOCX, PDF, Markdown, HTML, Code rendering with real-time animations.
- * Export options: Copy, Download, Save to VFS.
+ * Features:
+ * - Clean minimal header: editable title, language badge, icon-only buttons
+ * - Context shortcut pills (code: Review/Fix/Comments/Logs/Run, text: Shorter/Longer/Polish/Simplify)
+ * - Live HTML preview via sandboxed iframe
+ * - JavaScript execution via Web Worker
+ * - Line-by-line diff overlay (Show Changes)
+ * - Version history (up to 20, ← → navigation)
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Copy, Download, Edit2, RotateCcw, Lock, Unlock } from 'lucide-react';
+import { X, Copy, Download, ChevronLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
-import { FONT_FAMILY } from '../constants/ui';
+import { FONT_FAMILY, FONT_FAMILY_MONO } from '../constants/ui';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import DOMPurify from 'dompurify';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 interface Version {
   id: string;
   timestamp: number;
   content: string;
-  title: string;
-  savedAt: Date;
 }
 
 export interface CanvasContent {
@@ -29,7 +34,7 @@ export interface CanvasContent {
   fileType: 'docx' | 'pdf' | 'md' | 'html' | 'txt' | 'code';
   isWriting?: boolean;
   blob?: Blob;
-  language?: string; // for code files
+  language?: string;
 }
 
 interface CanvasPanelProps {
@@ -40,356 +45,564 @@ interface CanvasPanelProps {
   isAIWriting?: boolean;
 }
 
-/**
- * Render content based on file type
- */
-function renderContent(content: CanvasContent, isDarkMode: boolean) {
-  const { fileType, content: text, language } = content;
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-  switch (fileType) {
-    case 'md':
-      return (
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          components={{
-            code({ node, inline, className, children, ...props }: any) {
-              return inline ? (
-                <code
-                  className={className}
-                  style={{
-                    background: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-                    padding: '2px 4px',
-                    borderRadius: '3px',
-                    fontFamily: 'monospace',
-                  }}
-                  {...props}
-                >
-                  {children}
-                </code>
-              ) : (
-                <pre
-                  style={{
-                    background: isDarkMode ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)',
-                    padding: '12px',
-                    borderRadius: '6px',
-                    overflow: 'auto',
-                    border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`,
-                    marginBottom: '12px',
-                  }}
-                  {...props}
-                >
-                  <code style={{ fontFamily: 'monospace', fontSize: '12px' }}>{children}</code>
-                </pre>
-              );
-            },
-            h1: ({ node, ...props }: any) => (
-              <h1
-                style={{
-                  fontSize: '24px',
-                  fontWeight: 700,
-                  marginTop: '20px',
-                  marginBottom: '12px',
-                  color: isDarkMode ? '#ffffff' : '#000000',
-                }}
-                {...props}
-              />
-            ),
-            h2: ({ node, ...props }: any) => (
-              <h2
-                style={{
-                  fontSize: '20px',
-                  fontWeight: 600,
-                  marginTop: '16px',
-                  marginBottom: '10px',
-                  color: isDarkMode ? '#e5e7eb' : '#1f2937',
-                }}
-                {...props}
-              />
-            ),
-            h3: ({ node, ...props }: any) => (
-              <h3
-                style={{
-                  fontSize: '16px',
-                  fontWeight: 600,
-                  marginTop: '12px',
-                  marginBottom: '8px',
-                  color: isDarkMode ? '#d1d5db' : '#374151',
-                }}
-                {...props}
-              />
-            ),
-            p: ({ node, ...props }: any) => (
-              <p
-                style={{
-                  marginBottom: '12px',
-                  lineHeight: 1.6,
-                  color: isDarkMode ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.8)',
-                }}
-                {...props}
-              />
-            ),
-            ul: ({ node, ...props }: any) => (
-              <ul
-                style={{
-                  marginLeft: '20px',
-                  marginBottom: '12px',
-                  listStyle: 'disc',
-                }}
-                {...props}
-              />
-            ),
-            ol: ({ node, ...props }: any) => (
-              <ol
-                style={{
-                  marginLeft: '20px',
-                  marginBottom: '12px',
-                  listStyle: 'decimal',
-                }}
-                {...props}
-              />
-            ),
-            li: ({ node, ...props }: any) => (
-              <li
-                style={{
-                  marginBottom: '6px',
-                  color: isDarkMode ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.75)',
-                }}
-                {...props}
-              />
-            ),
-            table: ({ node, ...props }: any) => (
-              <table
-                style={{
-                  width: '100%',
-                  borderCollapse: 'collapse',
-                  marginBottom: '12px',
-                  border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
-                }}
-                {...props}
-              />
-            ),
-            th: ({ node, ...props }: any) => (
-              <th
-                style={{
-                  padding: '8px',
-                  textAlign: 'left',
-                  fontWeight: 600,
-                  background: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
-                  border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
-                }}
-                {...props}
-              />
-            ),
-            td: ({ node, ...props }: any) => (
-              <td
-                style={{
-                  padding: '8px',
-                  border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
-                }}
-                {...props}
-              />
-            ),
-          }}
-        >
-          {text}
-        </ReactMarkdown>
-      );
-
-    case 'code':
-      return (
-        <pre
-          style={{
-            background: isDarkMode ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)',
-            padding: '16px',
-            borderRadius: '6px',
-            overflow: 'auto',
-            border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`,
-            fontSize: '12px',
-            lineHeight: 1.6,
-            fontFamily: 'monospace',
-            color: isDarkMode ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.8)',
-          }}
-        >
-          <code>{text}</code>
-        </pre>
-      );
-
-    case 'html':
-      return (
-        <div
-          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(text) }}
-          style={{ color: isDarkMode ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.8)' }}
-        />
-      );
-
-    case 'txt':
-      return (
-        <pre
-          style={{
-            fontSize: '13px',
-            lineHeight: 1.6,
-            color: isDarkMode ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.75)',
-            whiteSpace: 'pre-wrap',
-            wordWrap: 'break-word',
-            fontFamily: 'monospace',
-          }}
-        >
-          {text}
-        </pre>
-      );
-
-    case 'pdf':
-      return (
-        <div
-          style={{
-            padding: '16px',
-            background: isDarkMode ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)',
-            borderRadius: '8px',
-            textAlign: 'center',
-            color: isDarkMode ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)',
-          }}
-        >
-          <div style={{ fontSize: '12px', marginBottom: '8px' }}>📄 PDF Preview</div>
-          <div style={{ fontSize: '11px' }}>PDF rendering not yet supported in preview. Use Download to view.</div>
-        </div>
-      );
-
-    case 'docx':
-      return (
-        <div
-          style={{
-            padding: '16px',
-            background: isDarkMode ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)',
-            borderRadius: '8px',
-            textAlign: 'center',
-            color: isDarkMode ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)',
-          }}
-        >
-          <div style={{ fontSize: '12px', marginBottom: '8px' }}>📝 Word Document</div>
-          <div style={{ fontSize: '11px' }}>Use Download button to view full formatting in Microsoft Word.</div>
-        </div>
-      );
-
-    default:
-      return <div style={{ color: isDarkMode ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)' }}>Unsupported file type</div>;
-  }
+function getLanguageLabel(content: CanvasContent): string {
+  if (content.fileType === 'code') return content.language?.toLowerCase() || 'code';
+  if (content.fileType === 'md') return 'markdown';
+  if (content.fileType === 'html') return 'html';
+  if (content.fileType === 'txt') return 'text';
+  if (content.fileType === 'pdf') return 'pdf';
+  if (content.fileType === 'docx') return 'word';
+  return content.fileType;
 }
+
+function isCodeFile(content: CanvasContent): boolean {
+  return content.fileType === 'code' || content.fileType === 'html';
+}
+
+function isTextFile(content: CanvasContent): boolean {
+  return content.fileType === 'md' || content.fileType === 'txt';
+}
+
+function canRunHTML(content: CanvasContent): boolean {
+  return content.fileType === 'html' || (content.fileType === 'code' && content.language?.toLowerCase() === 'html');
+}
+
+function canRunJS(content: CanvasContent): boolean {
+  return content.fileType === 'code' && (content.language?.toLowerCase() === 'javascript' || content.language?.toLowerCase() === 'js');
+}
+
+/** Very simple line-by-line LCS diff — returns array of {type, line} */
+function simpleDiff(oldText: string, newText: string): { type: 'same' | 'added' | 'removed'; line: string }[] {
+  const oldLines = oldText.split('\n');
+  const newLines = newText.split('\n');
+  const result: { type: 'same' | 'added' | 'removed'; line: string }[] = [];
+
+  // Build LCS table
+  const m = oldLines.length;
+  const n = newLines.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = oldLines[i - 1] === newLines[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+
+  // Backtrack
+  const ops: { type: 'same' | 'added' | 'removed'; line: string }[] = [];
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
+      ops.push({ type: 'same', line: oldLines[i - 1] });
+      i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      ops.push({ type: 'added', line: newLines[j - 1] });
+      j--;
+    } else {
+      ops.push({ type: 'removed', line: oldLines[i - 1] });
+      i--;
+    }
+  }
+  ops.reverse();
+  return ops;
+}
+
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
+function IconButton({
+  onClick,
+  disabled,
+  title,
+  active,
+  isDark,
+  children,
+}: {
+  onClick?: () => void;
+  disabled?: boolean;
+  title?: string;
+  active?: boolean;
+  isDark: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      style={{
+        background: active
+          ? isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'
+          : 'transparent',
+        border: 'none',
+        borderRadius: '5px',
+        padding: '5px',
+        cursor: disabled ? 'default' : 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: disabled
+          ? isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'
+          : isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.5)',
+        transition: 'background 0.12s, color 0.12s',
+        flexShrink: 0,
+      }}
+      onMouseEnter={e => {
+        if (!disabled) {
+          (e.currentTarget as HTMLButtonElement).style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+        }
+      }}
+      onMouseLeave={e => {
+        (e.currentTarget as HTMLButtonElement).style.background = active
+          ? isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'
+          : 'transparent';
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Pill({
+  label,
+  onClick,
+  disabled,
+  title,
+  isDark,
+}: {
+  label: string;
+  onClick?: () => void;
+  disabled?: boolean;
+  title?: string;
+  isDark: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      style={{
+        padding: '3px 10px',
+        borderRadius: '999px',
+        border: `1px solid ${isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)'}`,
+        background: 'transparent',
+        color: disabled
+          ? isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)'
+          : isDark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.6)',
+        fontSize: '11px',
+        fontFamily: FONT_FAMILY,
+        cursor: disabled ? 'default' : 'pointer',
+        whiteSpace: 'nowrap' as const,
+        transition: 'background 0.12s, color 0.12s',
+      }}
+      onMouseEnter={e => {
+        if (!disabled) {
+          (e.currentTarget as HTMLButtonElement).style.background = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)';
+        }
+      }}
+      onMouseLeave={e => {
+        (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Markdown renderer (kept compact, reuses existing logic)
+// ---------------------------------------------------------------------------
+
+function MarkdownView({ text, isDark }: { text: string; isDark: boolean }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        code({ node, inline, className, children, ...props }: any) {
+          return inline ? (
+            <code
+              className={className}
+              style={{
+                background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+                padding: '2px 4px',
+                borderRadius: '3px',
+                fontFamily: FONT_FAMILY_MONO,
+                fontSize: '12px',
+              }}
+              {...props}
+            >{children}</code>
+          ) : (
+            <pre style={{
+              background: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)',
+              padding: '12px',
+              borderRadius: '6px',
+              overflow: 'auto',
+              border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`,
+              marginBottom: '12px',
+            }} {...props}>
+              <code style={{ fontFamily: FONT_FAMILY_MONO, fontSize: '12px' }}>{children}</code>
+            </pre>
+          );
+        },
+        h1: ({ node, ...props }: any) => <h1 style={{ fontSize: '22px', fontWeight: 700, margin: '20px 0 10px', color: isDark ? '#fff' : '#000' }} {...props} />,
+        h2: ({ node, ...props }: any) => <h2 style={{ fontSize: '18px', fontWeight: 600, margin: '16px 0 8px', color: isDark ? '#e5e7eb' : '#1f2937' }} {...props} />,
+        h3: ({ node, ...props }: any) => <h3 style={{ fontSize: '15px', fontWeight: 600, margin: '12px 0 6px', color: isDark ? '#d1d5db' : '#374151' }} {...props} />,
+        p: ({ node, ...props }: any) => <p style={{ marginBottom: '12px', lineHeight: 1.65, color: isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.8)' }} {...props} />,
+        ul: ({ node, ...props }: any) => <ul style={{ marginLeft: '20px', marginBottom: '12px', listStyle: 'disc' }} {...props} />,
+        ol: ({ node, ...props }: any) => <ol style={{ marginLeft: '20px', marginBottom: '12px', listStyle: 'decimal' }} {...props} />,
+        li: ({ node, ...props }: any) => <li style={{ marginBottom: '5px', color: isDark ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.75)' }} {...props} />,
+        table: ({ node, ...props }: any) => <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '12px', border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }} {...props} />,
+        th: ({ node, ...props }: any) => <th style={{ padding: '8px', textAlign: 'left', fontWeight: 600, background: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }} {...props} />,
+        td: ({ node, ...props }: any) => <td style={{ padding: '8px', border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}` }} {...props} />,
+      }}
+    >
+      {text}
+    </ReactMarkdown>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Diff view
+// ---------------------------------------------------------------------------
+
+function DiffView({ oldText, newText, isDark }: { oldText: string; newText: string; isDark: boolean }) {
+  const hunks = simpleDiff(oldText, newText);
+  return (
+    <pre style={{
+      fontFamily: FONT_FAMILY_MONO,
+      fontSize: '12px',
+      lineHeight: 1.6,
+      margin: 0,
+      padding: 0,
+      color: isDark ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.75)',
+    }}>
+      {hunks.map((h, idx) => {
+        const bg = h.type === 'added'
+          ? 'rgba(34,197,94,0.08)'
+          : h.type === 'removed'
+          ? 'rgba(239,68,68,0.08)'
+          : 'transparent';
+        const borderLeft = h.type === 'added'
+          ? '2px solid rgba(34,197,94,0.6)'
+          : h.type === 'removed'
+          ? '2px solid rgba(239,68,68,0.5)'
+          : '2px solid transparent';
+        const prefix = h.type === 'added' ? '+ ' : h.type === 'removed' ? '- ' : '  ';
+        return (
+          <div
+            key={idx}
+            style={{
+              background: bg,
+              borderLeft,
+              paddingLeft: '10px',
+              textDecoration: h.type === 'removed' ? 'line-through' : 'none',
+              color: h.type === 'removed' ? (isDark ? 'rgba(239,68,68,0.7)' : 'rgba(200,30,30,0.8)') : undefined,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all',
+            }}
+          >
+            {prefix}{h.line}
+          </div>
+        );
+      })}
+    </pre>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
 
 export function CanvasPanel({ content, onClose, onDownload, onEditModeChange, isAIWriting = false }: CanvasPanelProps) {
   const { isDarkMode } = useTheme();
-  const [copiedRecently, setCopiedRecently] = useState(false);
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [editContent, setEditContent] = useState(content.content);
-  const [versions, setVersions] = useState<Version[]>([]);
-  const [showVersions, setShowVersions] = useState(false);
-  const [undoStack, setUndoStack] = useState<string[]>([content.content]);
-  const [redoStack, setRedoStack] = useState<string[]>([]);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const editRef = useRef<HTMLTextAreaElement>(null);
 
-  // Track edit mode changes and notify parent
+  // Version history (up to 20)
+  const [versions, setVersions] = useState<Version[]>([{ id: '0', timestamp: Date.now(), content: content.content }]);
+  const [versionIndex, setVersionIndex] = useState(0);
+  const prevContentRef = useRef(content.content);
+
+  // Track content prop changes → push new version
   useEffect(() => {
-    onEditModeChange?.(isEditMode);
-  }, [isEditMode, onEditModeChange]);
-
-  // Responsive width: 45% on desktop, smaller on mobile/tablet
-  const getCanvasWidth = () => {
-    const windowWidth = typeof window !== 'undefined' ? window.innerWidth : 1280;
-    if (windowWidth < 640) return Math.min(100, 70); // Mobile: 70% max
-    if (windowWidth < 1024) return Math.min(50, 45); // Tablet: 45-50%
-    return 45; // Desktop: 45%
-  };
-
-  const [canvasWidth, setCanvasWidth] = useState(getCanvasWidth());
-
-  // Update canvas width on window resize
-  useEffect(() => {
-    const handleResize = () => {
-      setCanvasWidth(getCanvasWidth());
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  // Initialize with current version
-  useEffect(() => {
-    if (!versions.length) {
-      const initialVersion: Version = {
-        id: Date.now().toString(),
-        timestamp: Date.now(),
-        content: content.content,
-        title: content.title,
-        savedAt: new Date(),
-      };
-      setVersions([initialVersion]);
-    }
-  }, []);
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(content.content);
-    setCopiedRecently(true);
-    setTimeout(() => setCopiedRecently(false), 2000);
-  };
-
-  const handleDownload = () => {
-    if (!content.blob) {
-      // Fallback: create blob from content
-      const blob = new Blob([content.content], {
-        type: content.fileType === 'code' ? 'text/plain' : 'text/markdown',
+    if (content.content !== prevContentRef.current) {
+      prevContentRef.current = content.content;
+      setVersions(prev => {
+        const next = [...prev, { id: Date.now().toString(), timestamp: Date.now(), content: content.content }];
+        if (next.length > 20) next.shift();
+        return next;
       });
-      onDownload?.(blob, `${content.title}`);
-    } else {
-      onDownload?.(content.blob, `${content.title}`);
+      setVersionIndex(prev => Math.min(prev + 1, 19));
     }
-  };
+  }, [content.content]);
 
-  const handleSave = () => {
-    if (editContent.trim()) {
-      // Save to version history
-      const newVersion: Version = {
-        id: Date.now().toString(),
-        timestamp: Date.now(),
-        content: editContent,
-        title: content.title,
-        savedAt: new Date(),
-      };
-      setVersions([...versions, newVersion]);
-      setUndoStack([...undoStack, editContent]);
-      setRedoStack([]);
-      setIsEditMode(false);
-      setCopiedRecently(false);
+  // Current displayed content (may differ if navigating versions)
+  const currentContent = versions[versionIndex]?.content ?? content.content;
+
+  // Editable title
+  const [title, setTitle] = useState(content.title);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editingTitle) titleInputRef.current?.select();
+  }, [editingTitle]);
+
+  // UI state
+  const [copied, setCopied] = useState(false);
+  const [showDiff, setShowDiff] = useState(false);
+  const [previewTab, setPreviewTab] = useState<'code' | 'preview'>('code');
+
+  // Code execution state
+  const [runOutput, setRunOutput] = useState<{ text: string; error: boolean } | null>(null);
+  const [iframeError, setIframeError] = useState<string | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // Listen for messages from iframe
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (e.source === iframeRef.current?.contentWindow) {
+        if (e.data?.error) setIframeError(String(e.data.error));
+        else if (e.data?.clearError) setIframeError(null);
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  // Notify parent of edit mode (no edit mode in new design — read-only view with action pills)
+  useEffect(() => {
+    onEditModeChange?.(false);
+  }, [onEditModeChange]);
+
+  // Canvas width
+  const getWidth = () => {
+    const w = typeof window !== 'undefined' ? window.innerWidth : 1280;
+    if (w < 640) return 70;
+    if (w < 1024) return 45;
+    return 45;
+  };
+  const [canvasWidth, setCanvasWidth] = useState(getWidth);
+  useEffect(() => {
+    const onResize = () => setCanvasWidth(getWidth());
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Actions
+  // ---------------------------------------------------------------------------
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(currentContent);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [currentContent]);
+
+  const handleDownload = useCallback(() => {
+    const blob = content.blob ?? new Blob([currentContent], { type: 'text/plain' });
+    onDownload?.(blob, title || content.title);
+  }, [content.blob, currentContent, onDownload, title, content.title]);
+
+  const dispatchAction = useCallback((action: string) => {
+    window.dispatchEvent(new CustomEvent('neuro-canvas-action', {
+      detail: { action, content: currentContent },
+    }));
+  }, [currentContent]);
+
+  const handleRun = useCallback(() => {
+    setRunOutput(null);
+    if (canRunJS(content)) {
+      try {
+        const code = `try { ${currentContent} } catch(e) { postMessage({ error: e.message }) }`;
+        const blob = new Blob([code], { type: 'application/javascript' });
+        const worker = new Worker(URL.createObjectURL(blob));
+        worker.onmessage = (e) => {
+          if (e.data?.error) {
+            setRunOutput({ text: e.data.error, error: true });
+          } else {
+            setRunOutput({ text: String(e.data ?? '(no output)'), error: false });
+          }
+          worker.terminate();
+        };
+        worker.onerror = (e) => {
+          setRunOutput({ text: e.message || 'Worker error', error: true });
+          worker.terminate();
+        };
+      } catch (e: any) {
+        setRunOutput({ text: e.message || 'Failed to run', error: true });
+      }
     }
+  }, [content, currentContent]);
+
+  // Navigation
+  const canGoBack = versionIndex > 0;
+  const canGoForward = versionIndex < versions.length - 1;
+
+  const navigateVersion = (delta: number) => {
+    setVersionIndex(i => Math.max(0, Math.min(versions.length - 1, i + delta)));
   };
 
-  const handleUndo = () => {
-    if (undoStack.length > 1) {
-      const current = undoStack[undoStack.length - 1];
-      const previous = undoStack[undoStack.length - 2];
-      setRedoStack([...redoStack, current]);
-      setUndoStack(undoStack.slice(0, -1));
-      setEditContent(previous);
+  // Diff: compare current version with previous
+  const prevVersionContent = versionIndex > 0 ? versions[versionIndex - 1].content : '';
+  const hasPrevForDiff = versionIndex > 0;
+
+  // Language label
+  const langLabel = getLanguageLabel(content);
+
+  // ---------------------------------------------------------------------------
+  // Colors
+  // ---------------------------------------------------------------------------
+
+  const bg = isDarkMode ? '#141420' : '#EEECEA';
+  const border = isDarkMode ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
+  const textPrimary = isDarkMode ? 'rgba(255,255,255,0.88)' : 'rgba(0,0,0,0.85)';
+  const textDim = isDarkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)';
+
+  // ---------------------------------------------------------------------------
+  // Render content (code tab / static view)
+  // ---------------------------------------------------------------------------
+
+  function renderMainContent() {
+    if (showDiff && hasPrevForDiff) {
+      return (
+        <div style={{ padding: '16px' }}>
+          <DiffView oldText={prevVersionContent} newText={currentContent} isDark={isDarkMode} />
+        </div>
+      );
     }
-  };
 
-  const handleRedo = () => {
-    if (redoStack.length > 0) {
-      const toRedo = redoStack[redoStack.length - 1];
-      setUndoStack([...undoStack, toRedo]);
-      setRedoStack(redoStack.slice(0, -1));
-      setEditContent(toRedo);
+    const isHTML = canRunHTML(content);
+    const isJS = canRunJS(content);
+
+    if (isHTML) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          {/* Code / Preview tabs */}
+          <div style={{
+            display: 'flex',
+            gap: '2px',
+            padding: '8px 16px 0',
+            borderBottom: `1px solid ${border}`,
+          }}>
+            {(['code', 'preview'] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setPreviewTab(tab)}
+                style={{
+                  padding: '5px 12px',
+                  border: 'none',
+                  borderRadius: '5px 5px 0 0',
+                  background: previewTab === tab
+                    ? isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'
+                    : 'transparent',
+                  color: previewTab === tab ? textPrimary : textDim,
+                  fontSize: '11px',
+                  fontFamily: FONT_FAMILY,
+                  cursor: 'pointer',
+                  fontWeight: previewTab === tab ? 500 : 400,
+                  borderBottom: previewTab === tab ? `2px solid ${isDarkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'}` : '2px solid transparent',
+                  transition: 'all 0.12s',
+                }}
+              >
+                {tab === 'code' ? 'Code' : 'Preview'}
+              </button>
+            ))}
+          </div>
+          <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+            {previewTab === 'code' ? (
+              <div style={{ height: '100%', overflow: 'auto', padding: '16px' }}>
+                <pre style={{
+                  margin: 0,
+                  fontFamily: FONT_FAMILY_MONO,
+                  fontSize: '12px',
+                  lineHeight: 1.65,
+                  color: textPrimary,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-all',
+                }}>
+                  <code>{currentContent}</code>
+                </pre>
+              </div>
+            ) : (
+              <iframe
+                ref={iframeRef}
+                sandbox="allow-scripts allow-same-origin"
+                srcDoc={currentContent}
+                style={{ width: '100%', height: '100%', border: 'none' }}
+                title="preview"
+              />
+            )}
+          </div>
+          {iframeError && (
+            <div style={{
+              padding: '8px 16px',
+              background: 'rgba(239,68,68,0.1)',
+              borderTop: '1px solid rgba(239,68,68,0.2)',
+              color: isDarkMode ? 'rgba(239,68,68,0.85)' : 'rgba(185,28,28,0.9)',
+              fontSize: '11px',
+              fontFamily: FONT_FAMILY_MONO,
+            }}>
+              Error: {iframeError}
+              <button
+                onClick={() => setIframeError(null)}
+                style={{ marginLeft: '8px', background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', opacity: 0.6, fontSize: '11px' }}
+              >
+                dismiss
+              </button>
+            </div>
+          )}
+        </div>
+      );
     }
-  };
 
-  const handleRevertToVersion = (version: Version) => {
-    setEditContent(version.content);
-    setIsEditMode(true);
-    setShowVersions(false);
-  };
+    if (content.fileType === 'code' || content.fileType === 'txt') {
+      return (
+        <div style={{ height: '100%', overflow: 'auto', padding: '16px' }}>
+          <pre style={{
+            margin: 0,
+            fontFamily: FONT_FAMILY_MONO,
+            fontSize: '12px',
+            lineHeight: 1.65,
+            color: textPrimary,
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-all',
+          }}>
+            <code>{currentContent}</code>
+          </pre>
+        </div>
+      );
+    }
 
-  // Show live word count when streaming, or edit word count when editing
-  const displayContent = isEditMode ? editContent : content.content;
-  const wordCount = displayContent.split(/\s+/).filter(w => w.length > 0).length;
+    if (content.fileType === 'md') {
+      return (
+        <div style={{ height: '100%', overflow: 'auto', padding: '20px 24px', fontSize: '13px', lineHeight: 1.7, fontFamily: FONT_FAMILY }}>
+          <MarkdownView text={currentContent} isDark={isDarkMode} />
+        </div>
+      );
+    }
+
+    if (content.fileType === 'pdf' || content.fileType === 'docx') {
+      return (
+        <div style={{ padding: '32px', textAlign: 'center', color: textDim }}>
+          <div style={{ fontSize: '11px' }}>
+            {content.fileType === 'pdf' ? 'PDF preview not available' : 'Word document preview not available'}
+          </div>
+          <div style={{ fontSize: '11px', marginTop: '6px', opacity: 0.7 }}>Use Download to open in the appropriate application.</div>
+        </div>
+      );
+    }
+
+    return (
+      <div style={{ padding: '16px', color: textDim, fontSize: '12px' }}>Unsupported file type.</div>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // JSX
+  // ---------------------------------------------------------------------------
 
   return (
     <AnimatePresence>
@@ -397,410 +610,195 @@ export function CanvasPanel({ content, onClose, onDownload, onEditModeChange, is
         initial={{ opacity: 0, width: 0 }}
         animate={{ opacity: 1, width: `${canvasWidth}%` }}
         exit={{ opacity: 0, width: 0 }}
-        transition={{ duration: 0.2 }}
+        transition={{ duration: 0.18, ease: 'easeOut' }}
         style={{
           position: 'relative',
           width: `${canvasWidth}%`,
           minWidth: 0,
           height: '100%',
-          background: isDarkMode ? '#141420' : '#EEECEA',
-          borderLeft: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`,
+          background: bg,
+          borderLeft: `1px solid ${border}`,
           display: 'flex',
           flexDirection: 'column',
-          boxShadow: isDarkMode ? '0 -10px 40px rgba(0,0,0,0.3)' : '0 -10px 40px rgba(0,0,0,0.08)',
           overflow: 'hidden',
+          fontFamily: FONT_FAMILY,
         }}
       >
-        {/* Header */}
-        <div
-          style={{
-            padding: '12px 16px',
-            borderBottom: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)'}`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '12px',
-          }}
-        >
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <h3
-              style={{
-                fontSize: '13px',
-                fontWeight: 600,
-                margin: 0,
-                color: isDarkMode ? '#ffffff' : '#000000',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                fontFamily: FONT_FAMILY,
-              }}
-            >
-              {content.title}
-            </h3>
-            <div
-              style={{
-                fontSize: '10px',
-                color: isDarkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.4)',
-                marginTop: '2px',
-                fontFamily: FONT_FAMILY,
-              }}
-            >
-              {wordCount} words • {content.fileType.toUpperCase()}
-            </div>
-          </div>
-
-          {/* Action buttons */}
-          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-            {/* Lock indicator */}
-            {isAIWriting && (
-              <div
+        {/* ---- Header ---- */}
+        <div style={{
+          padding: '10px 12px',
+          borderBottom: `1px solid ${border}`,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          minHeight: '44px',
+        }}>
+          {/* Left: editable title */}
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {editingTitle ? (
+              <input
+                ref={titleInputRef}
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                onBlur={() => setEditingTitle(false)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') setEditingTitle(false); }}
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  padding: '6px 8px',
-                  borderRadius: '6px',
-                  background: isDarkMode ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.08)',
-                  border: `1px solid ${isDarkMode ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.15)'}`,
-                  fontSize: '11px',
-                  color: isDarkMode ? 'rgba(239,68,68,0.8)' : 'rgba(239,68,68,0.7)',
-                }}
-                title="AI is writing. Editing is disabled."
-              >
-                <Lock size={12} />
-                AI writing
-              </div>
-            )}
-
-            {isEditMode && isAIWriting && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  padding: '6px 8px',
-                  borderRadius: '6px',
-                  background: isDarkMode ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.08)',
-                  border: `1px solid ${isDarkMode ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.15)'}`,
-                  fontSize: '11px',
-                  color: isDarkMode ? 'rgba(239,68,68,0.8)' : 'rgba(239,68,68,0.7)',
-                }}
-                title="AI has started writing. Click Save to keep your changes, then editing will be disabled while AI writes."
-              >
-                <Unlock size={12} />
-                Save before AI
-              </div>
-            )}
-
-            {!isEditMode && !isAIWriting && (
-              <button
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsEditMode(true); }}
-                onMouseDown={(e) => e.preventDefault()}
-                style={{
-                  background: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
+                  background: 'transparent',
                   border: 'none',
-                  borderRadius: '6px',
-                  padding: '6px 8px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  color: isDarkMode ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)',
-                  fontSize: '11px',
-                  transition: 'all 0.15s',
-                }}
-                title="Edit document"
-              >
-                <Edit2 size={12} style={{ marginRight: '4px' }} />
-                Edit
-              </button>
-            )}
-
-            {isEditMode && (
-              <>
-                <button
-                  onClick={handleUndo}
-                  disabled={undoStack.length <= 1}
-                  style={{
-                    background: undoStack.length <= 1 ? 'rgba(255,255,255,0.02)' : (isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'),
-                    border: 'none',
-                    borderRadius: '6px',
-                    padding: '6px 8px',
-                    cursor: undoStack.length <= 1 ? 'default' : 'pointer',
-                    color: isDarkMode ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)',
-                    fontSize: '11px',
-                    opacity: undoStack.length <= 1 ? 0.5 : 1,
-                  }}
-                  title="Undo"
-                >
-                  ↶ Undo
-                </button>
-                <button
-                  onClick={handleRedo}
-                  disabled={redoStack.length === 0}
-                  style={{
-                    background: redoStack.length === 0 ? 'rgba(255,255,255,0.02)' : (isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'),
-                    border: 'none',
-                    borderRadius: '6px',
-                    padding: '6px 8px',
-                    cursor: redoStack.length === 0 ? 'default' : 'pointer',
-                    color: isDarkMode ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)',
-                    fontSize: '11px',
-                    opacity: redoStack.length === 0 ? 0.5 : 1,
-                  }}
-                  title="Redo"
-                >
-                  ↷ Redo
-                </button>
-              </>
-            )}
-
-            <button
-              onClick={() => setShowVersions(!showVersions)}
-              style={{
-                background: showVersions ? 'rgba(59,130,246,0.15)' : (isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'),
-                border: 'none',
-                borderRadius: '6px',
-                padding: '6px 8px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                color: showVersions ? '#3b82f6' : (isDarkMode ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)'),
-                fontSize: '11px',
-                transition: 'all 0.15s',
-              }}
-              title="Version history"
-            >
-              ⏱ {versions.length}
-            </button>
-
-            <button
-              onClick={handleCopy}
-              style={{
-                background: copiedRecently
-                  ? 'rgba(34,197,94,0.1)'
-                  : isDarkMode
-                    ? 'rgba(255,255,255,0.04)'
-                    : 'rgba(0,0,0,0.04)',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '6px 8px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                color: copiedRecently ? '#22c55e' : isDarkMode ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)',
-                fontSize: '11px',
-                transition: 'all 0.15s',
-              }}
-              title="Copy to clipboard"
-            >
-              <Copy size={12} style={{ marginRight: '4px' }} />
-              {copiedRecently ? 'Copied' : 'Copy'}
-            </button>
-
-            <button
-              onClick={handleDownload}
-              style={{
-                background: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '6px 8px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                color: isDarkMode ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)',
-                fontSize: '11px',
-                transition: 'all 0.15s',
-              }}
-              title="Download file"
-            >
-              <Download size={12} style={{ marginRight: '4px' }} />
-              Download
-            </button>
-
-            <button
-              onClick={onClose}
-              style={{
-                background: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '6px 8px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                color: isDarkMode ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)',
-                fontSize: '11px',
-                transition: 'all 0.15s',
-              }}
-              title="Close canvas"
-            >
-              <X size={12} />
-            </button>
-          </div>
-        </div>
-
-        {/* Streaming progress bar */}
-        {content.isWriting && (
-          <motion.div
-            initial={{ opacity: 0.3 }}
-            animate={{ opacity: [0.3, 1, 0.3] }}
-            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-            style={{
-              height: '2px',
-              background: 'linear-gradient(90deg, #8b5cf6 0%, #a78bfa 50%, #8b5cf6 100%)',
-              backgroundSize: '200% 100%',
-              animation: 'streamGradient 2s ease-in-out infinite',
-            }}
-          />
-        )}
-
-        {/* Main content area with version sidebar */}
-        <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-          {/* Content area */}
-          <div
-            ref={contentRef}
-            style={{
-              flex: 1,
-              overflow: 'auto',
-              padding: '16px',
-              fontSize: '13px',
-              lineHeight: 1.7,
-              fontFamily: FONT_FAMILY,
-            }}
-          >
-            {isEditMode ? (
-              <textarea
-                ref={editRef}
-                value={editContent}
-                onChange={e => {
-                  if (!isAIWriting) {
-                    setEditContent(e.target.value);
-                    e.target.style.height = 'auto';
-                    e.target.style.height = Math.min(e.target.scrollHeight, window.innerHeight - 200) + 'px';
-                  }
-                }}
-                disabled={isAIWriting}
-                style={{
-                  width: '100%',
-                  minHeight: '400px',
-                  padding: '12px',
-                  borderRadius: '6px',
-                  border: `1px solid ${isAIWriting ? (isDarkMode ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.15)') : (isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)')}`,
-                  background: isAIWriting ? (isDarkMode ? 'rgba(239,68,68,0.05)' : 'rgba(239,68,68,0.02)') : (isDarkMode ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)'),
-                  color: isDarkMode ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.82)',
-                  fontFamily: 'monospace',
-                  fontSize: '13px',
-                  lineHeight: '1.6',
-                  resize: 'none',
+                  borderBottom: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)'}`,
                   outline: 'none',
-                  opacity: isAIWriting ? 0.6 : 1,
-                  cursor: isAIWriting ? 'not-allowed' : 'text',
+                  color: textPrimary,
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  fontFamily: FONT_FAMILY,
+                  width: '100%',
+                  padding: '1px 2px',
                 }}
+                autoFocus
               />
-            ) : content.isWriting ? (
-              <div style={{ color: isDarkMode ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.8)' }}>
-                {editContent}
-                <span
-                  style={{
-                    animation: 'blink 1s infinite',
-                    marginLeft: '2px',
-                    display: 'inline-block',
-                  }}
-                >
-                  ▌
-                </span>
-              </div>
             ) : (
-              renderContent({ ...content, content: editContent }, isDarkMode)
+              <span
+                onClick={() => setEditingTitle(true)}
+                title="Click to rename"
+                style={{
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  color: textPrimary,
+                  cursor: 'text',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  userSelect: 'none',
+                }}
+              >
+                {title || content.title}
+              </span>
             )}
           </div>
 
-          {/* Version history sidebar */}
-          {showVersions && (
+          {/* Center: language badge */}
+          <span style={{
+            fontSize: '10px',
+            color: textDim,
+            background: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+            padding: '2px 7px',
+            borderRadius: '4px',
+            fontFamily: FONT_FAMILY_MONO,
+            letterSpacing: '0.02em',
+            flexShrink: 0,
+          }}>
+            {langLabel}
+          </span>
+
+          {/* Streaming indicator */}
+          {content.isWriting && (
             <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 200, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              style={{
-                borderLeft: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`,
-                background: isDarkMode ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.02)',
-                overflow: 'auto',
-                display: 'flex',
-                flexDirection: 'column',
-              }}
-            >
-              <div style={{ padding: '12px', fontSize: '11px', fontWeight: 600, color: isDarkMode ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)', borderBottom: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}` }}>
-                Versions ({versions.length})
-              </div>
-              <div style={{ flex: 1, overflow: 'auto' }}>
-                {versions.map((v, i) => (
-                  <button
-                    key={v.id}
-                    onClick={() => handleRevertToVersion(v)}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: 'none',
-                      background: 'transparent',
-                      borderBottom: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'}`,
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      transition: 'background 0.15s',
-                    }}
-                    onMouseEnter={e => (e.currentTarget.style.background = isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    <div style={{ fontSize: '10px', color: isDarkMode ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.7)', fontWeight: 500 }}>
-                      v{versions.length - i}
-                    </div>
-                    <div style={{ fontSize: '9px', color: isDarkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)', marginTop: '2px' }}>
-                      {v.savedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </motion.div>
+              animate={{ opacity: [0.4, 1, 0.4] }}
+              transition={{ duration: 1.4, repeat: Infinity }}
+              style={{ width: '6px', height: '6px', borderRadius: '50%', background: isDarkMode ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)', flexShrink: 0 }}
+            />
           )}
+
+          {/* Version info */}
+          {versions.length > 1 && (
+            <span style={{ fontSize: '10px', color: textDim, whiteSpace: 'nowrap', flexShrink: 0 }}>
+              {versionIndex + 1}/{versions.length}
+            </span>
+          )}
+
+          {/* Right: icon buttons */}
+          <div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }}>
+            <IconButton onClick={() => navigateVersion(-1)} disabled={!canGoBack} title="Previous version" isDark={isDarkMode}>
+              <ChevronLeft size={14} />
+            </IconButton>
+            <IconButton onClick={() => navigateVersion(1)} disabled={!canGoForward} title="Next version" isDark={isDarkMode}>
+              <ChevronRight size={14} />
+            </IconButton>
+            <IconButton
+              onClick={() => setShowDiff(d => !d)}
+              disabled={!hasPrevForDiff}
+              title={showDiff ? 'Hide changes' : 'Show changes'}
+              active={showDiff}
+              isDark={isDarkMode}
+            >
+              {showDiff ? <EyeOff size={14} /> : <Eye size={14} />}
+            </IconButton>
+            <IconButton onClick={handleCopy} title={copied ? 'Copied!' : 'Copy'} active={copied} isDark={isDarkMode}>
+              <Copy size={14} />
+            </IconButton>
+            <IconButton onClick={handleDownload} title="Download" isDark={isDarkMode}>
+              <Download size={14} />
+            </IconButton>
+            <IconButton onClick={onClose} title="Close" isDark={isDarkMode}>
+              <X size={14} />
+            </IconButton>
+          </div>
         </div>
 
-        {/* Status footer */}
-        <div
-          style={{
-            padding: '8px 16px',
-            borderTop: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)'}`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            fontSize: '10px',
-            color: isDarkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.4)',
-            fontFamily: FONT_FAMILY,
-          }}
-        >
-          <span>
-            {content.isWriting ? (
-              <span style={{ color: '#8b5cf6' }}>• streaming... ({wordCount} words)</span>
-            ) : (
-              <span>✓ Complete ({wordCount} words)</span>
-            )}
-          </span>
-          {isEditMode && (
-            <button
-              onClick={handleSave}
-              style={{
-                padding: '4px 10px',
-                borderRadius: '4px',
-                border: 'none',
-                background: '#3b82f6',
-                color: '#fff',
-                cursor: 'pointer',
-                fontSize: '10px',
-                fontWeight: 500,
-              }}
-            >
-              Save Changes
-            </button>
-          )}
+        {/* ---- Shortcut pills ---- */}
+        <div style={{
+          padding: '7px 12px',
+          borderBottom: `1px solid ${border}`,
+          display: 'flex',
+          gap: '6px',
+          flexWrap: 'nowrap',
+          overflowX: 'auto',
+          scrollbarWidth: 'none',
+        }}>
+          {isCodeFile(content) ? (
+            <>
+              <Pill label="Review" onClick={() => dispatchAction('review')} isDark={isDarkMode} />
+              <Pill label="Fix bugs" onClick={() => dispatchAction('fix_bugs')} isDark={isDarkMode} />
+              <Pill label="Add comments" onClick={() => dispatchAction('add_comments')} isDark={isDarkMode} />
+              <Pill label="Add logs" onClick={() => dispatchAction('add_logs')} isDark={isDarkMode} />
+              {canRunHTML(content) ? (
+                <Pill label="Run" onClick={() => setPreviewTab('preview')} isDark={isDarkMode} />
+              ) : canRunJS(content) ? (
+                <Pill label="Run" onClick={handleRun} isDark={isDarkMode} />
+              ) : (
+                <Pill label="Run" disabled isDark={isDarkMode} title="Run supported for HTML and JavaScript" />
+              )}
+            </>
+          ) : isTextFile(content) ? (
+            <>
+              <Pill label="Shorter" onClick={() => dispatchAction('shorter')} isDark={isDarkMode} />
+              <Pill label="Longer" onClick={() => dispatchAction('longer')} isDark={isDarkMode} />
+              <Pill label="Polish" onClick={() => dispatchAction('polish')} isDark={isDarkMode} />
+              <Pill label="Simplify" onClick={() => dispatchAction('simplify')} isDark={isDarkMode} />
+            </>
+          ) : null}
         </div>
+
+        {/* ---- Main content area ---- */}
+        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          {renderMainContent()}
+        </div>
+
+        {/* ---- JS Run output panel ---- */}
+        {runOutput && (
+          <div style={{
+            padding: '8px 16px',
+            borderTop: `1px solid ${border}`,
+            background: isDarkMode ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.03)',
+            fontFamily: FONT_FAMILY_MONO,
+            fontSize: '11px',
+            color: runOutput.error
+              ? (isDarkMode ? 'rgba(239,68,68,0.85)' : 'rgba(185,28,28,0.9)')
+              : textPrimary,
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '8px',
+          }}>
+            <span style={{ color: textDim, userSelect: 'none', flexShrink: 0 }}>output</span>
+            <span style={{ flex: 1, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{runOutput.text}</span>
+            <button
+              onClick={() => setRunOutput(null)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: textDim, fontSize: '11px', flexShrink: 0 }}
+            >
+              clear
+            </button>
+          </div>
+        )}
       </motion.div>
     </AnimatePresence>
   );

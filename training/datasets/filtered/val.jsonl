@@ -1,0 +1,1 @@
+{"screenshot": "/Users/mk/Downloads/nomads/training/datasets/filtered/synthetic_images/synthetic_003_system preferences.jpg", "instruction": "Click the red close button to dismiss the dialog", "bbox_gemma": [15, 8, 26, 15], "bbox_norm": [0.008333, 0.014815, 0.014583, 0.025926], "platform": "macos", "app": "System Preferences", "source": "synthetic"}

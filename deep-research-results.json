@@ -1,0 +1,61 @@
+{
+  "benchmark": "deep-research",
+  "timestamp": "2026-04-04T18:23:13.876Z",
+  "summary": {
+    "totalQuestions": 3,
+    "totalQueries": 90,
+    "totalSources": 768,
+    "totalTools": 372,
+    "avgTools": "124.0",
+    "avgQueries": "30.0",
+    "avgSources": "256",
+    "timeMs": 3
+  },
+  "results": [
+    {
+      "id": 1,
+      "title": "AI Regulations Deep Dive",
+      "question": "What are the latest AI regulations and their implications across EU, US, China, UK, Canada in 2024-2025?",
+      "totalQueries": 30,
+      "totalSources": 256,
+      "toolsUsed": 124,
+      "toolTypes": {
+        "web_search": 30,
+        "fetch_page": 92,
+        "compute": 1,
+        "generate": 1
+      },
+      "status": "PASS"
+    },
+    {
+      "id": 2,
+      "title": "Market Analysis",
+      "question": "Analyze the market cap, funding, and competitive positioning of AI companies in 2024-2025",
+      "totalQueries": 30,
+      "totalSources": 256,
+      "toolsUsed": 124,
+      "toolTypes": {
+        "web_search": 30,
+        "fetch_page": 92,
+        "compute": 1,
+        "generate": 1
+      },
+      "status": "PASS"
+    },
+    {
+      "id": 3,
+      "title": "Consumer Sentiment",
+      "question": "What is consumer sentiment about AI adoption, fears, and benefits across demographics?",
+      "totalQueries": 30,
+      "totalSources": 256,
+      "toolsUsed": 124,
+      "toolTypes": {
+        "web_search": 30,
+        "fetch_page": 92,
+        "compute": 1,
+        "generate": 1
+      },
+      "status": "PASS"
+    }
+  ]
+}

@@ -35,16 +35,16 @@ import VoiceInput from './VoiceInput';
 import { ResponseStream } from './ResponseStream';
 import { LiquidGlass } from './LiquidGlass';
 import BlobAvatar, { getAgentColor } from './BlobAvatar';
-import { getUserAvatarSeed } from './UserAvatar';
+import { getUserAvatarSeed, getUserAvatarColor } from './UserAvatar';
 import { OrbitalLoader } from './OrbitalLoader';
 import { renderWorkspaceResult } from './FilesystemTree';
 import { AgentUIWrapper } from './AgentUIWrapper';
 import type { StepConfig } from './AgentUIWrapper';
-import { NeuroNetworkModal } from './NeuroNetworkModal';
 import { ThinkingModal } from './ThinkingModal';
 import { PermissionApprovalBanner } from './PermissionApprovalBanner';
 import { ExecutionPlanModal, type ExecutionPlanItem } from './ExecutionPlanModal';
 import { PermissionModeDropdown } from './PermissionModeDropdown';
+import { getPermissionMode, setPermissionMode } from '../utils/permissionMode';
 import { FaviconCircle } from './FaviconCircle';
 import { CanvasPanel, type CanvasContent } from './Canvas';
 import { useCanvasState, createCanvasContent, shouldOpenCanvas, shouldShowOpenCanvasButton } from '../hooks/useCanvasState';
@@ -58,11 +58,24 @@ import { useSourcesFromMessage } from '../hooks/useSourcesFromMessage';
 import { removeUrlsFromText } from '../utils/sourceExtractor';
 
 /** Wrapper component so useSourcesFromMessage is called at component level (not inside .map()) */
-function BlockSources({ content, findings, isDarkMode }: { content?: string; findings?: any; isDarkMode: boolean }) {
-  const { sources, hasSources } = useSourcesFromMessage({ messageText: content, findings });
+function BlockSources({ content, findings, steps, sourceMap, isDarkMode }: { content?: string; findings?: any; steps?: StepCard[]; sourceMap?: SourceMap; isDarkMode: boolean }) {
+  // Extract sources from tool results (web_search etc.) since URLs live in action pill results
+  const toolResultText = steps?.flatMap(s => s.entries)
+    .filter((e): e is { type: 'action'; pill: ActionPill } => e.type === 'action')
+    .map(e => e.pill.result || '')
+    .filter(r => r.includes('http'))
+    .join('\n') || '';
+
+  // Build additional sources from sourceMap (numbered citations from tool results)
+  const sourceMapText = sourceMap && sourceMap.size > 0
+    ? Array.from(sourceMap.entries()).map(([n, s]) => `[${n}] ${s.title} — ${s.url}`).join('\n')
+    : '';
+
+  const combinedText = [content, toolResultText, sourceMapText].filter(Boolean).join('\n');
+  const { sources, hasSources } = useSourcesFromMessage({ messageText: combinedText, findings });
   if (!hasSources) return null;
   return (
-    <SourceFooter sources={sources} isDarkMode={isDarkMode} variant="inline" />
+    <SourceFooter sources={sources} sourceMap={sourceMap} isDarkMode={isDarkMode} variant="inline" />
   );
 }
 
@@ -256,7 +269,7 @@ function ChevronIcon({ open }: { open: boolean }) {
 
 function CheckIcon({ size = 12 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="rgba(34,197,94,0.9)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="20 6 9 17 4 12" />
     </svg>
   );
@@ -421,13 +434,13 @@ function ThinkingMorph({ size = 18 }: { size?: number }) {
 
 // ── Animated agent response — uses ResponseStream for new messages, static for old ──
 
-function AnimatedAgentText({ text, animate }: { text: string; animate: boolean }) {
+function AnimatedAgentText({ text, animate, sourceMap }: { text: string; animate: boolean; sourceMap?: SourceMap }) {
   const { isDarkMode } = useTheme();
   // Filter out full URLs from message text — they appear in source footer instead
   const cleanedText = removeUrlsFromText(text);
 
   if (!animate) {
-    return <div className="space-y-1">{renderMarkdown(cleanedText, isDarkMode)}</div>;
+    return <div className="space-y-1">{renderMarkdown(cleanedText, isDarkMode, sourceMap)}</div>;
   }
   // For long text, use typewriter with fast speed; for short, use fade
   const isLong = cleanedText.length > 600;
@@ -443,9 +456,108 @@ function AnimatedAgentText({ text, animate }: { text: string; animate: boolean }
   );
 }
 
+// ── Source map builder — extracts [N] → {title, url} from tool results ────
+
+type SourceMap = Map<number, { title: string; url: string }>;
+
+function buildSourceMap(steps?: StepCard[]): SourceMap {
+  const map: SourceMap = new Map();
+  if (!steps) return map;
+  for (const step of steps) {
+    for (const entry of step.entries) {
+      if (entry.type === 'action' && entry.pill.result) {
+        // Match "[1] Title — https://url" format from web_search output
+        const re = /\[(\d+)\]\s+(.+?)\s+[—-]\s+(https?:\/\/[^\s\n]+)/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(entry.pill.result)) !== null) {
+          const num = parseInt(m[1], 10);
+          if (!map.has(num)) {
+            map.set(num, { title: m[2].trim(), url: m[3].replace(/[.,)]+$/, '').trim() });
+          }
+        }
+      }
+    }
+  }
+  return map;
+}
+
+// ── CitationBadge — inline hoverable superscript citation ─────────────────
+
+function CitationBadge({ num, title, url, isDarkMode }: { num: number; title: string; url: string; isDarkMode: boolean }) {
+  const [show, setShow] = useState(false);
+  let domain = url;
+  try { domain = new URL(url).hostname.replace(/^www\./, ''); } catch { /* keep url */ }
+
+  return (
+    <span className="relative inline-block" style={{ verticalAlign: 'baseline' }}>
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        onClick={e => e.stopPropagation()}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 8,
+          fontWeight: 600,
+          padding: '0 3.5px',
+          height: 13,
+          borderRadius: 3,
+          background: isDarkMode ? 'rgba(59,130,246,0.1)' : 'rgba(59,130,246,0.09)',
+          border: '1px solid rgba(59,130,246,0.22)',
+          color: 'rgba(59,130,246,0.75)',
+          textDecoration: 'none',
+          verticalAlign: 'super',
+          lineHeight: 1,
+          cursor: 'pointer',
+          marginLeft: 1.5,
+          marginRight: 1,
+          letterSpacing: 0,
+          flexShrink: 0,
+          fontFamily: FONT_FAMILY,
+        }}
+      >
+        {num}
+      </a>
+      {show && (
+        <span
+          style={{
+            position: 'absolute',
+            bottom: 'calc(100% + 5px)',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 999,
+            minWidth: 180,
+            maxWidth: 270,
+            padding: '8px 10px',
+            borderRadius: 8,
+            background: isDarkMode ? 'rgba(22,22,30,0.98)' : 'rgba(255,255,255,0.98)',
+            border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
+            boxShadow: '0 6px 24px rgba(0,0,0,0.25)',
+            pointerEvents: 'none',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+          }}
+        >
+          <span style={{ fontSize: 11, fontWeight: 500, lineHeight: 1.4, color: isDarkMode ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.85)', fontFamily: FONT_FAMILY, display: 'block', wordBreak: 'break-word' }}>
+            {title.length > 90 ? title.slice(0, 87) + '…' : title}
+          </span>
+          <span style={{ fontSize: 9, color: 'rgba(59,130,246,0.65)', fontFamily: FONT_FAMILY }}>
+            {domain}
+          </span>
+        </span>
+      )}
+    </span>
+  );
+}
+
 // ── Markdown renderer ──────────────────────────────────────────────────────
 
-function renderMarkdown(text: string, isDarkMode = true): React.ReactNode[] {
+function renderMarkdown(text: string, isDarkMode = true, sourceMap?: SourceMap): React.ReactNode[] {
   const textPrimary = isDarkMode ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.8)';
   const textSecondary = isDarkMode ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.65)';
   const textDim = isDarkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.4)';
@@ -508,7 +620,7 @@ function renderMarkdown(text: string, isDarkMode = true): React.ReactNode[] {
                 <tr style={{ background: tableBg }}>
                   {header.map((h, j) => (
                     <th key={j} className="text-left px-4 py-2.5 font-semibold" style={{ color: textPrimary, borderBottom: `1px solid ${borderColor}`, fontFamily: FONT_FAMILY }}>
-                      {inlineFormat(h, isDarkMode)}
+                      {inlineFormat(h, isDarkMode, sourceMap)}
                     </th>
                   ))}
                 </tr>
@@ -523,7 +635,7 @@ function renderMarkdown(text: string, isDarkMode = true): React.ReactNode[] {
                         borderBottom: `1px solid ${tableAltBg}`,
                         fontFamily: FONT_FAMILY,
                       }}>
-                        {inlineFormat(cell, isDarkMode)}
+                        {inlineFormat(cell, isDarkMode, sourceMap)}
                       </td>
                     ))}
                   </tr>
@@ -542,7 +654,7 @@ function renderMarkdown(text: string, isDarkMode = true): React.ReactNode[] {
         <div key={i} className="my-1.5 pl-3 py-0.5" style={{
           borderLeft: `2.5px solid ${isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)'}`,
         }}>
-          <span className="text-[13px] leading-relaxed italic" style={{ color: isDarkMode ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)', fontFamily: FONT_FAMILY }}>{inlineFormat(line.slice(2), isDarkMode)}</span>
+          <span className="text-[13px] leading-relaxed italic" style={{ color: isDarkMode ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)', fontFamily: FONT_FAMILY }}>{inlineFormat(line.slice(2), isDarkMode, sourceMap)}</span>
         </div>
       );
       i++;
@@ -557,29 +669,30 @@ function renderMarkdown(text: string, isDarkMode = true): React.ReactNode[] {
     }
 
     if (line.startsWith('### ')) {
-      result.push(<h4 key={i} className="text-[13px] font-semibold mt-3 mb-1" style={{ color: textPrimary, fontFamily: FONT_FAMILY }}>{inlineFormat(line.slice(4), isDarkMode)}</h4>);
+      result.push(<h4 key={i} className="text-[13px] font-semibold mt-3 mb-1" style={{ color: textPrimary, fontFamily: FONT_FAMILY }}>{inlineFormat(line.slice(4), isDarkMode, sourceMap)}</h4>);
     } else if (line.startsWith('## ')) {
-      result.push(<h3 key={i} className="text-[15px] font-semibold mt-4 mb-1.5" style={{ color: textPrimary, fontFamily: FONT_FAMILY }}>{inlineFormat(line.slice(3), isDarkMode)}</h3>);
+      result.push(<h3 key={i} className="text-[15px] font-semibold mt-4 mb-1.5" style={{ color: textPrimary, fontFamily: FONT_FAMILY }}>{inlineFormat(line.slice(3), isDarkMode, sourceMap)}</h3>);
     } else if (line.startsWith('# ')) {
-      result.push(<h2 key={i} className="text-[17px] font-bold mt-4 mb-2" style={{ color: textPrimary, fontFamily: FONT_FAMILY }}>{inlineFormat(line.slice(2), isDarkMode)}</h2>);
+      result.push(<h2 key={i} className="text-[17px] font-bold mt-4 mb-2" style={{ color: textPrimary, fontFamily: FONT_FAMILY }}>{inlineFormat(line.slice(2), isDarkMode, sourceMap)}</h2>);
     } else if (line.match(/^[-*] /)) {
-      result.push(<div key={i} className="flex gap-2 pl-1"><span className="shrink-0 mt-[7px] w-1 h-1 rounded-full" style={{ background: bulletBg }} /><span className="text-[13px] leading-relaxed" style={{ color: textSecondary, fontFamily: FONT_FAMILY }}>{inlineFormat(line.slice(2), isDarkMode)}</span></div>);
+      result.push(<div key={i} className="flex gap-2 pl-1"><span className="shrink-0 mt-[7px] w-1 h-1 rounded-full" style={{ background: bulletBg }} /><span className="text-[13px] leading-relaxed" style={{ color: textSecondary, fontFamily: FONT_FAMILY }}>{inlineFormat(line.slice(2), isDarkMode, sourceMap)}</span></div>);
     } else if (line.match(/^\d+\.\s/)) {
       const m = line.match(/^(\d+\.)\s(.*)$/);
-      if (m) result.push(<div key={i} className="flex gap-2 pl-1"><span className="shrink-0 text-[12px] font-sans" style={{ color: textDim }}>{m[1]}</span><span className="text-[13px] leading-relaxed" style={{ color: textSecondary, fontFamily: FONT_FAMILY }}>{inlineFormat(m[2], isDarkMode)}</span></div>);
+      if (m) result.push(<div key={i} className="flex gap-2 pl-1"><span className="shrink-0 text-[12px] font-sans" style={{ color: textDim }}>{m[1]}</span><span className="text-[13px] leading-relaxed" style={{ color: textSecondary, fontFamily: FONT_FAMILY }}>{inlineFormat(m[2], isDarkMode, sourceMap)}</span></div>);
     } else if (line.trim() === '') {
       result.push(<div key={i} className="h-2" />);
     } else {
-      result.push(<p key={i} className="text-[13px] leading-relaxed" style={{ color: textSecondary, fontFamily: FONT_FAMILY }}>{inlineFormat(line, isDarkMode)}</p>);
+      result.push(<p key={i} className="text-[13px] leading-relaxed" style={{ color: textSecondary, fontFamily: FONT_FAMILY }}>{inlineFormat(line, isDarkMode, sourceMap)}</p>);
     }
     i++;
   }
   return result;
 }
 
-function inlineFormat(text: string, isDarkMode = true): React.ReactNode[] {
+function inlineFormat(text: string, isDarkMode = true, sourceMap?: SourceMap): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
-  const regex = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
+  // Matches: bold, code, italic, citation [N], markdown link
+  const regex = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*|\[\d+\]|\[[^\]]+\]\([^)]+\))/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(text)) !== null) {
@@ -591,6 +704,16 @@ function inlineFormat(text: string, isDarkMode = true): React.ReactNode[] {
       parts.push(<code key={match.index} className="text-[12px] font-sans px-1.5 py-0.5 rounded" style={{ background: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)', color: 'rgba(43,121,255,0.8)' }}>{token.slice(1, -1)}</code>);
     } else if (token.startsWith('*') && token.endsWith('*')) {
       parts.push(<em key={match.index} style={{ color: isDarkMode ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.55)' }}>{token.slice(1, -1)}</em>);
+    } else if (/^\[\d+\]$/.test(token)) {
+      // Citation reference [N] — render as hoverable superscript badge
+      const num = parseInt(token.slice(1, -1), 10);
+      const src = sourceMap?.get(num);
+      if (src) {
+        parts.push(<CitationBadge key={`cite-${match.index}`} num={num} title={src.title} url={src.url} isDarkMode={isDarkMode} />);
+      } else {
+        // Source not found in map — render as dim plain text
+        parts.push(<span key={match.index} style={{ fontSize: 9, color: 'rgba(128,128,128,0.5)', verticalAlign: 'super', marginLeft: 1 }}>{token}</span>);
+      }
     } else if (token.startsWith('[') && token.includes('](')) {
       const textEnd = token.indexOf('](');
       const linkText = token.slice(1, textEnd);
@@ -770,57 +893,101 @@ function ToolStatusDot({ status, isDarkMode }: { status: ActionPill['status']; i
 
 function ActionPillView({ action, isPageVisible = true, isCancelled = false }: { action: ActionPill; isPageVisible?: boolean; isCancelled?: boolean }) {
   const { isDarkMode } = useTheme();
+  const [resultExpanded, setResultExpanded] = useState(false);
   const isActive = action.status === 'running' && isPageVisible && !isCancelled;
   const isDone   = action.status === 'done';
   const isError  = action.status === 'error';
+  const hasResult = isDone && action.result && action.result.length > 10;
+
+  // Human-readable verb from TOOL_VERBS map (defined above in StepCard section)
+  const verb = TOOL_VERBS[action.toolName] || action.toolName.replace(/_/g, ' ');
 
   return (
     <div
-      className="flex items-center gap-2.5 px-3 py-1.5 my-0.5"
+      className="flex flex-col"
       style={{
-        borderRadius: 10,
-        background: isActive
-          ? 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.1) 20%, rgba(255,255,255,0.3) 50%, rgba(255,255,255,0.1) 80%, transparent 100%)'
-          : (isDarkMode ? 'rgba(255,255,255,0.045)' : 'rgba(0,0,0,0.035)'),
-        backgroundSize: isActive ? '1000px 100%' : 'auto',
-        border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)'}`,
-        opacity: isDone ? 0.72 : 1,
-        transition: 'opacity 0.2s, background 0.3s',
-        animation: isActive ? 'toolShimmer 2.5s linear infinite' : 'none',
+        opacity: isDone ? 0.6 : isError ? 0.8 : 1,
+        transition: 'opacity 0.2s',
       }}
     >
-      <ToolStatusDot status={action.status} isDarkMode={isDarkMode} />
-      <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-        <span className="text-[12px] leading-snug truncate" style={{
-          color: isDone  ? (isDarkMode ? 'rgba(255,255,255,0.38)' : 'rgba(0,0,0,0.38)') :
-                 isError ? 'rgba(239,68,68,0.65)' :
-                 isActive ? (isDarkMode ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.7)') :
-                           (isDarkMode ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.52)'),
-          fontFamily: FONT_FAMILY,
-        }}>{action.argsPreview}</span>
-        {/* Progress indicator for long-running tools */}
-        {action.progress && (
-          <div className="flex items-center gap-1.5">
-            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)' }}>
-              <div className="h-full transition-all duration-300" style={{
-                width: `${action.progress.percent}%`,
-                background: isActive ? 'linear-gradient(90deg, #3b82f6, #2563eb)' : 'rgba(75,175,99,0.6)',
-              }} />
-            </div>
-            <span className="text-[9px] whitespace-nowrap" style={{
-              color: isDarkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)',
-              fontFamily: FONT_FAMILY,
-            }}>{Math.round(action.progress.percent)}%</span>
-          </div>
+      <div className="flex items-center gap-2 py-[3px]">
+        {/* Status indicator */}
+        {isActive ? (
+          <span className="w-1.5 h-1.5 rounded-full shrink-0 animate-pulse" style={{ background: isDarkMode ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.35)' }} />
+        ) : isDone ? (
+          <svg className="shrink-0" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="rgba(34,197,94,0.55)" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        ) : isError ? (
+          <svg className="shrink-0" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="rgba(239,68,68,0.55)" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        ) : (
+          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: isDarkMode ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.18)' }} />
         )}
+
+        {/* Action line: "searched web · query text" */}
+        <span className="text-[11.5px] leading-snug truncate flex-1" style={{
+          color: isError ? 'rgba(239,68,68,0.7)' :
+                 isActive ? (isDarkMode ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.65)') :
+                            (isDarkMode ? 'rgba(255,255,255,0.38)' : 'rgba(0,0,0,0.38)'),
+          fontFamily: FONT_FAMILY,
+        }}>
+          <span style={{ fontWeight: 500 }}>{verb}</span>
+          {action.argsPreview && (
+            <span style={{ opacity: 0.7 }}> · {action.argsPreview}</span>
+          )}
+        </span>
+
+        {/* modelInfo */}
         {action.modelInfo && (
-          <span className="text-[10.5px] leading-none" style={{
-            color: isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.25)',
-            fontStyle: 'italic',
-            fontFamily: FONT_FAMILY,
-          }}>{action.modelInfo}</span>
+          <span className="text-[9px] shrink-0" style={{ color: isDarkMode ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.18)', fontStyle: 'italic', fontFamily: FONT_FAMILY }}>{action.modelInfo}</span>
+        )}
+
+        {/* View result toggle */}
+        {hasResult && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setResultExpanded(r => !r); }}
+            className="shrink-0 text-[8.5px] px-1.5 rounded"
+            style={{
+              color: isDarkMode ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.22)',
+              background: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
+              fontFamily: FONT_FAMILY,
+              border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)'}`,
+              lineHeight: '16px',
+            }}
+          >
+            {resultExpanded ? '↑' : '↓'}
+          </button>
         )}
       </div>
+
+      {/* Progress bar (inline, thin) */}
+      {action.progress && (
+        <div className="flex items-center gap-2 pl-[18px] pb-0.5">
+          <div className="flex-1 h-0.5 rounded-full overflow-hidden" style={{ background: isDarkMode ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)' }}>
+            <div className="h-full transition-all duration-300" style={{
+              width: `${action.progress.percent}%`,
+              background: isActive ? (isDarkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.3)') : 'rgba(34,197,94,0.4)',
+            }} />
+          </div>
+          <span className="text-[8.5px] whitespace-nowrap" style={{ color: isDarkMode ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)', fontFamily: FONT_FAMILY }}>
+            {Math.round(action.progress.percent)}%{action.progress.message ? ` · ${action.progress.message}` : ''}
+          </span>
+        </div>
+      )}
+
+      {/* Expandable result */}
+      {hasResult && resultExpanded && (
+        <div
+          className="ml-[18px] mt-1 mb-1 rounded px-2.5 py-1.5 text-[10.5px] leading-relaxed whitespace-pre-wrap overflow-auto"
+          style={{
+            maxHeight: 180,
+            color: isDarkMode ? 'rgba(255,255,255,0.42)' : 'rgba(0,0,0,0.48)',
+            background: isDarkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)',
+            fontFamily: 'monospace',
+            border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
+          }}
+        >
+          {(action.result || '').slice(0, 2000)}{(action.result || '').length > 2000 ? '\n…' : ''}
+        </div>
+      )}
     </div>
   );
 }
@@ -889,7 +1056,7 @@ function SubagentPanel({ subagents, queueProgress }: SubagentPanelProps) {
             <CheckIcon size={8} />
           </div>
         ) : (
-          <span className="w-2 h-2 rounded-full animate-pulse shrink-0" style={{ background: '#3b82f6' }} />
+          <span className="w-2 h-2 rounded-full animate-pulse shrink-0" style={{ background: 'rgba(59,130,246,0.8)' }} />
         )}
 
         {/* Label */}
@@ -1012,6 +1179,71 @@ function SubagentPanel({ subagents, queueProgress }: SubagentPanelProps) {
 }
 
 
+// ── Tool name → compact verb label (for collapsed step summaries) ───────────
+const TOOL_VERBS: Record<string, string> = {
+  web_search:       'searched web',
+  multi_browse:     'read pages',
+  browse:           'browsed',
+  scrape_page:      'read page',
+  analyze_page:     'analyzed page',
+  file_read:        'read file',
+  file_find:        'found files',
+  file_write:       'wrote file',
+  file_browse:      'listed files',
+  code_analysis:    'analyzed code',
+  apply_patch:      'patched code',
+  codex_patch:      'patched code',
+  memory_search:    'recalled memory',
+  memory_store:     'saved memory',
+  note:             'noted',
+  notes_read:       'read notes',
+  think:            'reasoned',
+  shell_exec:       'ran command',
+  run_code:         'ran code',
+  spawn_agents:     'spawned agents',
+  spawn_worker:     'spawned worker',
+  deep_research:    'deep researched',
+  research_loop:    'ran research loop',
+  competitor_swot:  'analyzed competitors',
+  social_intelligence: 'analyzed social',
+  google_trends:    'checked trends',
+  brand_voice:      'analyzed brand',
+  image_analyze:    'analyzed image',
+  video_analyze:    'analyzed video',
+  audio_transcribe: 'transcribed audio',
+  read_pdf:         'read PDF',
+  ocr_extract:      'extracted text',
+  summarize:        'summarized',
+  extract_data:     'extracted data',
+  visualize_data:   'visualized data',
+  create_docx:      'created doc',
+  write_content:    'wrote content',
+  translate:        'translated',
+  ask_user:         'asked user',
+  use_computer:     'used computer',
+  control_desktop:  'controlled desktop',
+  schedule_task:    'scheduled task',
+  soul_read:        'read memory',
+  soul_update:      'updated memory',
+  soul_log:         'logged event',
+  save_skill:       'saved skill',
+};
+
+function buildToolSummary(entries: StepEntry[]): string {
+  const counts: Record<string, number> = {};
+  for (const entry of entries) {
+    if (entry.type === 'action' && entry.pill.status !== 'error') {
+      const tool = entry.pill.toolName;
+      counts[tool] = (counts[tool] || 0) + 1;
+    }
+  }
+  const parts = Object.entries(counts).map(([tool, count]) => {
+    const verb = TOOL_VERBS[tool] || tool.replace(/_/g, ' ');
+    return count > 1 ? `${verb} ×${count}` : verb;
+  });
+  return parts.join(', ');
+}
+
 // ── StepCardView — Manus-style collapsible step block ──────────────────────
 
 function StepCardView({ step, isPageVisible = true, isCancelled = false }: { step: StepCard; isPageVisible?: boolean; isCancelled?: boolean }) {
@@ -1031,6 +1263,9 @@ function StepCardView({ step, isPageVisible = true, isCancelled = false }: { ste
         ...step.actions.map(a => ({ type: 'action' as const, pill: a })),
       ];
 
+  // Compact tool summary shown when step is collapsed + done
+  const toolSummary = step.status === 'done' ? buildToolSummary(entries) : '';
+
   // Title to show in header
   const headerTitle = step.title || (step.isThinking ? 'Thinking...' : 'Working...');
 
@@ -1043,22 +1278,33 @@ function StepCardView({ step, isPageVisible = true, isCancelled = false }: { ste
       >
         {/* Leading triangle — ▶ collapsed / ▼ expanded */}
         <span className="shrink-0 text-[10px]" style={{ color: isDarkMode ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)', lineHeight: 1, marginTop: 1, transition: 'transform 0.15s ease', display: 'inline-block', transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
-        {/* Title */}
-        {(step.isThinking || step.status === 'active') && isPageVisible ? (
-          <TextShimmer
-            className={`text-[13px] font-medium flex-1 leading-snug ${isDarkMode ? '[--shimmer-base:rgba(255,255,255,0.35)] [--shimmer-highlight:rgba(255,255,255,0.9)]' : '[--shimmer-base:rgba(0,0,0,0.32)] [--shimmer-highlight:rgba(0,0,0,0.82)]'}`}
-            duration={1.8}
-          >
-            {headerTitle}
-          </TextShimmer>
-        ) : (
-          <span
-            className="text-[13px] font-medium flex-1 leading-snug"
-            style={{ color: isDarkMode ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)', fontFamily: FONT_FAMILY }}
-          >
-            {headerTitle}
-          </span>
-        )}
+        {/* Title + compact summary (when collapsed + done) */}
+        <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+          {(step.isThinking || step.status === 'active') && isPageVisible ? (
+            <TextShimmer
+              className={`text-[13px] font-medium leading-snug ${isDarkMode ? '[--shimmer-base:rgba(255,255,255,0.35)] [--shimmer-highlight:rgba(255,255,255,0.9)]' : '[--shimmer-base:rgba(0,0,0,0.32)] [--shimmer-highlight:rgba(0,0,0,0.82)]'}`}
+              duration={1.8}
+            >
+              {headerTitle}
+            </TextShimmer>
+          ) : (
+            <span
+              className="text-[13px] font-medium leading-snug"
+              style={{ color: isDarkMode ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)', fontFamily: FONT_FAMILY }}
+            >
+              {headerTitle}
+            </span>
+          )}
+          {/* Compact tool summary — only when collapsed + done + has tool calls */}
+          {!expanded && toolSummary && (
+            <span
+              className="text-[10px] leading-snug truncate"
+              style={{ color: isDarkMode ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.28)', fontFamily: FONT_FAMILY }}
+            >
+              {toolSummary}
+            </span>
+          )}
+        </span>
         {/* Trailing chevron */}
         <span className="shrink-0" style={{ color: isDarkMode ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.2)' }}>
           <ChevronIcon open={expanded} />
@@ -1078,6 +1324,8 @@ function StepCardView({ step, isPageVisible = true, isCancelled = false }: { ste
               {/* Interleaved text + action entries */}
               {entries.map((entry, idx) => {
                 if (entry.type === 'text') {
+                  // Skip raw tool call JSON — already shown via ActionPill
+                  if (/```tool\s*\{|tool\s*\{"name":|"name"\s*:\s*"[^"]+"\s*,\s*"args"\s*:/.test(entry.content)) return null;
                   const isLast = idx === entries.length - 1;
                   // Live thinking stream: show as italic grey blurred text
                   if (isLast && step.isThinking) {
@@ -1299,29 +1547,6 @@ function ConversationSidebar({ groups, currentId, onSelect, onDelete, onNewChat,
   );
 }
 
-// ── AttachmentMenu ─────────────────────────────────────────────────────────
-
-function AttachmentMenu({ onClose, onUploadClick }: { onClose: () => void; onUploadClick: () => void }) {
-  const items = [
-    { icon: <UploadIcon />, label: 'Upload file', desc: 'Add a file to workspace', onClick: onUploadClick },
-    { icon: <FolderIcon />, label: 'Add from workspace', desc: 'Reference an existing file', onClick: onClose },
-    { icon: <GlobeIcon />, label: 'Browse a URL', desc: 'Fetch and analyze a webpage', onClick: onClose },
-  ];
-  return (
-    <motion.div initial={{ opacity: 0, y: 8, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.95 }} transition={{ duration: 0.12 }} className="absolute bottom-full left-0 mb-2 rounded-xl overflow-hidden z-30" style={{ background: 'rgba(20,20,24,0.97)', border: '1px solid rgba(255,255,255,0.1)', backdropFilter: 'blur(20px)', minWidth: 220, boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
-      {items.map((item, i) => (
-        <button key={i} onClick={item.onClick} className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/[0.04]" style={{ borderBottom: i < items.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)' }}>{item.icon}</div>
-          <div className="flex-1 min-w-0">
-            <div className="text-[12px] font-medium" style={{ color: 'rgba(255,255,255,0.7)' }}>{item.label}</div>
-            <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.25)' }}>{item.desc}</div>
-          </div>
-        </button>
-      ))}
-    </motion.div>
-  );
-}
-
 // ── Campaign context builder ────────────────────────────────────────────────
 
 function buildCampaignContext(campaign: Campaign | null, cycle: Cycle | null): CampaignContextData | undefined {
@@ -1445,7 +1670,7 @@ function UserAvatarWithInitials() {
   return (
     <BlobAvatar
       seed={getUserAvatarSeed()}
-      color="#8b5cf6"
+      color={getUserAvatarColor()}
       size={20}
       animated={false}
       initials={initials}
@@ -1478,13 +1703,12 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
   const [askUserInput, setAskUserInput] = useState('');
   const taskProgressRef = useRef<TaskProgress | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [mentionedSubagents, setMentionedSubagents] = useState<number[]>([]);
   const [mentionPopover, setMentionPopover] = useState<{ query: string; startIndex: number } | null>(null);
   const [mentionSelected, setMentionSelected] = useState(0);
+  const [inputFocused, setInputFocused] = useState(false);
   const [sessionMemories, setSessionMemories] = useState<Array<{ key: string; content: string }>>([]);
-  const [showNetworkModal, setShowNetworkModal] = useState(false);
   const [showThinkingModal, setShowThinkingModal] = useState(false);
   const [showFinder, setShowFinder] = useState(false);
   const [permissionPrompt, setPermissionPrompt] = useState<{
@@ -1499,6 +1723,8 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
   } | null>(null);
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
+  // Plan mode: message to re-run after user approves the plan
+  const [planReviewMessage, setPlanReviewMessage] = useState<string | null>(null);
   const dragCountRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -1514,6 +1740,10 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
   const committedThinkingLenRef = useRef<number>(0);
   /** Tracks timestamp of the last event received — used by watchdog to detect stalled state */
   const lastEventTimeRef = useRef<number>(Date.now());
+  /** Timer ref for debouncing mention popover updates to prevent race conditions */
+  const mentionPopoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** True while auto-send is programmatically populating the input — suppresses @ detection */
+  const autoSendingRef = useRef(false);
 
   // Chat history
   const [conversationId, setConversationId] = useState<string>(() => crypto.randomUUID());
@@ -1562,6 +1792,11 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
         abortRef.current.abort('unmount');
         abortRef.current = null;
       }
+      // Clean up mention popover debounce timer
+      if (mentionPopoverTimerRef.current) {
+        clearTimeout(mentionPopoverTimerRef.current);
+        mentionPopoverTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -1593,13 +1828,6 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
     }
   }, [executionPlan]);
 
-  // Listen for network open event from AppShell toolbar
-  useEffect(() => {
-    const handler = () => { setShowNetworkModal(true); };
-    window.addEventListener('neuro-open-network', handler);
-    return () => window.removeEventListener('neuro-open-network', handler);
-  }, []);
-
   // Listen for files open event from AppShell toolbar
   useEffect(() => {
     const handler = () => { setShowFinder(true); };
@@ -1624,14 +1852,10 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
     const profileMems = getUserMemories();
     loaded.push(...profileMems);
 
-    // 2. Persisted memoryStore entries (max 30, newest first)
-    const stored = getMemories();
-    stored.slice(0, 30).forEach(m => {
-      // Skip seed memories with do-not-surface tag — they are already in the profile
-      if (m.tags.includes('do-not-surface-unprompted')) return;
-      const key = m.tags[0] || m.type;
-      loaded.push({ key, content: m.content });
-    });
+    // 2. Persisted memoryStore entries DISABLED
+    // Cross-chat memory persistence removed per user request
+    // Long-term memories no longer persist across sessions
+    // (Keeping profile memories only for user preferences)
 
     setSessionMemories(loaded);
     touchUserProfile();
@@ -1749,36 +1973,35 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
 
   // Auto-send initialMessage if provided (e.g., from HomeScreen quick send)
   const initialMessageSentRef = useRef(false);
+  const handleSubmitRef = useRef<() => void>(() => {});
   useEffect(() => {
     if (!initialMessage || !conversationId || initialMessageSentRef.current) return;
 
     // Mark as sent to prevent re-running on re-renders
     initialMessageSentRef.current = true;
 
-    // Defer sending to next frame to ensure DOM is ready
+    // Defer sending to next tick to ensure DOM is ready
     const timeoutId = setTimeout(async () => {
       try {
         console.debug('Auto-sending initialMessage:', initialMessage.slice(0, 50) + '...');
 
-        // Set input field value by finding the contenteditable div and setting its textContent
+        // Set input field value directly — guard autoSendingRef so handleInputChange
+        // doesn't interpret the programmatic textContent assignment as a user @ mention
+        autoSendingRef.current = true;
         const inputDiv = inputRef.current;
         if (inputDiv) {
           inputDiv.textContent = initialMessage;
-          // Trigger an input event so React state updates
-          inputDiv.dispatchEvent(new Event('input', { bubbles: true }));
         }
+        // Update React input state so handleSubmit sees the text
+        setInput(initialMessage);
+        autoSendingRef.current = false;
 
-        // Wait one frame for input state to update
-        await new Promise(r => setTimeout(r, 50));
+        // Wait one tick for state to flush
+        await new Promise(r => setTimeout(r, 80));
 
-        // Now click the send button to trigger the full agent loop via handleSubmit
-        // This avoids a stale closure issue and ensures handleSubmit is fully initialized
-        const sendBtn = document.querySelector('[data-testid="send-message-btn"]') as HTMLButtonElement;
-        if (sendBtn && !sendBtn.disabled) {
-          sendBtn.click();
-          // FIX: Call callback to clear initialMessage in parent after auto-send
-          onInitialMessageSent?.();
-        }
+        // Call handleSubmit directly via ref (avoids stale closure + disabled button issues)
+        handleSubmitRef.current();
+        onInitialMessageSent?.();
       } catch (e) {
         console.error('Failed to auto-send initialMessage:', e);
       }
@@ -1891,9 +2114,6 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
         }),
     }));
   })();
-
-  // Show the AgentUIWrapper overview panel when there are steps to display
-  const [stepOverviewOpen, setStepOverviewOpen] = useState(false);
 
   // Workspace seeding removed — use sessionFileSystem instead
 
@@ -2063,6 +2283,7 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
       return;
     }
     userMsgCountRef.current += 1;
+    setPlanReviewMessage(null); // Clear any pending plan review when user sends a new message
     setBlocks(prev => [...prev, { id: crypto.randomUUID(), type: 'user' as const, content: text || '(attached files)', attachments: currentAttachments.length > 0 ? currentAttachments : undefined, timestamp: Date.now() }]);
     clearInputDiv(); setAttachments([]); setMentionedSubagents([]); setTimeout(() => inputRef.current?.focus(), 0);
     setStatus('routing');
@@ -2167,7 +2388,7 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
               setCurrentToolName(undefined);
               const blockId = ensureAgentBlock();
               committedThinkingLenRef.current = 0;
-              setShowThinkingModal(true);
+              // ThinkingModal only opens when user explicitly clicks — do NOT auto-open here
               const thinkModel = (event as any).model as string | undefined;
               const isDeepReason = thinkModel?.includes('nemotron') || thinkModel?.includes('120b');
               const thinkLabel = isDeepReason ? 'Deep Reasoning' : 'Thinking';
@@ -2338,6 +2559,15 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
 
               // Auto-title: read current blocks via setState callback, fire-and-forget
               setBlocks(prev => { maybeRetitle(prev, conversationId); return prev; });
+
+              // Plan mode: show Approve & Execute banner so user can re-run with bypass
+              if (getPermissionMode() === 'plan' && !cancelledRef.current) {
+                setBlocks(prev => {
+                  const lastUser = [...prev].reverse().find(b => b.type === 'user');
+                  if (lastUser) setPlanReviewMessage(lastUser.content);
+                  return prev;
+                });
+              }
               break;
             }
             case 'task_progress': if (event.taskProgress) taskProgressRef.current = event.taskProgress ?? null; break;
@@ -2467,6 +2697,28 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
     cleanupActiveState();
   };
 
+  // Plan mode: switch to bypass and re-send the original user message so it executes
+  const handleApprovePlan = useCallback(() => {
+    if (!planReviewMessage) return;
+    const msg = planReviewMessage;
+    setPlanReviewMessage(null);
+    setPermissionMode('bypass');
+    // Populate the input and submit after a short tick so mode change is applied
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.innerHTML = '';
+        // Use a text node so readInputText() picks it up correctly
+        inputRef.current.appendChild(document.createTextNode(msg));
+      }
+      setInput(msg);
+      // Trigger submit via the ref so we always get the latest handleSubmit
+      handleSubmitRef.current?.();
+    }, 50);
+  }, [planReviewMessage]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep handleSubmitRef in sync so auto-send effect can call latest handleSubmit
+  useEffect(() => { handleSubmitRef.current = handleSubmit; });
+
   // Watchdog: poll every 5s — if no event received for 15s while active, force cleanup
   useEffect(() => {
     if (status !== 'routing' && status !== 'thinking' && status !== 'streaming') return;
@@ -2496,17 +2748,29 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
 
   // ── @ mention menu ──────────────────────────────────────────────────────────
   const MENTION_ITEMS = [
-    { label: 'Web Search',   insert: '@search',   category: 'tool',  desc: 'Search the web for real-time information' },
-    { label: 'Browse',       insert: '@browse',    category: 'tool',  desc: 'Read and extract from a URL' },
-    { label: 'Research',     insert: '@research',  category: 'tool',  desc: 'Multi-query deep research (Context-1)' },
-    { label: 'Memory',       insert: '@memory',    category: 'tool',  desc: 'Store or retrieve persistent memories' },
-    { label: 'Think',        insert: '@think',     category: 'tool',  desc: 'Extended reasoning before responding' },
-    { label: 'Code Runner',  insert: '@code',      category: 'tool',  desc: 'Execute Python, JS or shell scripts' },
-    { label: 'Files',        insert: '@files',     category: 'tool',  desc: 'Read workspace files' },
-    { label: 'Analyze',      insert: '@analyze',   category: 'tool',  desc: 'Screenshot and analyze a page' },
-    { label: 'Vision',       insert: '@vision',    category: 'tool',  desc: 'Analyze images with vision model' },
-    { label: 'Subagent',     insert: '@sub',       category: 'agent', desc: 'Spawn a parallel sub-agent' },
-    { label: 'Image',        insert: '@img',       category: 'media', desc: 'Reference an attached image' },
+    // ── Research & Web ──────────────────────────────────────────────────────
+    { label: 'Search',        insert: '@search',    category: 'tool',  desc: 'Web search — real-time results' },
+    { label: 'Browse',        insert: '@browse',    category: 'tool',  desc: 'Read and extract content from a URL' },
+    { label: 'Research',      insert: '@research',  category: 'tool',  desc: 'Deep multi-source research — keeps going until done' },
+    { label: 'Analyze Page',  insert: '@analyze',   category: 'tool',  desc: 'Screenshot + AI analysis of any URL' },
+    // ── Code & Files ────────────────────────────────────────────────────────
+    { label: 'Code',          insert: '@code',      category: 'tool',  desc: 'Write and run code — JS, Python, shell' },
+    { label: 'Shell',         insert: '@shell',     category: 'tool',  desc: 'Run bash commands directly' },
+    { label: 'Files',         insert: '@files',     category: 'tool',  desc: 'Read, write and manage workspace files' },
+    { label: 'Edit File',     insert: '@edit',      category: 'tool',  desc: 'Edit a specific file with exact replacements' },
+    { label: 'Build',         insert: '@build',     category: 'tool',  desc: 'Run build, test or install commands' },
+    { label: 'Wait',          insert: '@wait',      category: 'tool',  desc: 'Pause N seconds then continue (for builds / APIs)' },
+    // ── Memory & Thinking ───────────────────────────────────────────────────
+    { label: 'Memory',        insert: '@memory',    category: 'tool',  desc: 'Store or retrieve persistent memories' },
+    { label: 'Think',         insert: '@think',     category: 'tool',  desc: 'Extended deep reasoning before responding' },
+    { label: 'Plan',          insert: '@plan',      category: 'tool',  desc: 'Generate a step-by-step plan first' },
+    // ── Vision ──────────────────────────────────────────────────────────────
+    { label: 'Vision',        insert: '@vision',    category: 'tool',  desc: 'Analyze an attached image' },
+    // ── Agents ──────────────────────────────────────────────────────────────
+    { label: 'Subagent',      insert: '@sub',       category: 'agent', desc: 'Spawn a parallel sub-agent for a subtask' },
+    { label: 'Batch',         insert: '@batch',     category: 'agent', desc: 'Max sub-agents in parallel — for big tasks' },
+    // ── Media ───────────────────────────────────────────────────────────────
+    { label: 'Image',         insert: '@img',       category: 'media', desc: 'Attach and reference an image' },
   ];
 
   function getFilteredMentionItems(query: string) {
@@ -2562,17 +2826,37 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
   const handleInputChange = (e: React.FormEvent<HTMLDivElement>) => {
     const rawText = (e.currentTarget as HTMLDivElement).textContent || '';
     setInput(rawText);
+
+    // If auto-send is programmatically setting the input, skip all @ mention logic
+    if (autoSendingRef.current) return;
+
+    // Always cancel any pending timer first
+    if (mentionPopoverTimerRef.current) {
+      clearTimeout(mentionPopoverTimerRef.current);
+      mentionPopoverTimerRef.current = null;
+    }
+
     // Detect @ pattern — look at the text node before cursor
     const sel = window.getSelection();
-    if (!sel || !sel.rangeCount) { setMentionPopover(null); return; }
+    if (!sel || !sel.rangeCount) {
+      setMentionPopover(null);
+      return;
+    }
+
     const range = sel.getRangeAt(0);
     const textBeforeCursor = (range.startContainer.nodeType === Node.TEXT_NODE
       ? range.startContainer.textContent || ''
       : '').slice(0, range.startOffset);
     const atMatch = textBeforeCursor.match(/@(\w*)$/);
+
     if (atMatch) {
-      setMentionPopover({ query: atMatch[1], startIndex: 0 });
-      setMentionSelected(0);
+      const query = atMatch[1];
+      // Short debounce just to batch rapid keystrokes — not for any async check
+      mentionPopoverTimerRef.current = setTimeout(() => {
+        mentionPopoverTimerRef.current = null;
+        setMentionPopover({ query, startIndex: 0 });
+        setMentionSelected(0);
+      }, 30);
     } else {
       setMentionPopover(null);
     }
@@ -2590,12 +2874,6 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
       )}
 
       {/* Old standalone toolbar removed — AppShell now always wraps AgentPanel */}
-
-      {/* ── Network Modal ──────────────────────────────────────── */}
-      <NeuroNetworkModal
-        isOpen={showNetworkModal}
-        onClose={() => setShowNetworkModal(false)}
-      />
 
       {/* ── Thinking Modal ──────────────────────────────────────── */}
       <ThinkingModal
@@ -2619,27 +2897,6 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
       {showFinder && (
         <FinderWindow onClose={() => setShowFinder(false)} />
       )}
-
-      {/* AgentUIWrapper step overview panel (right-side slide-in) */}
-      <AnimatePresence>
-        {stepOverviewOpen && agentSteps.length > 0 && (
-          <motion.div
-            initial={{ x: '100%', opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: '100%', opacity: 0 }}
-            transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-            className="absolute top-0 bottom-0 z-[40] w-72 shadow-2xl"
-            style={{ right: canvasState.isOpen ? `${canvasWidthPercent}%` : 0, borderLeft: '1px solid rgba(255,255,255,0.06)', transition: 'right 0.3s ease' }}
-          >
-            <AgentUIWrapper
-              taskDescription={blocks.find(b => b.type === 'user')?.content || 'Agent task in progress'}
-              steps={agentSteps}
-              isThinking={isWorking}
-              onStepToggle={() => {}}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Chat area */}
       <div className="flex-1 flex flex-col relative min-w-0 min-h-0" onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
@@ -2666,9 +2923,9 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
         </AnimatePresence>
 
         {/* Messages */}
-        <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto relative flex flex-col" style={{ minHeight: 0 }}>
+        <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto relative flex flex-col items-center" style={{ minHeight: 0 }}>
           {isEmpty ? (
-            <div className="flex-1 flex flex-col items-center justify-center px-6" style={{ gap: 20, paddingBottom: 80 }}>
+            <div className="flex-1 flex flex-col items-center justify-center px-6 w-full" style={{ gap: 20, paddingBottom: 80 }}>
               {/* Glow ring behind blob */}
               <div style={{ position: 'relative' }}>
                 <div style={{
@@ -2696,402 +2953,282 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
               </div>
             </div>
           ) : (
-            <div className="max-w-3xl mx-auto w-full px-6 pt-4 pb-8 flex flex-col gap-5">
+            <div className="max-w-3xl w-full px-6 pt-4 pb-8 flex flex-col gap-5">
               {blocks.map(block => {
+                // Shared colors for this render pass
+                const muted = isDarkMode ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)';
+                const dim = isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.22)';
+                const isCancelled = cancelledRef.current;
+
                 switch (block.type) {
+
+                  /* ═══════════════════════════════════════════════════════════
+                     USER MESSAGE
+                     ═══════════════════════════════════════════════════════════ */
                   case 'user':
                     return (
-                      <div key={block.id} className="flex gap-3 justify-end">
+                      <div key={block.id} className="flex gap-3 justify-end mb-4">
                         <div className="flex-1 min-w-0 flex flex-col items-end">
-                          {/* User identity line */}
-                          <div className="flex items-center gap-1.5 mb-1">
+                          <div className="flex items-center gap-1.5 mb-1.5">
                             <UserNameDisplay />
-                            <span className="text-[10px]" style={{ color: isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.2)', fontFamily: FONT_FAMILY }}>{formatTimestamp(block.timestamp)}</span>
+                            <span className="text-[10px] tabular-nums" style={{ color: isDarkMode ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.22)', fontFamily: FONT_FAMILY }}>{formatTimestamp(block.timestamp)}</span>
                           </div>
-                          {/* Message bubble */}
                           <div
-                            className="max-w-[75%] px-4 py-2.5"
+                            className="max-w-[80%] px-4 py-3"
                             style={{
-                              borderRadius: '18px 18px 4px 18px',
-                              background: isDarkMode ? 'rgba(40,40,50,0.95)' : '#EDEDEB',
-                              border: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                              borderRadius: '20px 20px 6px 20px',
+                              background: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.055)',
+                              border: isDarkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.04)',
                             }}
                           >
                             {block.attachments && block.attachments.length > 0 && (
                               <div className="flex flex-wrap gap-1.5 mb-2">
                                 {block.attachments.map(att => (
                                   att.type === 'image' ? (
-                                    <img key={att.id} src={att.dataUrl} alt={att.name} className="w-10 h-10 rounded object-cover" style={{ border: '1px solid rgba(255,255,255,0.12)' }} />
+                                    <img key={att.id} src={att.dataUrl} alt={att.name} className="w-12 h-12 rounded-lg object-cover" style={{ border: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.08)' }} />
                                   ) : (
-                                    <span key={att.id} className="flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ background: 'rgba(43,121,255,0.08)', border: '1px solid rgba(43,121,255,0.15)' }}>
+                                    <span key={att.id} className="flex items-center gap-1 px-2 py-1 rounded-md" style={{ background: isDarkMode ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)', border: isDarkMode ? '1px solid rgba(59,130,246,0.2)' : '1px solid rgba(59,130,246,0.15)' }}>
                                       <FileDocIcon />
-                                      <span className="text-[10px] max-w-[100px] truncate" style={{ color: 'rgba(43,121,255,0.7)' }}>{att.name}</span>
+                                      <span className="text-[10px] max-w-[100px] truncate" style={{ color: 'rgba(59,130,246,0.8)' }}>{att.name}</span>
                                     </span>
                                   )
                                 ))}
                               </div>
                             )}
-                            <p className="text-[13px] leading-[1.6] whitespace-pre-wrap" style={{ color: isDarkMode ? 'rgba(255,255,255,0.92)' : '#374151' }}>{renderMessageContent(block.content, isDarkMode)}</p>
+                            <p className="text-[13.5px] leading-[1.65] whitespace-pre-wrap" style={{ color: isDarkMode ? 'rgba(255,255,255,0.92)' : 'rgba(0,0,0,0.85)', fontFamily: FONT_FAMILY }}>{renderMessageContent(block.content, isDarkMode)}</p>
                           </div>
                         </div>
-                        {/* User avatar */}
                         <div className="shrink-0 mt-0.5">
                           <UserAvatarWithInitials />
                         </div>
                       </div>
                     );
-                  case 'agent':
+
+                  /* ═══════════════════════════════════════════════════════════
+                     AGENT MESSAGE
+                     ═══════════════════════════════════════════════════════════ */
+                  case 'agent': {
+                    const completedSteps = block.steps?.filter(s => !s.isThinking) ?? [];
+                    const activeStep = block.steps?.find(s => s.isThinking);
+                    const allToolPills = completedSteps.flatMap(s => s.entries.filter(e => e.type === 'action').map(e => (e as { type: 'action'; pill: ActionPill }).pill));
+                    const toolCount = allToolPills.length;
+                    const stepCount = completedSteps.filter(s => s.thinkingText).length;
+                    const isDeep = (block as any).isDeepReasoning;
+                    const trace = ((block as any).routingTrace ?? []) as Array<{ phase: string; decision: string; tools?: string[]; model?: string; durationMs?: number; timestamp: number }>;
+                    const lastModel = trace.find(t => t.model)?.model || trace.find(t => t.phase === 'model-select')?.decision;
+                    const traceMs = trace.reduce((sum, t) => sum + (t.durationMs || 0), 0);
+
                     return (
-                      <div key={block.id} className="flex gap-3">
-                        {/* Neuro agent icon */}
-                        <div className="shrink-0 mt-0.5"><BlobAvatar seed={conversationId} color={agentColor} size={20} animated={animationsEnabled} /></div>
-                        <div className="flex-1 min-w-0 pt-0">
-                          {/* Identity line: "neuro" —  */}
-                          <div className="flex items-center gap-1.5 mb-2">
-                            <span className="text-[13px]" style={{ fontWeight: 700, letterSpacing: '0.03em', color: isDarkMode ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.6)', fontFamily: FONT_FAMILY }}>NEURO</span>
-                            <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.03em', padding: '2px 5px', borderRadius: 3, border: `1.5px solid ${isDarkMode ? 'rgba(102,102,102,0.3)' : 'rgba(0,0,0,0.12)'}`, color: isDarkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.35)', fontFamily: FONT_FAMILY, lineHeight: 1, animation: 'maxBadgeShimmer 3s ease-in-out infinite' }}>MAX</span>
-                            {(block as any).isDeepReasoning && (
-                              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.05em', padding: '2px 6px', borderRadius: 3, border: `1.5px solid ${isDarkMode ? 'rgba(139,92,246,0.5)' : 'rgba(109,40,217,0.3)'}`, color: isDarkMode ? 'rgba(167,139,250,0.9)' : 'rgba(109,40,217,0.8)', fontFamily: FONT_FAMILY, lineHeight: 1, background: isDarkMode ? 'rgba(139,92,246,0.1)' : 'rgba(139,92,246,0.06)' }}>DEEP</span>
+                      <div key={block.id} className="flex gap-3 mb-5">
+                        <div className="shrink-0 mt-1"><BlobAvatar seed={conversationId} color={agentColor} size={22} animated={animationsEnabled} /></div>
+                        <div className="flex-1 min-w-0">
+
+                          {/* ── Header: NEURO  MAX  timestamp  duration ── */}
+                          <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+                            <span className="text-[13px]" style={{ fontWeight: 700, letterSpacing: '0.04em', color: isDarkMode ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.65)', fontFamily: FONT_FAMILY }}>NEURO</span>
+                            <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.04em', padding: '1.5px 5px', borderRadius: 3, border: `1.5px solid ${isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)'}`, color: isDarkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)', fontFamily: FONT_FAMILY, lineHeight: 1, animation: 'maxBadgeShimmer 3s ease-in-out infinite' }}>MAX</span>
+                            {isDeep && (
+                              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.05em', padding: '1.5px 6px', borderRadius: 3, border: `1.5px solid ${isDarkMode ? 'rgba(139,92,246,0.45)' : 'rgba(109,40,217,0.3)'}`, color: isDarkMode ? 'rgba(167,139,250,0.85)' : 'rgba(109,40,217,0.75)', fontFamily: FONT_FAMILY, lineHeight: 1, background: isDarkMode ? 'rgba(139,92,246,0.08)' : 'rgba(139,92,246,0.05)' }}>DEEP</span>
                             )}
-                            <span className="text-[10px]" style={{ color: isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.25)', marginLeft: 2, fontFamily: FONT_FAMILY }}>{formatTimestamp(block.timestamp)}</span>
+                            <span className="text-[10px] tabular-nums" style={{ color: isDarkMode ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.25)', fontFamily: FONT_FAMILY }}>{formatTimestamp(block.timestamp)}</span>
                             {block.completedAt && block.startedAt && (
-                              <span className="text-[10px] font-sans" style={{ color: isDarkMode ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.3)' }}>
-                                {formatDuration(Math.round((block.completedAt - block.startedAt) / 1000))}{block.tokenCount ? <span style={{ color: 'rgba(43,121,255,0.4)' }}> · {formatTokens(block.tokenCount)}</span> : ''}
+                              <span className="text-[10px] tabular-nums" style={{ color: isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.28)' }}>
+                                {formatDuration(Math.round((block.completedAt - block.startedAt) / 1000))}{block.tokenCount ? <span style={{ color: 'rgba(59,130,246,0.45)' }}> · {formatTokens(block.tokenCount)}</span> : ''}
                               </span>
                             )}
                             {!block.completedAt && block.startedAt && (
                               <LiveTimer startedAt={block.startedAt} completedAt={block.completedAt} tokenCount={block.tokenCount} />
                             )}
                           </div>
-                          {/* ── Routing trace — collapsible full routing pipeline ── */}
-                          {(block as any).routingTrace && (block as any).routingTrace.length > 0 && (() => {
-                            const trace = (block as any).routingTrace as Array<{ phase: string; decision: string; tools?: string[]; model?: string; durationMs?: number; timestamp: number }>;
-                            const lastModel = trace.find(t => t.model)?.model || trace.find(t => t.phase === 'model-select')?.decision;
-                            const totalMs = trace.reduce((sum, t) => sum + (t.durationMs || 0), 0);
-                            const mutedColor = isDarkMode ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)';
-                            const dimColor = isDarkMode ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.2)';
-                            return (
-                              <details className="group mb-1.5">
-                                <summary className="flex items-center gap-1.5 cursor-pointer select-none list-none py-0.5" style={{ color: mutedColor }}>
-                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-                                  {!block.completedAt && isPageVisible && !cancelledRef.current ? (
-                                    <TextShimmer
-                                      className={`text-[11px] ${isDarkMode ? '[--shimmer-base:rgba(255,255,255,0.22)] [--shimmer-highlight:rgba(255,255,255,0.75)]' : '[--shimmer-base:rgba(0,0,0,0.2)] [--shimmer-highlight:rgba(0,0,0,0.7)]'}`}
-                                      duration={1.6}
-                                    >
-                                      {(block as any).isDeepReasoning
-                                        ? 'Deep Reasoning — nemotron 120B...'
-                                        : `Routing${lastModel ? ` → ${lastModel}` : ''}...`}
-                                    </TextShimmer>
-                                  ) : (
-                                    <span className="text-[11px]">
-                                      {(block as any).isDeepReasoning
-                                        ? `Deep Reasoning — nemotron 120B${totalMs > 0 ? ` · ${totalMs}ms` : ''}`
-                                        : `Routed${lastModel ? ` → ${lastModel}` : ''}${totalMs > 0 ? ` · ${totalMs}ms` : ''}`}
+
+                          {/* ── Routing trace ── */}
+                          {trace.length > 0 && (
+                            <details className="group mb-2">
+                              <summary className="flex items-center gap-1.5 cursor-pointer select-none list-none py-0.5" style={{ color: muted }}>
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                                {!block.completedAt && isPageVisible && !isCancelled ? (
+                                  <TextShimmer className={`text-[11px] ${isDarkMode ? '[--shimmer-base:rgba(255,255,255,0.22)] [--shimmer-highlight:rgba(255,255,255,0.75)]' : '[--shimmer-base:rgba(0,0,0,0.2)] [--shimmer-highlight:rgba(0,0,0,0.7)]'}`} duration={1.6}>
+                                    {isDeep ? 'Deep Reasoning — nemotron 120B...' : `Routing${lastModel ? ` → ${lastModel}` : ''}...`}
+                                  </TextShimmer>
+                                ) : (
+                                  <span className="text-[11px]">{isDeep ? `Deep Reasoning — nemotron 120B${traceMs > 0 ? ` · ${traceMs}ms` : ''}` : `Routed${lastModel ? ` → ${lastModel}` : ''}${traceMs > 0 ? ` · ${traceMs}ms` : ''}`}</span>
+                                )}
+                                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="transition-transform group-open:rotate-180"><path d="M6 9l6 6 6-6"/></svg>
+                              </summary>
+                              <div className="ml-5 mt-1 space-y-0.5 pb-1">
+                                {trace.map((rt, i) => (
+                                  <div key={i} className="flex items-center gap-2 text-[10px]" style={{ color: dim }}>
+                                    <span className="w-1 h-1 rounded-full shrink-0" style={{ background: dim }} />
+                                    <span className="font-medium shrink-0 opacity-70" style={{ minWidth: 65 }}>{rt.phase}</span>
+                                    <span className="truncate opacity-60">{rt.decision}</span>
+                                    {rt.durationMs != null && <span className="ml-auto shrink-0 opacity-40 tabular-nums">{rt.durationMs}ms</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
+                          )}
+
+                          {/* ── Reasoning + Tools ── */}
+                          {(completedSteps.length > 0 || activeStep) && (
+                            <div className="mb-2.5 space-y-1">
+                              {completedSteps.length > 0 && (
+                                <details className="group" open={!!activeStep}>
+                                  <summary className="flex items-center gap-1.5 cursor-pointer select-none list-none py-0.5" style={{ color: muted }}>
+                                    <span className="w-3 h-3 rounded-full shrink-0 flex items-center justify-center" style={{ background: isDarkMode ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.055)' }}>
+                                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: dim }} />
                                     </span>
-                                  )}
-                                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="transition-transform group-open:rotate-180"><path d="M6 9l6 6 6-6"/></svg>
-                                </summary>
-                                <div className="ml-5 mt-1 space-y-0.5 pb-1">
-                                  {trace.map((rt, i) => (
-                                    <div key={i} className="flex items-center gap-2 text-[10px]" style={{ color: dimColor }}>
-                                      <span className="w-1 h-1 rounded-full shrink-0" style={{ background: dimColor }} />
-                                      <span className="font-medium shrink-0 opacity-70" style={{ minWidth: 65 }}>{rt.phase}</span>
-                                      <span className="truncate opacity-60">{rt.decision}</span>
-                                      {rt.durationMs != null && <span className="ml-auto shrink-0 opacity-40 tabular-nums">{rt.durationMs}ms</span>}
-                                    </div>
-                                  ))}
-                                </div>
-                              </details>
-                            );
-                          })()}
-                          {/* ── Reasoning + tools — grouped into one section ── */}
-                          {block.steps && block.steps.length > 0 && (() => {
-                            const completedSteps = block.steps.filter(s => !s.isThinking);
-                            const activeStep = block.steps.find(s => s.isThinking);
-                            const allTools = completedSteps.flatMap(s => s.entries.filter(e => e.type === 'action').map(e => (e as { type: 'action'; pill: ActionPill }).pill));
-                            const toolCount = allTools.length;
-                            const stepCount = completedSteps.filter(s => s.thinkingText).length;
-                            const muted = isDarkMode ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)';
-                            const dim = isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.22)';
-                            return (
-                              <div className="mb-2 space-y-1">
-                                {/* All completed iterations grouped under one collapsible */}
-                                {completedSteps.length > 0 && (
-                                  <details className="group" open={!!activeStep}>
-                                    <summary className="flex items-center gap-1.5 cursor-pointer select-none list-none py-0.5" style={{ color: muted }}>
-                                      <span className="w-3 h-3 rounded-full shrink-0 flex items-center justify-center" style={{ background: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }}>
-                                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: dim }} />
-                                      </span>
-                                      {activeStep && !cancelledRef.current ? (
-                                        <TextShimmer
-                                          className={`text-[11px] ${isDarkMode ? '[--shimmer-base:rgba(255,255,255,0.28)] [--shimmer-highlight:rgba(255,255,255,0.8)]' : '[--shimmer-base:rgba(0,0,0,0.26)] [--shimmer-highlight:rgba(0,0,0,0.72)]'}`}
-                                          duration={1.7}
-                                        >
-                                          {`Reasoning${stepCount > 0 ? ` · ${stepCount} step${stepCount !== 1 ? 's' : ''}` : ''}${toolCount > 0 ? ` · ${toolCount} tool${toolCount !== 1 ? 's' : ''}` : ''}...`}
-                                        </TextShimmer>
-                                      ) : (
-                                        <span className="text-[11px]">
-                                          Reasoned{stepCount > 0 ? ` · ${stepCount} step${stepCount !== 1 ? 's' : ''}` : ''}
-                                          {toolCount > 0 ? ` · ${toolCount} tool${toolCount !== 1 ? 's' : ''}` : ''}
-                                        </span>
-                                      )}
-                                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="transition-transform group-open:rotate-180"><path d="M6 9l6 6 6-6"/></svg>
-                                    </summary>
-                                    <div className="ml-4 mt-0.5 space-y-0.5 pb-0.5">
-                                      {completedSteps.map((step, idx) => {
-                                        const isStepExpanded = expandedSteps.has(idx);
-                                        return (
-                                        <div key={step.id} className="space-y-0">
-                                          {/* Thought text -- clickable to expand */}
+                                    {activeStep && !isCancelled ? (
+                                      <TextShimmer className={`text-[11px] ${isDarkMode ? '[--shimmer-base:rgba(255,255,255,0.28)] [--shimmer-highlight:rgba(255,255,255,0.8)]' : '[--shimmer-base:rgba(0,0,0,0.26)] [--shimmer-highlight:rgba(0,0,0,0.72)]'}`} duration={1.7}>
+                                        {`Reasoning${stepCount > 0 ? ` · ${stepCount} step${stepCount !== 1 ? 's' : ''}` : ''}${toolCount > 0 ? ` · ${toolCount} tool${toolCount !== 1 ? 's' : ''}` : ''}...`}
+                                      </TextShimmer>
+                                    ) : (
+                                      <span className="text-[11px]">Reasoned{stepCount > 0 ? ` · ${stepCount} step${stepCount !== 1 ? 's' : ''}` : ''}{toolCount > 0 ? ` · ${toolCount} tool${toolCount !== 1 ? 's' : ''}` : ''}</span>
+                                    )}
+                                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="transition-transform group-open:rotate-180"><path d="M6 9l6 6 6-6"/></svg>
+                                  </summary>
+                                  <div className="ml-4 mt-1 space-y-0.5 pb-1">
+                                    {completedSteps.map((step, idx) => {
+                                      const isStepExpanded = expandedSteps.has(idx);
+                                      return (
+                                        <div key={step.id}>
+                                          {/* Thinking text */}
                                           {step.thinkingText && (
                                             <div
-                                              className="flex gap-1.5 mb-1 rounded px-0.5 -mx-0.5 transition-colors"
-                                              style={{ cursor: 'pointer' }}
-                                              onClick={() => setExpandedSteps(prev => {
-                                                const next = new Set(prev);
-                                                next.has(idx) ? next.delete(idx) : next.add(idx);
-                                                return next;
-                                              })}
-                                              onMouseEnter={e => (e.currentTarget.style.background = isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)')}
+                                              className="flex gap-1.5 py-0.5 rounded-md px-1 -mx-1 transition-colors cursor-pointer"
+                                              onClick={() => setExpandedSteps(prev => { const n = new Set(prev); n.has(idx) ? n.delete(idx) : n.add(idx); return n; })}
+                                              onMouseEnter={e => (e.currentTarget.style.background = isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.025)')}
                                               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                                             >
-                                              <span className="text-[9px] mt-0.5 shrink-0 tabular-nums" style={{ color: dim }}>{idx + 1}.</span>
-                                              <span className="text-[8px] mt-0.5 shrink-0 select-none" style={{ color: dim }}>{isStepExpanded ? '\u25BE' : '\u25B8'}</span>
-                                              <span className="text-[10px] leading-relaxed" style={{ color: dim, fontStyle: 'italic' }}>
-                                                {isStepExpanded
-                                                  ? step.thinkingText
-                                                  : step.thinkingText.length > 150 ? step.thinkingText.slice(0, 150) + '\u2026' : step.thinkingText}
+                                              <span className="text-[10px] shrink-0 tabular-nums" style={{ color: dim, minWidth: 16, textAlign: 'right' }}>{idx + 1}.</span>
+                                              <span className="text-[8px] shrink-0 select-none leading-[16px]" style={{ color: dim }}>{isStepExpanded ? '\u25BE' : '\u25B8'}</span>
+                                              <span className="text-[10.5px] leading-relaxed flex-1" style={{ color: dim, fontStyle: 'italic' }}>
+                                                {isStepExpanded ? step.thinkingText : (step.thinkingText.length > 140 ? step.thinkingText.slice(0, 140) + '\u2026' : step.thinkingText)}
                                               </span>
                                               {(step as any).durationMs != null && (
-                                                <span className="ml-auto shrink-0 text-[9px] tabular-nums" style={{ color: dim, opacity: 0.6 }}>{(step as any).durationMs}ms</span>
+                                                <span className="ml-auto shrink-0 text-[9px] tabular-nums" style={{ color: dim, opacity: 0.5 }}>{(step as any).durationMs}ms</span>
                                               )}
                                             </div>
                                           )}
-                                          {/* Tool actions from entries */}
-                                          {step.entries.filter(e => e.type === 'action').map((e) => {
+                                          {/* Tool pills — skip raw tool JSON text entries */}
+                                          {step.entries.filter(e => e.type === 'action').map(e => {
                                             const pill = (e as { type: 'action'; pill: ActionPill }).pill;
-                                            const isSearch = pill.toolName?.includes('search') || pill.toolName?.includes('browse');
-                                            const isWrite = pill.toolName?.includes('write') || pill.toolName?.includes('edit') || pill.toolName?.includes('save');
-                                            const iconC = isSearch ? 'rgba(59,130,246,0.55)' : isWrite ? 'rgba(168,85,247,0.55)' : dim;
-                                            const isToolExpanded = expandedTools.has(pill.id);
+                                            const pillColor = dim;
+                                            const pillBg = isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)';
+                                            const isToolOpen = expandedTools.has(pill.id);
                                             return (
-                                              <div key={pill.id} className="ml-3 mb-0">
+                                              <div key={pill.id} className="ml-4 my-0.5">
                                                 <div
-                                                  className="flex items-center gap-1.5 px-2 py-1"
+                                                  className="flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer transition-colors"
                                                   style={{
-                                                    borderRadius: isToolExpanded ? '6px 6px 0 0' : 6,
-                                                    background: pill.status === 'running'
-                                                      ? 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.1) 20%, rgba(255,255,255,0.3) 50%, rgba(255,255,255,0.1) 80%, transparent 100%)'
-                                                      : (isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'),
+                                                    borderRadius: isToolOpen ? '8px 8px 0 0' : 8,
+                                                    background: pill.status === 'running' && !isCancelled
+                                                      ? 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.08) 20%, rgba(255,255,255,0.22) 50%, rgba(255,255,255,0.08) 80%, transparent 100%)'
+                                                      : pillBg,
                                                     backgroundSize: pill.status === 'running' ? '1000px 100%' : 'auto',
-                                                    border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.065)' : 'rgba(0,0,0,0.055)'}`,
-                                                    borderBottom: isToolExpanded ? 'none' : undefined,
-                                                    opacity: pill.status === 'done' ? 0.65 : 1,
-                                                    cursor: pill.status === 'done' ? 'pointer' : 'default',
-                                                    transition: 'background 0.3s',
-                                                    animation: pill.status === 'running' && !cancelledRef.current ? 'toolShimmer 2.5s linear infinite' : 'none',
+                                                    border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)'}`,
+                                                    borderBottom: isToolOpen ? 'none' : undefined,
+                                                    opacity: pill.status === 'done' ? 0.7 : 1,
+                                                    animation: pill.status === 'running' && !isCancelled ? 'toolShimmer 2.5s linear infinite' : 'none',
                                                   }}
-                                                  onClick={() => {
-                                                    if (pill.status !== 'done') return;
-                                                    setExpandedTools(prev => {
-                                                      const next = new Set(prev);
-                                                      next.has(pill.id) ? next.delete(pill.id) : next.add(pill.id);
-                                                      return next;
-                                                    });
-                                                  }}
+                                                  onClick={() => { if (pill.status === 'done') setExpandedTools(prev => { const n = new Set(prev); n.has(pill.id) ? n.delete(pill.id) : n.add(pill.id); return n; }); }}
                                                 >
-                                                  {/* Icon box */}
-                                                  <span className="w-3.5 h-3.5 rounded-[3px] flex items-center justify-center shrink-0" style={{ background: isSearch ? 'rgba(59,130,246,0.1)' : isWrite ? 'rgba(168,85,247,0.1)' : (isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)') }}>
-                                                    {isSearch
-                                                      ? <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke={iconC} strokeWidth="2.2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                                                      : isWrite
-                                                      ? <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke={iconC} strokeWidth="2.2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                                                      : <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke={iconC} strokeWidth="2.2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                                                    }
+                                                  {/* Category icon */}
+                                                  <span className="w-4 h-4 rounded flex items-center justify-center shrink-0" style={{ background: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }}>
+                                                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke={pillColor} strokeWidth="2.2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
                                                   </span>
-                                                  {/* Chevron for done tools */}
-                                                  {pill.status === 'done' && (
-                                                    <span className="text-[8px] shrink-0 select-none" style={{ color: dim }}>{isToolExpanded ? '\u25BE' : '\u25B8'}</span>
-                                                  )}
-                                                  {/* Label -- plain text (box pulses instead) */}
-                                                  <span className="text-[10px] leading-tight truncate flex-1 min-w-0" style={{
-                                                    color: pill.status === 'running'
-                                                      ? (isDarkMode ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.7)')
-                                                      : iconC,
-                                                  }}>{pill.argsPreview || pill.toolName}</span>
-                                                  {/* Status badge */}
-                                                  {pill.status === 'done' && <svg className="ml-auto shrink-0" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="rgba(34,197,94,0.6)" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>}
-                                                  {pill.status === 'error' && <svg className="ml-auto shrink-0" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="rgba(239,68,68,0.55)" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>}
+                                                  {pill.status === 'done' && <span className="text-[8px] shrink-0 select-none" style={{ color: dim }}>{isToolOpen ? '\u25BE' : '\u25B8'}</span>}
+                                                  <span className="text-[10.5px] leading-tight truncate flex-1 min-w-0 font-medium" style={{ color: pill.status === 'running' ? (isDarkMode ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.75)') : pillColor }}>{pill.argsPreview || pill.toolName}</span>
+                                                  {pill.status === 'done' && <svg className="ml-auto shrink-0" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="rgba(34,197,94,0.55)" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>}
+                                                  {pill.status === 'error' && <svg className="ml-auto shrink-0" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="rgba(239,68,68,0.55)" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>}
                                                 </div>
-                                                {/* Expanded tool details */}
-                                                {isToolExpanded && (
-                                                  <div
-                                                    className="px-2 py-1.5 text-[9px] leading-relaxed space-y-1"
-                                                    style={{
-                                                      borderRadius: '0 0 6px 6px',
-                                                      background: isDarkMode ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.02)',
-                                                      border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.065)' : 'rgba(0,0,0,0.055)'}`,
-                                                      borderTop: 'none',
-                                                      color: dim,
-                                                    }}
-                                                  >
-                                                    {pill.argsPreview && (
-                                                      <div>
-                                                        <span style={{ opacity: 0.5 }}>Args: </span>
-                                                        <span style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>{pill.argsPreview}</span>
-                                                      </div>
-                                                    )}
-                                                    {(pill as any).resultPreview && (
-                                                      <div>
-                                                        <span style={{ opacity: 0.5 }}>Result: </span>
-                                                        <span style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>{(pill as any).resultPreview}</span>
-                                                      </div>
-                                                    )}
-                                                    {!(pill as any).resultPreview && !pill.argsPreview && (
-                                                      <span style={{ opacity: 0.4 }}>No details available</span>
-                                                    )}
+                                                {isToolOpen && (
+                                                  <div className="px-2.5 py-2 text-[9.5px] leading-relaxed space-y-1" style={{ borderRadius: '0 0 8px 8px', background: isDarkMode ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)', border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)'}`, borderTop: 'none', color: dim }}>
+                                                    {pill.argsPreview && <div><span style={{ opacity: 0.5 }}>Args: </span><span style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>{pill.argsPreview}</span></div>}
+                                                    {(pill as any).resultPreview && <div><span style={{ opacity: 0.5 }}>Result: </span><span style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>{(pill as any).resultPreview}</span></div>}
+                                                    {!(pill as any).resultPreview && !pill.argsPreview && <span style={{ opacity: 0.4 }}>No details</span>}
                                                   </div>
                                                 )}
                                               </div>
                                             );
                                           })}
                                         </div>
-                                        );
-                                      })}
-                                    </div>
-                                  </details>
-                                )}
-                                {/* Active thinking at bottom — only one, always last */}
-                                {activeStep && !cancelledRef.current && (
-                                  <div className="flex items-center gap-2 py-0.5">
-                                    <ThinkingMorph size={14} />
-                                    <TextShimmer
-                                      className={`text-[11px] font-medium ${isDarkMode ? '[--shimmer-base:rgba(255,255,255,0.35)] [--shimmer-highlight:rgba(147,197,253,0.95)]' : '[--shimmer-base:rgba(0,0,0,0.3)] [--shimmer-highlight:rgba(37,99,235,0.9)]'}`}
-                                      duration={1.6}
-                                    >
-                                      Thinking...
-                                    </TextShimmer>
+                                      );
+                                    })}
                                   </div>
-                                )}
-                              </div>
-                            );
-                          })()}
-                          {/* ── Agent content in glass bubble ── */}
+                                </details>
+                              )}
+                              {activeStep && !isCancelled && (
+                                <div className="flex items-center gap-2 py-0.5">
+                                  <ThinkingMorph size={14} />
+                                  <TextShimmer className={`text-[11px] font-medium ${isDarkMode ? '[--shimmer-base:rgba(255,255,255,0.35)] [--shimmer-highlight:rgba(147,197,253,0.95)]' : '[--shimmer-base:rgba(0,0,0,0.3)] [--shimmer-highlight:rgba(37,99,235,0.9)]'}`} duration={1.6}>Thinking...</TextShimmer>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* ── Agent response content ── */}
                           {block.content && (() => {
                             const isNew = !seenBlockContentRef.current.has(block.id);
                             if (isNew) seenBlockContentRef.current.add(block.id);
-                            const isRecent = isNew;
+                            const blockSourceMap = buildSourceMap(block.steps);
                             return (
-                              <div className="mb-3 space-y-1.5">
+                              <div className="mb-3 space-y-2">
                                 <div style={{
-                                  background: isDarkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.025)',
-                                  borderRadius: 14,
-                                  padding: '10px 14px',
+                                  background: isDarkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+                                  borderRadius: 16,
+                                  padding: '12px 16px',
+                                  border: isDarkMode ? '1px solid rgba(255,255,255,0.04)' : '1px solid rgba(0,0,0,0.05)',
                                 }}>
-                                  <AnimatedAgentText text={block.content} animate={isNew && isRecent} />
+                                  <AnimatedAgentText text={block.content} animate={isNew} sourceMap={blockSourceMap} />
                                 </div>
-                                {/* ── Open in Canvas button ── Only show for document-like content */}
-                                {block.content && shouldShowOpenCanvasButton(block.content) && (
+                                {shouldShowOpenCanvasButton(block.content) && (
                                   <button
-                                    onClick={() => {
-                                      canvasState.openCanvas({
-                                        title: 'Response',
-                                        content: block.content,
-                                        fileType: 'md',
-                                        isWriting: false,
-                                      });
-                                    }}
-                                    className="mt-2 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
-                                    style={{
-                                      background: isDarkMode ? 'rgba(139,92,246,0.15)' : 'rgba(139,92,246,0.1)',
-                                      border: isDarkMode ? '1px solid rgba(139,92,246,0.25)' : '1px solid rgba(139,92,246,0.2)',
-                                      color: isDarkMode ? 'rgba(139,92,246,0.8)' : 'rgba(139,92,246,0.75)',
-                                      cursor: 'pointer',
-                                    }}
-                                    onMouseEnter={e => {
-                                      e.currentTarget.style.background = isDarkMode ? 'rgba(139,92,246,0.25)' : 'rgba(139,92,246,0.15)';
-                                    }}
-                                    onMouseLeave={e => {
-                                      e.currentTarget.style.background = isDarkMode ? 'rgba(139,92,246,0.15)' : 'rgba(139,92,246,0.1)';
-                                    }}
+                                    onClick={() => canvasState.openCanvas({ title: 'Response', content: block.content, fileType: 'md', isWriting: false })}
+                                    className="px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
+                                    style={{ background: isDarkMode ? 'rgba(139,92,246,0.12)' : 'rgba(139,92,246,0.08)', border: isDarkMode ? '1px solid rgba(139,92,246,0.22)' : '1px solid rgba(139,92,246,0.18)', color: isDarkMode ? 'rgba(139,92,246,0.75)' : 'rgba(139,92,246,0.7)', cursor: 'pointer' }}
+                                    onMouseEnter={e => { e.currentTarget.style.background = isDarkMode ? 'rgba(139,92,246,0.2)' : 'rgba(139,92,246,0.14)'; }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = isDarkMode ? 'rgba(139,92,246,0.12)' : 'rgba(139,92,246,0.08)'; }}
                                   >
-                                    ✎ Open in Canvas
+                                    Open in Canvas
                                   </button>
                                 )}
-                                {/* ── Neuro rewrite section ── */}
                                 {block.neuroRewrite && (
                                   <details className="group">
                                     <summary className="flex items-center gap-1.5 cursor-pointer select-none list-none py-0.5 px-2" style={{ color: isDarkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)' }}>
                                       <span className="text-[11px] font-medium">Rewritten by {block.neuroRewrite.model}</span>
                                       {block.neuroRewrite.verification && (
-                                        <span
-                                          className="text-[10px] font-medium px-1.5 py-0.5 rounded"
-                                          style={{
-                                            background: block.neuroRewrite.verification.passed
-                                              ? (isDarkMode ? 'rgba(16,185,129,0.15)' : 'rgba(16,185,129,0.1)')
-                                              : (isDarkMode ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)'),
-                                            color: block.neuroRewrite.verification.passed
-                                              ? (isDarkMode ? '#10b981' : '#059669')
-                                              : (isDarkMode ? '#ef4444' : '#dc2626'),
-                                            border: `1px solid ${
-                                              block.neuroRewrite.verification.passed
-                                                ? (isDarkMode ? 'rgba(16,185,129,0.3)' : 'rgba(16,185,129,0.25)')
-                                                : (isDarkMode ? 'rgba(239,68,68,0.3)' : 'rgba(239,68,68,0.25)')
-                                            }`,
-                                          }}
-                                        >
-                                          ✓ {block.neuroRewrite.verification.passed ? 'PASS' : 'FAIL'} ({block.neuroRewrite.verification.model.replace('qwen3.5:', '')} · {block.neuroRewrite.verification.durationMs}ms)
+                                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded" style={{
+                                          background: block.neuroRewrite.verification.passed ? (isDarkMode ? 'rgba(16,185,129,0.12)' : 'rgba(16,185,129,0.08)') : (isDarkMode ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)'),
+                                          color: block.neuroRewrite.verification.passed ? (isDarkMode ? '#10b981' : '#059669') : (isDarkMode ? '#ef4444' : '#dc2626'),
+                                          border: `1px solid ${block.neuroRewrite.verification.passed ? (isDarkMode ? 'rgba(16,185,129,0.25)' : 'rgba(16,185,129,0.2)') : (isDarkMode ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.2)')}`,
+                                        }}>
+                                          {block.neuroRewrite.verification.passed ? 'PASS' : 'FAIL'} ({block.neuroRewrite.verification.model.replace('qwen3.5:', '')} · {block.neuroRewrite.verification.durationMs}ms)
                                         </span>
                                       )}
-
                                       <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="transition-transform group-open:rotate-180"><path d="M6 9l6 6 6-6"/></svg>
                                     </summary>
                                     <div className="ml-2 mt-1.5 space-y-1.5">
-                                      {/* Original version */}
-                                      <div style={{
-                                        background: isDarkMode ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)',
-                                        borderRadius: 10,
-                                        padding: '8px 12px',
-                                        border: isDarkMode ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.08)',
-                                      }}>
-                                        <div className="text-[10px] font-medium mb-1" style={{ color: isDarkMode ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)' }}>Original ({block.neuroRewrite.model.replace('NEURO-', 'Qwen')})</div>
-                                        <div className="text-[11px] leading-relaxed whitespace-pre-wrap" style={{ color: isDarkMode ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.65)' }}>
-                                          {block.neuroRewrite.original}
-                                        </div>
+                                      <div style={{ background: isDarkMode ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)', borderRadius: 10, padding: '8px 12px', border: isDarkMode ? '1px solid rgba(255,255,255,0.05)' : '1px solid rgba(0,0,0,0.06)' }}>
+                                        <div className="text-[10px] font-medium mb-1" style={{ color: isDarkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)' }}>Original ({block.neuroRewrite.model.replace('NEURO-', 'Qwen')})</div>
+                                        <div className="text-[11px] leading-relaxed whitespace-pre-wrap" style={{ color: isDarkMode ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.6)' }}>{block.neuroRewrite.original}</div>
                                       </div>
-                                      {/* Rewritten version */}
-                                      <div style={{
-                                        background: isDarkMode ? 'rgba(102,255,102,0.04)' : 'rgba(34,197,94,0.03)',
-                                        borderRadius: 10,
-                                        padding: '8px 12px',
-                                        border: isDarkMode ? '1px solid rgba(102,255,102,0.08)' : '1px solid rgba(34,197,94,0.1)',
-                                      }}>
-                                        <div className="text-[10px] font-medium mb-1" style={{ color: isDarkMode ? 'rgba(102,255,102,0.6)' : 'rgba(34,197,94,0.7)' }}>Rewritten (Neuro)</div>
-                                        <div className="text-[11px] leading-relaxed whitespace-pre-wrap" style={{ color: isDarkMode ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.8)' }}>
-                                          {block.neuroRewrite.rewritten}
-                                        </div>
+                                      <div style={{ background: isDarkMode ? 'rgba(102,255,102,0.03)' : 'rgba(34,197,94,0.025)', borderRadius: 10, padding: '8px 12px', border: isDarkMode ? '1px solid rgba(102,255,102,0.07)' : '1px solid rgba(34,197,94,0.08)' }}>
+                                        <div className="text-[10px] font-medium mb-1" style={{ color: isDarkMode ? 'rgba(102,255,102,0.55)' : 'rgba(34,197,94,0.65)' }}>Rewritten (Neuro)</div>
+                                        <div className="text-[11px] leading-relaxed whitespace-pre-wrap" style={{ color: isDarkMode ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.75)' }}>{block.neuroRewrite.rewritten}</div>
                                       </div>
                                     </div>
                                   </details>
                                 )}
-                                {/* ── Sources section ── */}
-                                <BlockSources content={block.content} findings={block.researchFindings} isDarkMode={isDarkMode} />
+                                <BlockSources content={block.content} findings={block.researchFindings} steps={block.steps} sourceMap={blockSourceMap} isDarkMode={isDarkMode} />
                               </div>
                             );
                           })()}
-                          {/* ── Empty state: routing / thinking (hide if routing trace exists) ── */}
-                          {!block.content && (!block.steps || block.steps.length === 0) && (status === 'routing' || status === 'thinking') && !cancelledRef.current && !(block as any).routingTrace?.length && (
+
+                          {/* ── Empty: routing / thinking spinner ── */}
+                          {!block.content && (!block.steps || block.steps.length === 0) && (status === 'routing' || status === 'thinking') && !isCancelled && !trace.length && (
                             <div className="flex items-center gap-2 py-1">
-                              {status === 'thinking' ? (
-                                <ThinkingMorph size={14} />
-                              ) : (
-                                <OrbitalLoader size={16} />
-                              )}
-                              <TextShimmer
-                                className={`text-[12px] ${isDarkMode ? '[--shimmer-base:rgba(255,255,255,0.35)] [--shimmer-highlight:rgba(255,255,255,0.9)]' : '[--shimmer-base:rgba(0,0,0,0.3)] [--shimmer-highlight:rgba(0,0,0,0.8)]'}`}
-                                duration={1.6}
-                              >
+                              {status === 'thinking' ? <ThinkingMorph size={14} /> : <OrbitalLoader size={16} />}
+                              <TextShimmer className={`text-[12px] ${isDarkMode ? '[--shimmer-base:rgba(255,255,255,0.35)] [--shimmer-highlight:rgba(255,255,255,0.9)]' : '[--shimmer-base:rgba(0,0,0,0.3)] [--shimmer-highlight:rgba(0,0,0,0.8)]'}`} duration={1.6}>
                                 {status === 'routing' ? 'Routing...' : 'Thinking...'}
                               </TextShimmer>
                             </div>
@@ -3099,18 +3236,114 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
                         </div>
                       </div>
                     );
+                  }
+
+                  /* ═══════════════════════════════════════════════════════════
+                     UPLOAD MESSAGE
+                     ═══════════════════════════════════════════════════════════ */
                   case 'upload':
                     return (
-                      <div key={block.id} className="flex justify-end">
-                        <div className="flex items-center gap-2 px-3 py-1.5" style={{ borderRadius: 12, background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.12)' }}>
-                          <span style={{ color: 'rgba(34,197,94,0.5)' }}><UploadIcon /></span>
-                          <span className="text-[11px] font-medium" style={{ color: 'rgba(34,197,94,0.7)' }}>Uploaded: {block.uploadFilename}</span>
-                          <span className="text-[10px] font-sans" style={{ color: isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.3)' }}>({block.uploadSize})</span>
+                      <div key={block.id} className="flex justify-end mb-3">
+                        <div className="flex items-center gap-2 px-3.5 py-2" style={{ borderRadius: 12, background: isDarkMode ? 'rgba(34,197,94,0.06)' : 'rgba(34,197,94,0.07)', border: isDarkMode ? '1px solid rgba(34,197,94,0.12)' : '1px solid rgba(34,197,94,0.15)' }}>
+                          <span style={{ color: isDarkMode ? 'rgba(34,197,94,0.5)' : 'rgba(34,197,94,0.55)' }}><UploadIcon /></span>
+                          <span className="text-[11px] font-medium" style={{ color: isDarkMode ? 'rgba(34,197,94,0.65)' : 'rgba(22,163,74,0.75)' }}>Uploaded: {block.uploadFilename}</span>
+                          <span className="text-[10px] tabular-nums" style={{ color: isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.28)' }}>({block.uploadSize})</span>
                         </div>
                       </div>
                     );
                 }
               })}
+              {/* ── Plan Review Banner (plan mode) ─────────────────────── */}
+              {planReviewMessage && (
+                <div
+                  className="mx-auto max-w-3xl w-full"
+                  style={{
+                    margin: '4px 0 12px',
+                    padding: '14px 18px',
+                    borderRadius: 14,
+                    background: isDarkMode ? 'rgba(59,130,246,0.07)' : 'rgba(59,130,246,0.06)',
+                    border: isDarkMode ? '1px solid rgba(59,130,246,0.2)' : '1px solid rgba(59,130,246,0.18)',
+                    fontFamily: FONT_FAMILY,
+                  }}
+                >
+                  <div className="flex items-center gap-2 mb-3">
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        width: 7,
+                        height: 7,
+                        borderRadius: '50%',
+                        background: 'rgba(59,130,246,0.7)',
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span
+                      className="text-[12px] font-semibold"
+                      style={{ color: isDarkMode ? 'rgba(147,197,253,0.85)' : 'rgba(37,99,235,0.85)', letterSpacing: '0.02em' }}
+                    >
+                      Plan ready — review above, then choose:
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      onClick={handleApprovePlan}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: 8,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        fontFamily: FONT_FAMILY,
+                        background: isDarkMode ? 'rgba(59,130,246,0.18)' : 'rgba(59,130,246,0.14)',
+                        border: isDarkMode ? '1px solid rgba(59,130,246,0.35)' : '1px solid rgba(59,130,246,0.3)',
+                        color: isDarkMode ? 'rgba(147,197,253,0.95)' : 'rgba(37,99,235,0.9)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Approve &amp; Execute
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPlanReviewMessage(null);
+                        if (inputRef.current) {
+                          inputRef.current.innerHTML = '';
+                          inputRef.current.appendChild(document.createTextNode('Revise the plan: '));
+                        }
+                        setInput('Revise the plan: ');
+                        inputRef.current?.focus();
+                      }}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: 8,
+                        fontSize: 12,
+                        fontWeight: 500,
+                        fontFamily: FONT_FAMILY,
+                        background: 'transparent',
+                        border: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)',
+                        color: isDarkMode ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Request Changes
+                    </button>
+                    <button
+                      onClick={() => setPlanReviewMessage(null)}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: 8,
+                        fontSize: 11,
+                        fontWeight: 500,
+                        fontFamily: FONT_FAMILY,
+                        background: 'transparent',
+                        border: 'none',
+                        color: isDarkMode ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
           )}
@@ -3130,7 +3363,7 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
         {askUserPrompt && (
           <LiquidGlass intensity="medium" className="px-5 py-3 relative z-30" style={{ borderTop: '1px solid rgba(43,121,255,0.12)', borderRadius: 0, borderLeft: 'none', borderRight: 'none', borderBottom: 'none', background: 'rgba(43,121,255,0.04)' }}>
             <div className="max-w-3xl mx-auto">
-              <div className="flex items-center gap-2 mb-2"><span className="w-2 h-2 rounded-full animate-pulse" style={{ background: '#3b82f6' }} /><span className="text-[12px] font-medium" style={{ color: 'rgba(43,121,255,0.8)' }}>Agent is asking:</span></div>
+              <div className="flex items-center gap-2 mb-2"><span className="w-2 h-2 rounded-full animate-pulse" style={{ background: 'rgba(59,130,246,0.8)' }} /><span className="text-[12px] font-medium" style={{ color: 'rgba(43,121,255,0.8)' }}>Agent is asking:</span></div>
               <p className="text-[13px] mb-3" style={{ color: isDarkMode ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.75)', fontFamily: FONT_FAMILY }}>{askUserPrompt.question}</p>
               {askUserPrompt.options.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-2">
@@ -3171,7 +3404,7 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
         <div className="px-5 pb-4 pt-2 relative z-10">
           <div className="max-w-3xl mx-auto w-full" style={{ position: 'relative' }}>
             {/* @ mention popover — only show when input is focused */}
-            {mentionPopover && inputRef.current === document.activeElement && (() => {
+            {mentionPopover && inputFocused && (() => {
               const allItems = getFilteredMentionItems(mentionPopover.query);
               if (!allItems.length) return null;
               const toolItems = allItems.filter(i => i.category === 'tool');
@@ -3251,6 +3484,15 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
                   suppressContentEditableWarning
                   onInput={handleInputChange as unknown as React.FormEventHandler<HTMLDivElement>}
                   onKeyDown={handleKeyDown}
+                  onFocus={() => setInputFocused(true)}
+                  onBlur={() => {
+                    setInputFocused(false);
+                    if (mentionPopoverTimerRef.current) {
+                      clearTimeout(mentionPopoverTimerRef.current);
+                      mentionPopoverTimerRef.current = null;
+                    }
+                    setMentionPopover(null);
+                  }}
                   onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
                   onMouseDown={(e) => { if (e.button === 2) e.preventDefault(); }}
                   onPaste={e => {
@@ -3280,6 +3522,7 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
                   <button onClick={handleStop} className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-all" style={{ background: 'rgba(239,68,68,0.1)', color: 'rgba(239,68,68,0.7)' }}><StopIcon /></button>
                 ) : (
                   <button
+                    data-testid="send-message-btn"
                     onClick={handleSubmit}
                     disabled={!input.trim() && attachments.length === 0}
                     className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-all"

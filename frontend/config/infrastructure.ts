@@ -39,9 +39,9 @@ function getInfrastructureMode(): 'local' | 'remote' {
     // localStorage may not be available (SSR, private mode, etc)
   }
 
-  // Default to 'local' for CLI/server-side, allowing env override
-  // In browser without setting, falls back to what's in localStorage or 'local'
-  return 'local';
+  // Default to 'remote' for CLI/server-side, allowing env override
+  // In browser without setting, falls back to what's in localStorage or 'remote'
+  return 'remote';
 }
 
 /**

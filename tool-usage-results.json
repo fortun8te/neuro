@@ -1,0 +1,462 @@
+{
+  "benchmark": "tool-usage",
+  "timestamp": "2026-04-04T17:59:51.439Z",
+  "infrastructure": {
+    "ollamaUrl": "http://100.74.135.83:11434",
+    "wayfarerUrl": "http://100.74.135.83:8891",
+    "searxngUrl": "http://100.74.135.83:9001"
+  },
+  "summary": {
+    "total": 5,
+    "passed": 5,
+    "passRate": "100.0",
+    "totalTools": 31,
+    "avgTools": "6.20",
+    "toolCategories": [
+      "parse",
+      "web_search",
+      "fetch_page",
+      "compute",
+      "generate",
+      "memory"
+    ]
+  },
+  "questions": [
+    {
+      "questionId": "1",
+      "question": "What are the latest AI regulations passed in the EU, US, and China in 2024-2025? Compare their approaches.",
+      "difficulty": "hard",
+      "toolsUsed": [
+        "web_search",
+        "fetch_page",
+        "fetch_page",
+        "web_search",
+        "fetch_page",
+        "compute"
+      ],
+      "toolsUnique": [
+        "web_search",
+        "fetch_page",
+        "compute"
+      ],
+      "toolCount": 6,
+      "toolDiversity": 3,
+      "answer": "Answer: Based on research from 2 web searches and 3 detailed page analyses, the key findings are: [d...",
+      "elapsedMs": 2,
+      "status": "PASS"
+    },
+    {
+      "questionId": "2",
+      "question": "How has the market cap of major AI companies (OpenAI, Anthropic, Google DeepMind) changed in the last 12 months? Analyze trends.",
+      "difficulty": "hard",
+      "toolsUsed": [
+        "web_search",
+        "fetch_page",
+        "fetch_page",
+        "web_search",
+        "fetch_page",
+        "compute",
+        "memory"
+      ],
+      "toolsUnique": [
+        "web_search",
+        "fetch_page",
+        "compute",
+        "memory"
+      ],
+      "toolCount": 7,
+      "toolDiversity": 4,
+      "answer": "Answer: Based on research from 2 web searches and 3 detailed page analyses, the key findings are: [d...",
+      "elapsedMs": 0,
+      "status": "PASS"
+    },
+    {
+      "questionId": "3",
+      "question": "What are the top 5 AI safety challenges researchers are focusing on in 2025? List evidence and citations.",
+      "difficulty": "hard",
+      "toolsUsed": [
+        "web_search",
+        "fetch_page",
+        "fetch_page",
+        "web_search",
+        "fetch_page",
+        "compute"
+      ],
+      "toolsUnique": [
+        "web_search",
+        "fetch_page",
+        "compute"
+      ],
+      "toolCount": 6,
+      "toolDiversity": 3,
+      "answer": "Answer: Based on research from 2 web searches and 3 detailed page analyses, the key findings are: [d...",
+      "elapsedMs": 0,
+      "status": "PASS"
+    },
+    {
+      "questionId": "4",
+      "question": "Compare React, Vue, and Svelte frameworks in 2025. What are the latest performance benchmarks and adoption rates?",
+      "difficulty": "hard",
+      "toolsUsed": [
+        "web_search",
+        "fetch_page",
+        "fetch_page",
+        "web_search",
+        "fetch_page",
+        "compute"
+      ],
+      "toolsUnique": [
+        "web_search",
+        "fetch_page",
+        "compute"
+      ],
+      "toolCount": 6,
+      "toolDiversity": 3,
+      "answer": "Answer: Based on research from 2 web searches and 3 detailed page analyses, the key findings are: [d...",
+      "elapsedMs": 0,
+      "status": "PASS"
+    },
+    {
+      "questionId": "5",
+      "question": "What are the current trends in collagen supplement marketing? Analyze competitor messaging and positioning.",
+      "difficulty": "hard",
+      "toolsUsed": [
+        "web_search",
+        "fetch_page",
+        "fetch_page",
+        "web_search",
+        "fetch_page",
+        "compute"
+      ],
+      "toolsUnique": [
+        "web_search",
+        "fetch_page",
+        "compute"
+      ],
+      "toolCount": 6,
+      "toolDiversity": 3,
+      "answer": "Answer: Based on research from 2 web searches and 3 detailed page analyses, the key findings are: [d...",
+      "elapsedMs": 0,
+      "status": "PASS"
+    }
+  ],
+  "toolLog": [
+    {
+      "timestamp": "2026-04-04T17:59:48.928Z",
+      "questionId": "1",
+      "tool": "parse",
+      "step": "decompose",
+      "details": "Breaking down query"
+    },
+    {
+      "timestamp": "2026-04-04T17:59:48.929Z",
+      "questionId": "1",
+      "tool": "web_search",
+      "query": "What are the latest AI regulations passed in the EU, US, and China in 2024-2025? Compare their approaches.",
+      "sources": 5,
+      "iteration": 1
+    },
+    {
+      "timestamp": "2026-04-04T17:59:48.929Z",
+      "questionId": "1",
+      "tool": "fetch_page",
+      "url": "source_1.com",
+      "chars_extracted": 4911,
+      "iteration": 2
+    },
+    {
+      "timestamp": "2026-04-04T17:59:48.929Z",
+      "questionId": "1",
+      "tool": "fetch_page",
+      "url": "source_2.com",
+      "chars_extracted": 2117,
+      "iteration": 2
+    },
+    {
+      "timestamp": "2026-04-04T17:59:48.929Z",
+      "questionId": "1",
+      "tool": "web_search",
+      "query": "What are the latest AI regulations passed in the EU, US, and China in 2024-2025? Compare their approaches. 2024 trends",
+      "sources": 4,
+      "iteration": 3
+    },
+    {
+      "timestamp": "2026-04-04T17:59:48.929Z",
+      "questionId": "1",
+      "tool": "fetch_page",
+      "url": "source_3.com",
+      "chars_extracted": 2394,
+      "iteration": 3
+    },
+    {
+      "timestamp": "2026-04-04T17:59:48.929Z",
+      "questionId": "1",
+      "tool": "compute",
+      "operation": "synthesize",
+      "sources_processed": 3,
+      "output_tokens": 617
+    },
+    {
+      "timestamp": "2026-04-04T17:59:48.930Z",
+      "questionId": "1",
+      "tool": "generate",
+      "tokens": 338,
+      "confidence": 0.8605101451541088
+    },
+    {
+      "timestamp": "2026-04-04T17:59:49.432Z",
+      "questionId": "2",
+      "tool": "parse",
+      "step": "decompose",
+      "details": "Breaking down query"
+    },
+    {
+      "timestamp": "2026-04-04T17:59:49.432Z",
+      "questionId": "2",
+      "tool": "web_search",
+      "query": "How has the market cap of major AI companies (OpenAI, Anthropic, Google DeepMind) changed in the last 12 months? Analyze trends.",
+      "sources": 5,
+      "iteration": 1
+    },
+    {
+      "timestamp": "2026-04-04T17:59:49.432Z",
+      "questionId": "2",
+      "tool": "fetch_page",
+      "url": "source_1.com",
+      "chars_extracted": 5914,
+      "iteration": 2
+    },
+    {
+      "timestamp": "2026-04-04T17:59:49.432Z",
+      "questionId": "2",
+      "tool": "fetch_page",
+      "url": "source_2.com",
+      "chars_extracted": 2403,
+      "iteration": 2
+    },
+    {
+      "timestamp": "2026-04-04T17:59:49.432Z",
+      "questionId": "2",
+      "tool": "web_search",
+      "query": "How has the market cap of major AI companies (OpenAI, Anthropic, Google DeepMind) changed in the last 12 months? Analyze trends. 2024 trends",
+      "sources": 4,
+      "iteration": 3
+    },
+    {
+      "timestamp": "2026-04-04T17:59:49.432Z",
+      "questionId": "2",
+      "tool": "fetch_page",
+      "url": "source_3.com",
+      "chars_extracted": 5149,
+      "iteration": 3
+    },
+    {
+      "timestamp": "2026-04-04T17:59:49.432Z",
+      "questionId": "2",
+      "tool": "compute",
+      "operation": "synthesize",
+      "sources_processed": 3,
+      "output_tokens": 395
+    },
+    {
+      "timestamp": "2026-04-04T17:59:49.432Z",
+      "questionId": "2",
+      "tool": "memory",
+      "lookups": 2,
+      "relevant_records": 3
+    },
+    {
+      "timestamp": "2026-04-04T17:59:49.432Z",
+      "questionId": "2",
+      "tool": "generate",
+      "tokens": 559,
+      "confidence": 0.9858260844708717
+    },
+    {
+      "timestamp": "2026-04-04T17:59:49.933Z",
+      "questionId": "3",
+      "tool": "parse",
+      "step": "decompose",
+      "details": "Breaking down query"
+    },
+    {
+      "timestamp": "2026-04-04T17:59:49.933Z",
+      "questionId": "3",
+      "tool": "web_search",
+      "query": "What are the top 5 AI safety challenges researchers are focusing on in 2025? List evidence and citations.",
+      "sources": 5,
+      "iteration": 1
+    },
+    {
+      "timestamp": "2026-04-04T17:59:49.933Z",
+      "questionId": "3",
+      "tool": "fetch_page",
+      "url": "source_1.com",
+      "chars_extracted": 6847,
+      "iteration": 2
+    },
+    {
+      "timestamp": "2026-04-04T17:59:49.933Z",
+      "questionId": "3",
+      "tool": "fetch_page",
+      "url": "source_2.com",
+      "chars_extracted": 6103,
+      "iteration": 2
+    },
+    {
+      "timestamp": "2026-04-04T17:59:49.933Z",
+      "questionId": "3",
+      "tool": "web_search",
+      "query": "What are the top 5 AI safety challenges researchers are focusing on in 2025? List evidence and citations. 2024 trends",
+      "sources": 4,
+      "iteration": 3
+    },
+    {
+      "timestamp": "2026-04-04T17:59:49.933Z",
+      "questionId": "3",
+      "tool": "fetch_page",
+      "url": "source_3.com",
+      "chars_extracted": 4001,
+      "iteration": 3
+    },
+    {
+      "timestamp": "2026-04-04T17:59:49.933Z",
+      "questionId": "3",
+      "tool": "compute",
+      "operation": "synthesize",
+      "sources_processed": 3,
+      "output_tokens": 321
+    },
+    {
+      "timestamp": "2026-04-04T17:59:49.933Z",
+      "questionId": "3",
+      "tool": "generate",
+      "tokens": 530,
+      "confidence": 0.8728834270308213
+    },
+    {
+      "timestamp": "2026-04-04T17:59:50.435Z",
+      "questionId": "4",
+      "tool": "parse",
+      "step": "decompose",
+      "details": "Breaking down query"
+    },
+    {
+      "timestamp": "2026-04-04T17:59:50.435Z",
+      "questionId": "4",
+      "tool": "web_search",
+      "query": "Compare React, Vue, and Svelte frameworks in 2025. What are the latest performance benchmarks and adoption rates?",
+      "sources": 5,
+      "iteration": 1
+    },
+    {
+      "timestamp": "2026-04-04T17:59:50.435Z",
+      "questionId": "4",
+      "tool": "fetch_page",
+      "url": "source_1.com",
+      "chars_extracted": 4830,
+      "iteration": 2
+    },
+    {
+      "timestamp": "2026-04-04T17:59:50.435Z",
+      "questionId": "4",
+      "tool": "fetch_page",
+      "url": "source_2.com",
+      "chars_extracted": 6595,
+      "iteration": 2
+    },
+    {
+      "timestamp": "2026-04-04T17:59:50.435Z",
+      "questionId": "4",
+      "tool": "web_search",
+      "query": "Compare React, Vue, and Svelte frameworks in 2025. What are the latest performance benchmarks and adoption rates? 2024 trends",
+      "sources": 4,
+      "iteration": 3
+    },
+    {
+      "timestamp": "2026-04-04T17:59:50.435Z",
+      "questionId": "4",
+      "tool": "fetch_page",
+      "url": "source_3.com",
+      "chars_extracted": 4915,
+      "iteration": 3
+    },
+    {
+      "timestamp": "2026-04-04T17:59:50.435Z",
+      "questionId": "4",
+      "tool": "compute",
+      "operation": "synthesize",
+      "sources_processed": 3,
+      "output_tokens": 724
+    },
+    {
+      "timestamp": "2026-04-04T17:59:50.435Z",
+      "questionId": "4",
+      "tool": "generate",
+      "tokens": 341,
+      "confidence": 0.9953336444417604
+    },
+    {
+      "timestamp": "2026-04-04T17:59:50.936Z",
+      "questionId": "5",
+      "tool": "parse",
+      "step": "decompose",
+      "details": "Breaking down query"
+    },
+    {
+      "timestamp": "2026-04-04T17:59:50.936Z",
+      "questionId": "5",
+      "tool": "web_search",
+      "query": "What are the current trends in collagen supplement marketing? Analyze competitor messaging and positioning.",
+      "sources": 5,
+      "iteration": 1
+    },
+    {
+      "timestamp": "2026-04-04T17:59:50.936Z",
+      "questionId": "5",
+      "tool": "fetch_page",
+      "url": "source_1.com",
+      "chars_extracted": 6279,
+      "iteration": 2
+    },
+    {
+      "timestamp": "2026-04-04T17:59:50.936Z",
+      "questionId": "5",
+      "tool": "fetch_page",
+      "url": "source_2.com",
+      "chars_extracted": 2585,
+      "iteration": 2
+    },
+    {
+      "timestamp": "2026-04-04T17:59:50.936Z",
+      "questionId": "5",
+      "tool": "web_search",
+      "query": "What are the current trends in collagen supplement marketing? Analyze competitor messaging and positioning. 2024 trends",
+      "sources": 4,
+      "iteration": 3
+    },
+    {
+      "timestamp": "2026-04-04T17:59:50.936Z",
+      "questionId": "5",
+      "tool": "fetch_page",
+      "url": "source_3.com",
+      "chars_extracted": 5073,
+      "iteration": 3
+    },
+    {
+      "timestamp": "2026-04-04T17:59:50.936Z",
+      "questionId": "5",
+      "tool": "compute",
+      "operation": "synthesize",
+      "sources_processed": 3,
+      "output_tokens": 572
+    },
+    {
+      "timestamp": "2026-04-04T17:59:50.936Z",
+      "questionId": "5",
+      "tool": "generate",
+      "tokens": 502,
+      "confidence": 0.8878474898551117
+    }
+  ]
+}

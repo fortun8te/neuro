@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pyautogui
+Pillow
+pyobjc-core
+pyobjc-framework-Quartz
+pyobjc-framework-Cocoa
+pyobjc-framework-ApplicationServices

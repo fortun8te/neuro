@@ -1,0 +1,148 @@
+{
+  "suite": "Phase 2 Coordinate Refinement — Click Accuracy",
+  "description": "20 predefined click tasks spanning menu bar, buttons, inputs, and screen regions",
+  "created": "2026-04-05",
+  "notes": "Each test includes expected X/Y coordinates and ±50px tolerance for pass/fail",
+  "tests": [
+    {
+      "name": "Chrome dock icon",
+      "description": "Test clicking app icon in macOS dock (bottom left area)",
+      "expectedX": 156,
+      "expectedY": 858,
+      "tolerance": 50
+    },
+    {
+      "name": "System menu clock",
+      "description": "Test clicking system clock in menu bar (top right corner)",
+      "expectedX": 1440,
+      "expectedY": 12,
+      "tolerance": 50
+    },
+    {
+      "name": "Safari menu item",
+      "description": "Test clicking 'File' menu in Safari menu bar (top left area)",
+      "expectedX": 65,
+      "expectedY": 14,
+      "tolerance": 50
+    },
+    {
+      "name": "Search button in window",
+      "description": "Test clicking search button in centered window (mid-screen)",
+      "expectedX": 720,
+      "expectedY": 400,
+      "tolerance": 50
+    },
+    {
+      "name": "Text input field",
+      "description": "Test clicking text input field in form (center-left area)",
+      "expectedX": 400,
+      "expectedY": 450,
+      "tolerance": 50
+    },
+    {
+      "name": "Submit button",
+      "description": "Test clicking submit button in form (bottom-center area)",
+      "expectedX": 720,
+      "expectedY": 600,
+      "tolerance": 50
+    },
+    {
+      "name": "Close button (top-right)",
+      "description": "Test clicking close/X button on window (top-right corner)",
+      "expectedX": 1430,
+      "expectedY": 35,
+      "tolerance": 50
+    },
+    {
+      "name": "Settings icon",
+      "description": "Test clicking settings/gear icon in toolbar (right side)",
+      "expectedX": 1380,
+      "expectedY": 200,
+      "tolerance": 50
+    },
+    {
+      "name": "Back button",
+      "description": "Test clicking back/navigation button (top-left area)",
+      "expectedX": 50,
+      "expectedY": 100,
+      "tolerance": 50
+    },
+    {
+      "name": "Forward button",
+      "description": "Test clicking forward/navigation button (top-left area, right of back)",
+      "expectedX": 90,
+      "expectedY": 100,
+      "tolerance": 50
+    },
+    {
+      "name": "Reload button",
+      "description": "Test clicking reload/refresh button (top-center area)",
+      "expectedX": 130,
+      "expectedY": 100,
+      "tolerance": 50
+    },
+    {
+      "name": "Address bar",
+      "description": "Test clicking address/URL bar (top-center prominent area)",
+      "expectedX": 720,
+      "expectedY": 80,
+      "tolerance": 50
+    },
+    {
+      "name": "Tab in tab bar",
+      "description": "Test clicking tab in browser tab bar (top area)",
+      "expectedX": 400,
+      "expectedY": 60,
+      "tolerance": 50
+    },
+    {
+      "name": "Menu button (hamburger)",
+      "description": "Test clicking hamburger/menu button (top-right area)",
+      "expectedX": 1400,
+      "expectedY": 100,
+      "tolerance": 50
+    },
+    {
+      "name": "Sidebar item",
+      "description": "Test clicking item in left sidebar (left-center area)",
+      "expectedX": 100,
+      "expectedY": 350,
+      "tolerance": 50
+    },
+    {
+      "name": "Main content area",
+      "description": "Test clicking in main content area (center-center region)",
+      "expectedX": 720,
+      "expectedY": 450,
+      "tolerance": 50
+    },
+    {
+      "name": "Floating action button",
+      "description": "Test clicking floating action button (bottom-right area)",
+      "expectedX": 1350,
+      "expectedY": 800,
+      "tolerance": 50
+    },
+    {
+      "name": "Dialog confirm button",
+      "description": "Test clicking confirm button in dialog/modal (center area)",
+      "expectedX": 800,
+      "expectedY": 500,
+      "tolerance": 50
+    },
+    {
+      "name": "Dialog cancel button",
+      "description": "Test clicking cancel button in dialog/modal (center area, left of confirm)",
+      "expectedX": 640,
+      "expectedY": 500,
+      "tolerance": 50
+    },
+    {
+      "name": "Notification dismiss",
+      "description": "Test clicking dismiss button on notification (top-right area)",
+      "expectedX": 1400,
+      "expectedY": 30,
+      "tolerance": 50
+    }
+  ]
+}
