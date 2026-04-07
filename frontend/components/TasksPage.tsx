@@ -89,7 +89,8 @@ function statusBg(status: ScheduledTask['status'], dark: boolean): string {
 }
 
 function isRunningNow(task: ScheduledTask): boolean {
-  return task.status === 'pending' && task.runAt <= Date.now();
+  // Running tasks have status === 'running', OR pending tasks whose time has come
+  return task.status === 'running' || (task.status === 'pending' && task.runAt <= Date.now());
 }
 
 // Pad time string input like "09:30"
@@ -124,7 +125,13 @@ function RunningBanner({ task, dark }: { task: ScheduledTask; dark: boolean }) {
         <span style={{ color: dark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.55)' }}>{preview}</span>
       </span>
       <button
-        onClick={() => window.dispatchEvent(new CustomEvent('neuro-switch-to-chat'))}
+        onClick={() => {
+          if (task.chatId) {
+            window.dispatchEvent(new CustomEvent('neuro-navigate-chat', { detail: { chatId: task.chatId } }));
+          } else {
+            window.dispatchEvent(new CustomEvent('neuro-switch-to-chat'));
+          }
+        }}
         style={{
           fontSize: 12, fontFamily: FONT_FAMILY, fontWeight: 500,
           padding: '4px 12px', borderRadius: 6, border: '1px solid #f59e0b',

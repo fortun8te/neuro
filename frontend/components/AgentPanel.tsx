@@ -1835,6 +1835,35 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
     return () => window.removeEventListener('neuro-open-files', handler);
   }, []);
 
+  // Listen for canvas edit actions (Simplify, Polish, Shorter, Longer)
+  useEffect(() => {
+    const handleCanvasAction = (event: Event) => {
+      const customEvent = event as CustomEvent<{ action: string; content: string }>;
+      const { action, content } = customEvent.detail;
+
+      // Map canvas actions to incremental edit prompts
+      const editPrompts: Record<string, string> = {
+        simplify: `Make this more concise and clear, but keep all the important information. Edit incrementally, don't rewrite.`,
+        polish: `Improve the wording and style to be more professional and polished. Edit incrementally.`,
+        shorter: `Make this shorter while keeping the key points. Remove unnecessary details.`,
+        longer: `Expand this with more detail and examples. Keep the original structure.`,
+        review: `Review this code for issues, improvements, and best practices.`,
+        fix_bugs: `Fix any bugs or errors in this code.`,
+        add_comments: `Add helpful comments explaining what this code does.`,
+        add_logs: `Add console.log statements for debugging.`,
+      };
+
+      const prompt = editPrompts[action];
+      if (prompt && content) {
+        // Send a targeted edit request, not a full regeneration
+        setInput(`${prompt}\n\nCurrent content:\n\`\`\`\n${content}\n\`\`\``);
+        setInputFocused(true);
+      }
+    };
+    window.addEventListener('neuro-canvas-action', handleCanvasAction);
+    return () => window.removeEventListener('neuro-canvas-action', handleCanvasAction);
+  }, []);
+
   // Track document visibility to disable shimmer when page is hidden
   useEffect(() => {
     const handleVisibilityChange = () => {

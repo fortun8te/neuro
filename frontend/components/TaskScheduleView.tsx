@@ -299,10 +299,10 @@ export default function TaskScheduleView({
           {/* Task blocks */}
           {dayTasks.map(task => {
             const start = task.scheduledStart ?? task.runAt;
-            const durationMs = task.duration
-              ? task.duration * 60_000
+            const estimatedMs = task.estimatedDuration
+              ? task.estimatedDuration * 60_000
               : (task.scheduledEnd ? task.scheduledEnd - start : 30 * 60_000);
-            const end = task.scheduledEnd ?? (start + durationMs);
+            const end = task.scheduledEnd ?? (start + estimatedMs);
 
             const top = tsToY(start);
             const height = Math.max(24, tsToY(end) - top);
@@ -349,18 +349,25 @@ export default function TaskScheduleView({
                   alignItems: 'center',
                   gap: 8,
                   marginBottom: 2,
+                  justifyContent: 'space-between',
                 }}>
-                  <span style={{
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: textPrimary,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    flex: 1,
-                  }}>
-                    {task.title || task.prompt.slice(0, 40)}
-                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: textPrimary,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      display: 'block',
+                    }}>
+                      {task.title || task.prompt.slice(0, 40)}
+                    </span>
+                    <div style={{ fontSize: 10, color: textSecondary, marginTop: 1 }}>
+                      {formatTimeRange(start, end)}
+                    </div>
+                  </div>
+
                   {/* Category badge */}
                   {task.category && (
                     <span style={{
@@ -379,10 +386,52 @@ export default function TaskScheduleView({
                   )}
                 </div>
 
-                {/* Time range */}
-                <div style={{ fontSize: 10, color: textSecondary }}>
-                  {formatTimeRange(start, end)}
-                </div>
+                {/* Progress bar for running tasks */}
+                {isRunning && (
+                  <div style={{
+                    marginTop: 6,
+                    height: 4,
+                    background: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+                    borderRadius: 2,
+                    overflow: 'hidden',
+                  }}>
+                    <div style={{
+                      height: '100%',
+                      background: color,
+                      width: `${Math.min(100, task.progress || 0)}%`,
+                      transition: 'width 0.3s ease',
+                    }} />
+                  </div>
+                )}
+
+                {/* Cancel button for running/pending tasks */}
+                {isHovered && (isRunning || task.status === 'pending') && (
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      onCancelTask?.(task.id);
+                    }}
+                    style={{
+                      position: 'absolute',
+                      top: 4,
+                      right: 4,
+                      padding: '2px 6px',
+                      fontSize: 10,
+                      fontWeight: 600,
+                      background: '#ef4444',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                      letterSpacing: '0.02em',
+                      transition: 'opacity 0.15s',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.opacity = '0.8')}
+                    onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+                  >
+                    Cancel
+                  </button>
+                )}
 
                 {/* Hover tooltip */}
                 {isHovered && (
@@ -410,9 +459,6 @@ export default function TaskScheduleView({
                       {task.prompt.length > 120 ? task.prompt.slice(0, 120) + '...' : task.prompt}
                     </div>
                     <div style={{ display: 'flex', gap: 12, fontSize: 10, color: textTertiary, marginTop: 6 }}>
-                      {task.priority && (
-                        <span>Priority: {PRIORITY_LABELS[task.priority] || task.priority}</span>
-                      )}
                       <span>Status: {task.status}</span>
                     </div>
                     {onCancelTask && task.status === 'pending' && (

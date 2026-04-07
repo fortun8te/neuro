@@ -7,21 +7,37 @@
 import { openDB } from 'idb';
 import type { DBSchema } from 'idb';
 
+export type TaskScheduleType = 'timeRange' | 'deadline';
+
 export interface ScheduledTask {
   id: string;
   prompt: string;
   title?: string;
-  runAt: number;  // timestamp in ms when task should run
-  scheduledStart?: number;  // optional custom start time (defaults to runAt)
-  scheduledEnd?: number;  // optional end time
-  duration?: number;  // duration in minutes (if not using scheduledEnd)
+  // Scheduling: either time-range OR deadline-based
+  scheduleType: TaskScheduleType;  // 'timeRange' or 'deadline'
+
+  // For timeRange: scheduledStart + scheduledEnd (in ms)
+  scheduledStart?: number;
+  scheduledEnd?: number;
+
+  // For deadline: dueBy + estimatedDuration (minutes)
+  dueBy?: number;
+  estimatedDuration?: number;
+
+  // Backward compat: runAt is set to scheduledStart or dueBy
+  runAt: number;
+
   category?: 'research' | 'maintenance' | 'admin' | 'creative' | 'analysis' | string;
-  priority?: 'low' | 'normal' | 'high' | 'urgent';
+
   repeat?: {
     interval: number;  // ms between repeats
-    maxRuns?: number;  // max times to run (undefined = infinite)
+    endDate?: number;  // required: when to stop repeating
+    maxRuns?: number;  // optional: max times to run
   };
+
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  progress?: number;  // 0-100 for running tasks
+
   createdAt: number;
   completedAt?: number;
   error?: string;
@@ -49,7 +65,7 @@ let isInitialized = false;
 /**
  * Initialize the IndexedDB database
  */
-async function initDB() {
+export async function initDB() {
   if (typeof window === 'undefined') throw new Error('TaskScheduler requires browser environment');
   if (dbPromise) return dbPromise;
 
@@ -107,17 +123,74 @@ export function stopScheduler(): void {
 export async function scheduleTask(
   prompt: string,
   runAtTime: number | Date,
-  options?: { repeat?: { interval: number; maxRuns?: number } }
+  options?: { repeat?: { interval: number; maxRuns?: number; endDate?: number } }
 ): Promise<ScheduledTask> {
   const db = await initDB();
   const task: ScheduledTask = {
     id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
     prompt,
+    scheduleType: 'deadline',
     runAt: typeof runAtTime === 'number' ? runAtTime : runAtTime.getTime(),
     repeat: options?.repeat,
     status: 'pending',
     createdAt: Date.now(),
     runsCompleted: 0,
+  };
+
+  await db.add(STORE_NAME, task);
+  return task;
+}
+
+/**
+ * Schedule a task with time range
+ */
+export async function scheduleTaskTimeRange(
+  prompt: string,
+  title: string | undefined,
+  scheduledStart: number,
+  scheduledEnd: number,
+  category?: string
+): Promise<ScheduledTask> {
+  const db = await initDB();
+  const task: ScheduledTask = {
+    id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+    prompt,
+    title,
+    scheduleType: 'timeRange',
+    scheduledStart,
+    scheduledEnd,
+    runAt: scheduledStart,
+    category,
+    status: 'pending',
+    createdAt: Date.now(),
+  };
+
+  await db.add(STORE_NAME, task);
+  return task;
+}
+
+/**
+ * Schedule a task with deadline
+ */
+export async function scheduleTaskDeadline(
+  prompt: string,
+  title: string | undefined,
+  dueBy: number,
+  estimatedDuration: number,
+  category?: string
+): Promise<ScheduledTask> {
+  const db = await initDB();
+  const task: ScheduledTask = {
+    id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+    prompt,
+    title,
+    scheduleType: 'deadline',
+    dueBy,
+    estimatedDuration,
+    runAt: dueBy,
+    category,
+    status: 'pending',
+    createdAt: Date.now(),
   };
 
   await db.add(STORE_NAME, task);
@@ -198,6 +271,22 @@ async function updateTaskStatus(
     }
   } catch (e) {
     console.error('Failed to update task status:', e);
+  }
+}
+
+/**
+ * Update a running task's progress (0-100)
+ */
+export async function updateTaskProgress(taskId: string, progress: number): Promise<void> {
+  try {
+    const db = await initDB();
+    const task = await db.get(STORE_NAME, taskId);
+    if (task) {
+      task.progress = Math.min(100, Math.max(0, progress));
+      await db.put(STORE_NAME, task);
+    }
+  } catch (e) {
+    console.error('Failed to update task progress:', e);
   }
 }
 

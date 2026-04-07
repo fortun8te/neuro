@@ -9,6 +9,8 @@ import { FONT_FAMILY } from '../constants/ui';
 import {
   getScheduledTasks,
   scheduleTask,
+  scheduleTaskTimeRange,
+  scheduleTaskDeadline,
   cancelTask,
   deleteTask,
   clearCompletedTasks,
@@ -163,6 +165,12 @@ export function TaskPanel({ isOpen, onClose }: Props) {
   const [tasks, setTasks] = useState<ScheduledTask[]>([]);
   const [prompt, setPrompt] = useState('');
   const [creating, setCreating] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [scheduleType, setScheduleType] = useState<'timeRange' | 'deadline'>('timeRange');
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [estimatedMinutes, setEstimatedMinutes] = useState('30');
   const inputRef = useRef<HTMLInputElement>(null);
 
   const refresh = async () => {
@@ -192,10 +200,63 @@ export function TaskPanel({ isOpen, onClose }: Props) {
 
   const handleCreate = async () => {
     if (!prompt.trim() || creating) return;
+
+    // Validate scheduling form
+    if (showForm) {
+      if (scheduleType === 'timeRange') {
+        if (!startTime || !endTime) {
+          alert('Please set start and end times');
+          return;
+        }
+      } else {
+        if (!dueDate || !estimatedMinutes) {
+          alert('Please set due date and estimated duration');
+          return;
+        }
+      }
+    }
+
     setCreating(true);
     try {
-      await scheduleTask(prompt.trim(), Date.now());
+      if (showForm && scheduleType === 'timeRange' && startTime && endTime) {
+        // Parse start/end times (format: HH:MM)
+        const today = new Date();
+        const [startHour, startMin] = startTime.split(':').map(Number);
+        const [endHour, endMin] = endTime.split(':').map(Number);
+
+        const start = new Date(today);
+        start.setHours(startHour, startMin, 0, 0);
+        const end = new Date(today);
+        end.setHours(endHour, endMin, 0, 0);
+
+        await scheduleTaskTimeRange(
+          prompt.trim(),
+          undefined,
+          start.getTime(),
+          end.getTime(),
+          undefined
+        );
+      } else if (showForm && scheduleType === 'deadline' && dueDate && estimatedMinutes) {
+        // Parse due date (format: YYYY-MM-DD)
+        const due = new Date(dueDate + 'T23:59:59');
+        await scheduleTaskDeadline(
+          prompt.trim(),
+          undefined,
+          due.getTime(),
+          parseInt(estimatedMinutes) || 30,
+          undefined
+        );
+      } else {
+        // Simple queue (immediate)
+        await scheduleTask(prompt.trim(), Date.now());
+      }
+
       setPrompt('');
+      setShowForm(false);
+      setStartTime('');
+      setEndTime('');
+      setDueDate('');
+      setEstimatedMinutes('30');
       await refresh();
       // Notify AppShell to check immediately
       window.dispatchEvent(new CustomEvent('neuro-tasks-updated'));
@@ -274,34 +335,153 @@ export function TaskPanel({ isOpen, onClose }: Props) {
             </div>
 
             {/* Create task form */}
-            <div style={{ padding: '12px 16px', borderBottom: `1px solid ${border}`, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-              <input
-                ref={inputRef}
-                value={prompt}
-                onChange={e => setPrompt(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleCreate(); }}
-                placeholder="What should NEURO work on?"
-                style={{
-                  flex: 1, padding: '8px 11px', borderRadius: 8,
-                  background: inputBg, border: `1px solid ${inputBorder}`,
-                  color: text, fontFamily: FONT_FAMILY, fontSize: 13,
-                  outline: 'none', boxSizing: 'border-box',
-                }}
-              />
-              <button
-                onClick={handleCreate}
-                disabled={!prompt.trim() || creating}
-                style={{
-                  padding: '8px 14px', borderRadius: 8,
-                  background: prompt.trim() ? (isDarkMode ? '#3b82f6' : '#2563eb') : (isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'),
-                  border: 'none', cursor: prompt.trim() ? 'pointer' : 'not-allowed',
-                  color: prompt.trim() ? '#fff' : muted,
-                  fontSize: 12, fontWeight: 600, fontFamily: FONT_FAMILY,
-                  transition: 'all 0.15s', whiteSpace: 'nowrap', flexShrink: 0,
-                }}
-              >
-                {creating ? 'Queueing…' : 'Queue'}
-              </button>
+            <div style={{ padding: '12px 16px', borderBottom: `1px solid ${border}` }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: showForm ? 12 : 0 }}>
+                <input
+                  ref={inputRef}
+                  value={prompt}
+                  onChange={e => setPrompt(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !showForm) handleCreate(); }}
+                  placeholder="What should NEURO work on?"
+                  style={{
+                    flex: 1, padding: '8px 11px', borderRadius: 8,
+                    background: inputBg, border: `1px solid ${inputBorder}`,
+                    color: text, fontFamily: FONT_FAMILY, fontSize: 13,
+                    outline: 'none', boxSizing: 'border-box',
+                  }}
+                />
+                <button
+                  onClick={() => setShowForm(!showForm)}
+                  style={{
+                    padding: '8px 12px', borderRadius: 8,
+                    background: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                    border: `1px solid ${inputBorder}`,
+                    cursor: 'pointer',
+                    color: muted, fontFamily: FONT_FAMILY, fontSize: 12, fontWeight: 500,
+                    transition: 'all 0.15s', flexShrink: 0,
+                  }}
+                >
+                  {showForm ? 'Hide' : 'Schedule'}
+                </button>
+                <button
+                  onClick={handleCreate}
+                  disabled={!prompt.trim() || creating}
+                  style={{
+                    padding: '8px 14px', borderRadius: 8,
+                    background: prompt.trim() ? (isDarkMode ? '#3b82f6' : '#2563eb') : (isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'),
+                    border: 'none', cursor: prompt.trim() ? 'pointer' : 'not-allowed',
+                    color: prompt.trim() ? '#fff' : muted,
+                    fontSize: 12, fontWeight: 600, fontFamily: FONT_FAMILY,
+                    transition: 'all 0.15s', whiteSpace: 'nowrap', flexShrink: 0,
+                  }}
+                >
+                  {creating ? 'Queueing…' : 'Queue'}
+                </button>
+              </div>
+
+              {/* Schedule type selector */}
+              {showForm && (
+                <div style={{
+                  background: isDarkMode ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)',
+                  border: `1px solid ${inputBorder}`,
+                  borderRadius: 8,
+                  padding: 12,
+                }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: muted, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Schedule Type</div>
+
+                  {/* Radio buttons */}
+                  <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: text }}>
+                      <input
+                        type="radio"
+                        checked={scheduleType === 'timeRange'}
+                        onChange={() => setScheduleType('timeRange')}
+                        style={{ cursor: 'pointer' }}
+                      />
+                      Time Range
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: text }}>
+                      <input
+                        type="radio"
+                        checked={scheduleType === 'deadline'}
+                        onChange={() => setScheduleType('deadline')}
+                        style={{ cursor: 'pointer' }}
+                      />
+                      Deadline
+                    </label>
+                  </div>
+
+                  {/* Time Range inputs */}
+                  {scheduleType === 'timeRange' && (
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ fontSize: 10, color: muted, display: 'block', marginBottom: 4 }}>Start</label>
+                        <input
+                          type="time"
+                          value={startTime}
+                          onChange={e => setStartTime(e.target.value)}
+                          style={{
+                            width: '100%', padding: '6px 8px', borderRadius: 6,
+                            background: inputBg, border: `1px solid ${inputBorder}`,
+                            color: text, fontFamily: FONT_FAMILY, fontSize: 12,
+                            boxSizing: 'border-box', outline: 'none',
+                          }}
+                        />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ fontSize: 10, color: muted, display: 'block', marginBottom: 4 }}>End</label>
+                        <input
+                          type="time"
+                          value={endTime}
+                          onChange={e => setEndTime(e.target.value)}
+                          style={{
+                            width: '100%', padding: '6px 8px', borderRadius: 6,
+                            background: inputBg, border: `1px solid ${inputBorder}`,
+                            color: text, fontFamily: FONT_FAMILY, fontSize: 12,
+                            boxSizing: 'border-box', outline: 'none',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Deadline inputs */}
+                  {scheduleType === 'deadline' && (
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ fontSize: 10, color: muted, display: 'block', marginBottom: 4 }}>Due Date</label>
+                        <input
+                          type="date"
+                          value={dueDate}
+                          onChange={e => setDueDate(e.target.value)}
+                          style={{
+                            width: '100%', padding: '6px 8px', borderRadius: 6,
+                            background: inputBg, border: `1px solid ${inputBorder}`,
+                            color: text, fontFamily: FONT_FAMILY, fontSize: 12,
+                            boxSizing: 'border-box', outline: 'none',
+                          }}
+                        />
+                      </div>
+                      <div style={{ width: 100 }}>
+                        <label style={{ fontSize: 10, color: muted, display: 'block', marginBottom: 4 }}>Est. Minutes</label>
+                        <input
+                          type="number"
+                          value={estimatedMinutes}
+                          onChange={e => setEstimatedMinutes(e.target.value)}
+                          min="1"
+                          max="1440"
+                          style={{
+                            width: '100%', padding: '6px 8px', borderRadius: 6,
+                            background: inputBg, border: `1px solid ${inputBorder}`,
+                            color: text, fontFamily: FONT_FAMILY, fontSize: 12,
+                            boxSizing: 'border-box', outline: 'none',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Task list */}
