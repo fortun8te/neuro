@@ -557,7 +557,7 @@ export function TaskManager({ isDarkMode: parentIsDark }: { isDarkMode?: boolean
                       {/* Error Message */}
                       {task.error && (
                         <div style={{ fontSize: 10, color: '#ef4444', marginTop: 4 }}>
-                          ⚠️ {task.error}
+                          {task.error}
                         </div>
                       )}
                     </div>
@@ -572,12 +572,14 @@ export function TaskManager({ isDarkMode: parentIsDark }: { isDarkMode?: boolean
                             background: 'none',
                             border: 'none',
                             cursor: 'pointer',
-                            fontSize: 12,
+                            fontSize: 11,
+                            fontWeight: 500,
                             color: '#3b82f6',
-                            padding: 4,
+                            padding: '4px 6px',
+                            borderRadius: 4,
                           }}
                         >
-                          ▶
+                          Start
                         </button>
                       ) : task.status === 'running' ? (
                         <button
@@ -587,12 +589,14 @@ export function TaskManager({ isDarkMode: parentIsDark }: { isDarkMode?: boolean
                             background: 'none',
                             border: 'none',
                             cursor: 'pointer',
-                            fontSize: 12,
+                            fontSize: 11,
+                            fontWeight: 500,
                             color: '#f59e0b',
-                            padding: 4,
+                            padding: '4px 6px',
+                            borderRadius: 4,
                           }}
                         >
-                          ⏸
+                          Pause
                         </button>
                       ) : task.status === 'paused' ? (
                         <button
@@ -602,12 +606,14 @@ export function TaskManager({ isDarkMode: parentIsDark }: { isDarkMode?: boolean
                             background: 'none',
                             border: 'none',
                             cursor: 'pointer',
-                            fontSize: 12,
+                            fontSize: 11,
+                            fontWeight: 500,
                             color: '#3b82f6',
-                            padding: 4,
+                            padding: '4px 6px',
+                            borderRadius: 4,
                           }}
                         >
-                          ▶
+                          Resume
                         </button>
                       ) : null}
 
@@ -618,12 +624,15 @@ export function TaskManager({ isDarkMode: parentIsDark }: { isDarkMode?: boolean
                           background: 'none',
                           border: 'none',
                           cursor: 'pointer',
-                          fontSize: 12,
-                          opacity: 0.4,
-                          padding: 4,
+                          fontSize: 11,
+                          fontWeight: 400,
+                          color: 'inherit',
+                          opacity: 0.5,
+                          padding: '4px 6px',
+                          borderRadius: 4,
                         }}
                       >
-                        ✏️
+                        Edit
                       </button>
 
                       <button
@@ -633,13 +642,15 @@ export function TaskManager({ isDarkMode: parentIsDark }: { isDarkMode?: boolean
                           background: 'none',
                           border: 'none',
                           cursor: 'pointer',
-                          fontSize: 12,
+                          fontSize: 11,
+                          fontWeight: 400,
                           color: '#ef4444',
-                          opacity: 0.4,
-                          padding: 4,
+                          opacity: 0.5,
+                          padding: '4px 6px',
+                          borderRadius: 4,
                         }}
                       >
-                        🗑
+                        Delete
                       </button>
                     </div>
                   </div>
@@ -662,7 +673,7 @@ export function TaskManager({ isDarkMode: parentIsDark }: { isDarkMode?: boolean
                 marginBottom: 8,
               }}
             >
-              {showCompleted ? '▼' : '▶'} Completed ({completedTasks.length})
+              {showCompleted ? '▼ ' : '▶ '} Completed ({completedTasks.length})
             </div>
 
             {showCompleted &&
