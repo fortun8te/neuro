@@ -374,11 +374,20 @@ export const screenshotService = {
       } finally {
         clearTimeout(timer);
       }
-      if (!resp.ok) return urls.map(u => ({ url: u, image_base64: '', width: 0, height: 0, error: `HTTP ${resp.status}` }));
+      if (!resp.ok) {
+        console.warn(`Screenshot batch HTTP error: ${resp.status}`);
+        return urls.map(u => ({ url: u, image_base64: '', width: 0, height: 0, error: `HTTP ${resp.status}` }));
+      }
       try {
         const data = await resp.json();
+        // Validate screenshots array exists and is an array
+        if (!Array.isArray(data?.screenshots)) {
+          console.error('Invalid screenshot batch response: missing or invalid screenshots array', data);
+          return urls.map(u => ({ url: u, image_base64: '', width: 0, height: 0, error: 'Invalid server response: missing screenshots' }));
+        }
         return data.screenshots;
-      } catch {
+      } catch (parseErr) {
+        console.error('Screenshot batch JSON parse error:', parseErr);
         return urls.map(u => ({ url: u, image_base64: '', width: 0, height: 0, error: 'Non-JSON response from /screenshot/batch' }));
       }
     } catch (error) {
@@ -458,7 +467,23 @@ export const screenshotService = {
 
   /** Close an active session */
   async sessionClose(sessionId: string): Promise<void> {
-    try { await fetch(`${getHost()}/session/close`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: sessionId }) }); } catch {}
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      try {
+        await fetch(`${getHost()}/session/close`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    } catch (err) {
+      // Non-fatal, but log for debugging — session may eventually timeout on server
+      console.warn(`Failed to close session ${sessionId}:`, err);
+    }
   },
 
   /**

@@ -170,12 +170,32 @@ export function AppShell() {
   useEffect(() => {
     healthMonitor.start();
     ollamaService.startupCheck();
-    // Start task scheduler
-    import('../utils/taskScheduler').then(({ startScheduler, stopScheduler }) => {
-      startScheduler().catch((e: Error) => console.warn('Failed to start scheduler:', e));
-      return () => stopScheduler();
-    }).catch(() => {});
-    return () => { healthMonitor.stop(); };
+
+    // Start task scheduler with proper cleanup
+    let stopScheduler: (() => void) | null = null;
+    import('../utils/taskScheduler')
+      .then(({ startScheduler: startSched, stopScheduler: stopSched }) => {
+        stopScheduler = stopSched;
+        return startSched().catch((e: Error) => {
+          console.error('Failed to start task scheduler:', e);
+          // Don't crash entire app, but log clearly
+        });
+      })
+      .catch((e) => {
+        console.error('Failed to load task scheduler module:', e);
+        // Module load failure is non-fatal, app continues without scheduler
+      });
+
+    return () => {
+      healthMonitor.stop();
+      if (stopScheduler) {
+        try {
+          stopScheduler();
+        } catch (e) {
+          console.warn('Error stopping scheduler:', e);
+        }
+      }
+    };
   }, []);
 
   // Do not auto-login as guest — let user see LoginScreen to choose Firebase or guest

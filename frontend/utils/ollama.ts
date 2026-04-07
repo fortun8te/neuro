@@ -449,7 +449,9 @@ export const ollamaService = {
                 }
 
                 if (json.done) {
-                  tokenTracker.endCall(json.eval_count, json.eval_duration);
+                  const evalCount = typeof json.eval_count === 'number' ? json.eval_count : undefined;
+                  const evalDuration = typeof json.eval_duration === 'number' ? json.eval_duration : undefined;
+                  tokenTracker.endCall(evalCount, evalDuration);
                   trackingEnded = true;
                 }
               } catch (parseErr) {
@@ -479,7 +481,9 @@ export const ollamaService = {
               onThink?.(thinkToken);
             }
             if (json.done) {
-              tokenTracker.endCall(json.eval_count, json.eval_duration);
+              const evalCount = typeof json.eval_count === 'number' ? json.eval_count : undefined;
+              const evalDuration = typeof json.eval_duration === 'number' ? json.eval_duration : undefined;
+              tokenTracker.endCall(evalCount, evalDuration);
               trackingEnded = true;
             }
           } catch (bufferErr) {

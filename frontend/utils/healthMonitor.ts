@@ -74,7 +74,12 @@ class HealthMonitor {
 
   private notify(name: string, oldStatus: ServiceStatus, newStatus: ServiceStatus) {
     for (const cb of this.listeners) {
-      try { cb(name, oldStatus, newStatus); } catch { /* ignore */ }
+      try {
+        cb(name, oldStatus, newStatus);
+      } catch (err) {
+        // Log but don't crash — one bad listener shouldn't break monitoring for all
+        console.warn(`Health monitor listener error for ${name}:`, err);
+      }
     }
   }
 
