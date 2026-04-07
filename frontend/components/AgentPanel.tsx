@@ -56,6 +56,7 @@ import { SourcesList } from './SourcesList';
 import { SourceFooter } from './SourceFooter';
 import { useSourcesFromMessage } from '../hooks/useSourcesFromMessage';
 import { removeUrlsFromText } from '../utils/sourceExtractor';
+import { ToolStatusPanel } from './ToolStatusPanel';
 
 /** Wrapper component so useSourcesFromMessage is called at component level (not inside .map()) */
 function BlockSources({ content, findings, steps, sourceMap, isDarkMode }: { content?: string; findings?: any; steps?: StepCard[]; sourceMap?: SourceMap; isDarkMode: boolean }) {
@@ -2271,6 +2272,32 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
     setInput('');
   };
 
+  // Detect task-like patterns in messages (e.g., "work on this for 30 minutes")
+  const detectTaskPattern = (message: string): { isTask: boolean; duration?: number } => {
+    const taskPatterns = [
+      /work on this for (\d+)\s*(minute|hour|min|hr)s?/i,
+      /research .+ (deeply|thoroughly|completely)/i,
+      /analyze .+ for (\d+)\s*(minute|hour)s?/i,
+      /deep dive into/i,
+      /spend (\d+)\s*(minute|hour)s? on/i,
+    ];
+
+    for (const pattern of taskPatterns) {
+      const match = message.match(pattern);
+      if (match) {
+        // Extract duration if present
+        let duration = 30; // default 30 minutes
+        if (match[1] && (match[2] || '').toLowerCase().includes('hour')) {
+          duration = parseInt(match[1], 10) * 60;
+        } else if (match[1]) {
+          duration = parseInt(match[1], 10);
+        }
+        return { isTask: true, duration };
+      }
+    }
+    return { isTask: false };
+  };
+
   const handleSubmit = async () => {
     const text = readInputText().trim();
     const currentAttachments = [...attachments];
@@ -2287,6 +2314,14 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
     // Detect @subN mentions in the input text
     const subagentNums = detectSubagentMentions(text);
     setMentionedSubagents(subagentNums);
+
+    // Detect task-like patterns and notify AppShell to open task sidebar
+    const taskDetection = detectTaskPattern(text);
+    if (taskDetection.isTask) {
+      window.dispatchEvent(new CustomEvent('neuro-detect-task', {
+        detail: { message: text, duration: taskDetection.duration }
+      }));
+    }
 
     // Build attachment context string for the agent
     let attachmentContext = '';
@@ -3377,7 +3412,15 @@ export function AgentPanel({ initialChatId, hideSidebar, initialMessage, onIniti
             </div>
           )}
         </div>
-        {/* BottomStatusBar removed — tool usage shown inline */}
+
+        {/* Tool Status Panel — shows real-time tool execution status */}
+        {status !== 'idle' && (
+          <div className="px-5 py-2 border-t" style={{ borderColor: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }}>
+            <div className="max-w-3xl mx-auto w-full">
+              <ToolStatusPanel isDarkMode={isDarkMode} animationsEnabled={animationsEnabled} maxItems={5} />
+            </div>
+          </div>
+        )}
 
         {/* Scroll button */}
         <AnimatePresence>

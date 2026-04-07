@@ -23,6 +23,9 @@ import { injectSoul } from './soulLoader';
 import { runPlanAct } from './planActAgent';
 import { wayfarerService, screenshotService } from './wayfarer';
 import { sandboxService } from './sandboxService';
+// NOTE: videoAnalyzer uses Node.js APIs (child_process, fs, path) and cannot run in browser
+// These tools are server-side only and should not be imported here
+import { createSpreadsheet, readSpreadsheet } from './excelTools';
 // Workspace imports removed — use sessionFileSystem instead
 import { agentCoordinator } from './agentCoordinator';
 import { blackboard } from './blackboard';
@@ -3596,6 +3599,71 @@ ${spec.source ? `*Source: ${spec.source}*` : ''}
         }
       },
     },
+    {
+      name: 'create_spreadsheet',
+      description: 'Create an Excel spreadsheet (.xlsx) or CSV from data. Auto-formats with headers, column widths, and basic styling. Pass an array of objects where each object is a row.',
+      parameters: {
+        data: { type: 'string', description: 'JSON array of objects, where each object is a row (keys = column headers). Example: [{"name":"Alice","age":30},{"name":"Bob","age":28}]', required: true },
+        path: { type: 'string', description: 'Output file path (e.g., /tmp/report.xlsx or ~/data.csv)', required: true },
+        sheet_name: { type: 'string', description: 'Name of the sheet (Excel only, default: "Sheet1")' },
+      },
+      execute: async (params) => {
+        try {
+          const dataStr = String(params.data || '[]');
+          let data: Array<Record<string, any>> = [];
+          try {
+            data = JSON.parse(dataStr);
+          } catch {
+            return { success: false, output: 'Invalid JSON data format' };
+          }
+          if (!Array.isArray(data) || data.length === 0) {
+            return { success: false, output: 'Data must be a non-empty array of objects' };
+          }
+          const result = await createSpreadsheet(data, String(params.path || ''), String(params.sheet_name || 'Sheet1'));
+          return {
+            success: result.success,
+            output: result.message,
+            data: { path: result.path },
+          };
+        } catch (err) {
+          return { success: false, output: `create_spreadsheet failed: ${err instanceof Error ? err.message : err}` };
+        }
+      },
+    },
+    {
+      name: 'read_spreadsheet',
+      description: 'Read and parse an Excel (.xlsx, .xls) or CSV file. Returns headers and rows as a data array.',
+      parameters: {
+        path: { type: 'string', description: 'Path to spreadsheet file (.xlsx, .xls, or .csv)', required: true },
+      },
+      execute: async (params) => {
+        try {
+          const result = await readSpreadsheet(String(params.path || ''));
+          if (!result.success) {
+            return { success: false, output: result.message };
+          }
+          const dataDisplay = result.data
+            ? `Headers: ${result.data.headers.join(', ')}\n\nFirst 5 rows:\n${result.data.rows
+                .slice(0, 5)
+                .map((r, i) => `${i + 1}. ${JSON.stringify(r)}`)
+                .join('\n')}`
+            : '(No data)';
+          return {
+            success: true,
+            output: `✅ ${result.message}\n\n${dataDisplay}`,
+            data: result.data,
+          };
+        } catch (err) {
+          return { success: false, output: `read_spreadsheet failed: ${err instanceof Error ? err.message : err}` };
+        }
+      },
+    },
+    // TODO: Enable execute_workflow after workflowOrchestrator is imported
+    // {
+    //   name: 'execute_workflow',
+    //   description: 'Execute a complex multi-step autonomous workflow.',
+    //   ...
+    // },
   ].filter(t => {
     // Gate computer tools behind feature flag
     if (!COMPUTER_TOOLS_ENABLED && ['use_computer', 'control_desktop'].includes(t.name)) return false;

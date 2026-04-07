@@ -496,7 +496,7 @@ export const RESEARCH_PRESETS: ResearchPresetDef[] = [
     id: 'quick',
     label: 'Quick',
     shortLabel: 'Quick',
-    description: 'Solid overview with real data',
+    description: 'Solid overview with real data — 4 parallel researchers',
     time: '~30 min',
     color: 'emerald',
     limits: {
@@ -517,7 +517,7 @@ export const RESEARCH_PRESETS: ResearchPresetDef[] = [
       maxVisualUrls: 0,
       skipReflection: false,
       singlePassResearch: false,
-      useSubagents: false,
+      useSubagents: true,
     },
   },
   {

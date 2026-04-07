@@ -152,11 +152,17 @@ export function AppShell() {
       const color = (e as CustomEvent).detail;
       if (color) setAvatarColor(color);
     };
+    const taskDetectHandler = (e: Event) => {
+      // When AgentPanel detects a task pattern, switch to tasks view
+      setActiveView('tasks');
+    };
     window.addEventListener('neuro-avatar-seed-changed', seedHandler);
     window.addEventListener('neuro-avatar-color-changed', colorHandler);
+    window.addEventListener('neuro-detect-task', taskDetectHandler);
     return () => {
       window.removeEventListener('neuro-avatar-seed-changed', seedHandler);
       window.removeEventListener('neuro-avatar-color-changed', colorHandler);
+      window.removeEventListener('neuro-detect-task', taskDetectHandler);
     };
   }, []);
 
@@ -554,46 +560,6 @@ export function AppShell() {
           </div>
 
           <div style={{ flex: 1 }} />
-
-          {/* Network button — visible when in a chat */}
-          {urlChatId && (
-            <button
-              onClick={() => window.dispatchEvent(new CustomEvent('neuro-open-network'))}
-              className={`nomad-icon-btn ${isDarkMode ? 'nomad-icon-btn-dark' : 'nomad-icon-btn-light'}`}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                background: 'none', border: 'none', cursor: 'pointer',
-                padding: '5px 10px', borderRadius: 7,
-                fontSize: 12, fontFamily: FONT_FAMILY,
-              }}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/>
-                <line x1="12" y1="8" x2="5" y2="16"/><line x1="12" y1="8" x2="19" y2="16"/>
-              </svg>
-              Network
-            </button>
-          )}
-
-          {/* Files button — visible when in a chat */}
-          {urlChatId && (
-            <button
-              onClick={() => window.dispatchEvent(new CustomEvent('neuro-open-files'))}
-              className={`nomad-icon-btn ${isDarkMode ? 'nomad-icon-btn-dark' : 'nomad-icon-btn-light'}`}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                background: 'none', border: 'none', cursor: 'pointer',
-                padding: '5px 10px', borderRadius: 7,
-                fontSize: 12, fontFamily: FONT_FAMILY,
-              }}
-              title="Browse workspace files"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/>
-              </svg>
-              Files
-            </button>
-          )}
         </div>
 
         {/* Page content — explicit flex-1 + minHeight:0 so children get a definite height */}

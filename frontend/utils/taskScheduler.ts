@@ -291,6 +291,35 @@ export async function updateTaskProgress(taskId: string, progress: number): Prom
 }
 
 /**
+ * Update task timing (for drag-and-drop in calendar)
+ * Supports both timeRange tasks (start+end) and deadline tasks (dueBy)
+ */
+export async function updateTaskTime(
+  taskId: string,
+  startMs: number,
+  endMs?: number
+): Promise<void> {
+  try {
+    const db = await initDB();
+    const task = await db.get(STORE_NAME, taskId);
+    if (task) {
+      if (task.scheduleType === 'timeRange') {
+        task.scheduledStart = startMs;
+        task.scheduledEnd = endMs || startMs + 3600000; // Default 1 hour
+        task.runAt = startMs;
+      } else {
+        // deadline type
+        task.dueBy = startMs;
+        task.runAt = startMs;
+      }
+      await db.put(STORE_NAME, task);
+    }
+  } catch (e) {
+    console.error('Failed to update task time:', e);
+  }
+}
+
+/**
  * Check for pending tasks and run them
  * Called by the background scheduler
  */

@@ -1,637 +1,741 @@
 /**
- * TasksPage — Full-screen calendar app UI with monthly/weekly/daily views,
- * left sidebar navigation, and right panel for task creation/editing.
+ * TasksPage v6 — Apple Calendar weekly planner with task queues inside time blocks.
+ *
+ * Architecture:
+ *   Calendar shows TIME BLOCKS (available work windows).
+ *   Each block contains a TASK QUEUE executed sequentially top→bottom.
+ *   Click task = Apple Calendar-style popover (edit name, description, delete).
+ *   Full 24-hour day view with past date prevention.
  */
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+// @ts-nocheck
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { FONT_FAMILY } from '../constants/ui';
 import {
-  getScheduledTasks,
-  scheduleTask,
-  cancelTask,
-  deleteTask,
-  getTaskStats,
-  type ScheduledTask,
-} from '../utils/taskScheduler';
+  getBlocks,
+  createBlock,
+  updateBlock,
+  deleteBlock,
+  moveBlock,
+  resizeBlock,
+  addTaskToBlock,
+  updateTaskInBlock,
+  removeTaskFromBlock,
+  reorderTasksInBlock,
+  moveTaskBetweenBlocks,
+  advanceQueue,
+  getBacklog,
+  addToBacklog,
+  removeFromBacklog,
+  moveBacklogToBlock,
+  moveBlockTaskToBacklog,
+  type TimeBlock,
+  type PlanTask,
+  type TaskStatus,
+} from '../utils/plannerStore';
 
-// ── Constants ────────────────────────────────────────────────────────────────
+// ── Constants ───────────────────────────────────────────────────────────────
 
-const MONTH_NAMES = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
-const DAY_ABBREV = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const DAY_SHORT  = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+const HOUR_PX = 64;
+const SNAP_MIN = 15;
+const HOURS = Array.from({ length: 24 }, (_, i) => i); // Full 24-hour day
+const TIME_GUTTER = 52;
+const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const BLOCK_COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#22c55e', '#06b6d4', '#f43f5e'];
 
-// Hours shown in weekly/daily views
-const HOURS: number[] = Array.from({ length: 18 }, (_, i) => i + 6); // 6am–11pm
+// ── Helpers ─────────────────────────────────────────────────────────────────
 
-type CalView = 'month' | 'week' | 'day';
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function getDaysInMonth(year: number, month: number) {
-  return new Date(year, month + 1, 0).getDate();
+function isoDay(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function getFirstDayOfMonth(year: number, month: number) {
-  return new Date(year, month, 1).getDay();
+function parseIsoDay(s: string): Date {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
 }
 
-function isSameDay(a: Date, b: Date) {
-  return a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate();
+function mondayOfWeek(d: Date): Date {
+  const r = new Date(d); r.setHours(0, 0, 0, 0);
+  const day = r.getDay(); // 0=Sun
+  r.setDate(r.getDate() - ((day + 6) % 7)); // shift to Monday
+  return r;
 }
 
-function startOfWeek(date: Date): Date {
-  const d = new Date(date);
-  d.setDate(d.getDate() - d.getDay());
-  d.setHours(0, 0, 0, 0);
-  return d;
+function addDays(d: Date, n: number): Date {
+  const r = new Date(d); r.setDate(r.getDate() + n); return r;
 }
 
-function addDays(date: Date, n: number): Date {
-  const d = new Date(date);
-  d.setDate(d.getDate() + n);
-  return d;
+function fmtHour(h: number): string {
+  const hr = Math.floor(h);
+  const min = Math.round((h - hr) * 60);
+  const ampm = hr >= 12 ? 'PM' : 'AM';
+  const disp = hr === 0 ? 12 : hr > 12 ? hr - 12 : hr;
+  return min === 0 ? `${disp} ${ampm}` : `${disp}:${String(min).padStart(2, '0')} ${ampm}`;
 }
 
-function formatTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+function snapHour(raw: number): number {
+  return Math.round(raw * (60 / SNAP_MIN)) / (60 / SNAP_MIN);
 }
 
-function formatDate(d: Date): string {
-  return d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+function yToHour(y: number): number {
+  return snapHour(HOURS[0] + y / HOUR_PX);
 }
 
-function taskHour(task: ScheduledTask): number {
-  return new Date(task.runAt).getHours() + new Date(task.runAt).getMinutes() / 60;
+function hourToY(h: number): number {
+  return (h - HOURS[0]) * HOUR_PX;
 }
 
-function statusColor(status: ScheduledTask['status']): string {
-  switch (status) {
-    case 'pending':   return '#f59e0b';
-    case 'completed': return '#22c55e';
-    case 'failed':    return '#ef4444';
-    case 'cancelled': return '#64748b';
-  }
+function xToCol(clientX: number, rect: DOMRect): number {
+  const contentLeft = rect.left + TIME_GUTTER;
+  const colW = (rect.width - TIME_GUTTER) / 7;
+  return Math.min(6, Math.max(0, Math.floor((clientX - contentLeft) / colW)));
 }
 
-function statusBg(status: ScheduledTask['status'], dark: boolean): string {
-  switch (status) {
-    case 'pending':   return dark ? 'rgba(245,158,11,0.15)' : 'rgba(245,158,11,0.12)';
-    case 'completed': return dark ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.12)';
-    case 'failed':    return dark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.12)';
-    case 'cancelled': return dark ? 'rgba(100,116,139,0.15)' : 'rgba(100,116,139,0.10)';
-  }
+// ── Status helpers ──────────────────────────────────────────────────────────
+
+function statusIcon(s: TaskStatus): string {
+  if (s === 'completed') return '✓';
+  if (s === 'in_progress') return '▶';
+  return '○';
 }
 
-function isRunningNow(task: ScheduledTask): boolean {
-  // Running tasks have status === 'running', OR pending tasks whose time has come
-  return task.status === 'running' || (task.status === 'pending' && task.runAt <= Date.now());
+function statusColor(s: TaskStatus): string {
+  if (s === 'completed') return '#22c55e';
+  if (s === 'in_progress') return '#3b82f6';
+  return '#94a3b8';
 }
 
-// Pad time string input like "09:30"
-function parseTimeInput(val: string): { h: number; m: number } {
-  const [h, m] = val.split(':').map(Number);
-  return { h: isNaN(h) ? 9 : h, m: isNaN(m) ? 0 : m };
-}
+// ════════════════════════════════════════════════════════════════════════════
+// TASK POPOVER (Apple Calendar style — single click to edit)
+// ════════════════════════════════════════════════════════════════════════════
 
-function toDatetimeLocal(ts: number): string {
-  const d = new Date(ts);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-// ── Running Banner ────────────────────────────────────────────────────────────
-
-function RunningBanner({ task, dark }: { task: ScheduledTask; dark: boolean }) {
-  const preview = task.prompt.length > 70 ? task.prompt.slice(0, 70) + '...' : task.prompt;
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 12,
-      padding: '10px 20px',
-      background: dark ? 'rgba(245,158,11,0.13)' : 'rgba(245,158,11,0.10)',
-      borderBottom: `1px solid ${dark ? 'rgba(245,158,11,0.25)' : 'rgba(245,158,11,0.22)'}`,
-      fontFamily: FONT_FAMILY,
-      flexShrink: 0,
-    }}>
-      <PulsingDot color="#f59e0b" />
-      <span style={{ fontSize: 13, color: dark ? 'rgba(255,255,255,0.82)' : 'rgba(0,0,0,0.78)', flex: 1 }}>
-        <span style={{ fontWeight: 600, color: '#f59e0b' }}>Task running</span>
-        {' — NEURO is working on: '}
-        <span style={{ color: dark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.55)' }}>{preview}</span>
-      </span>
-      <button
-        onClick={() => {
-          if (task.chatId) {
-            window.dispatchEvent(new CustomEvent('neuro-navigate-chat', { detail: { chatId: task.chatId } }));
-          } else {
-            window.dispatchEvent(new CustomEvent('neuro-switch-to-chat'));
-          }
-        }}
-        style={{
-          fontSize: 12, fontFamily: FONT_FAMILY, fontWeight: 500,
-          padding: '4px 12px', borderRadius: 6, border: '1px solid #f59e0b',
-          background: 'transparent', color: '#f59e0b', cursor: 'pointer',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        View in Chat
-      </button>
-    </div>
-  );
-}
-
-function PulsingDot({ color }: { color: string }) {
-  return (
-    <span style={{ position: 'relative', display: 'inline-flex', width: 10, height: 10, flexShrink: 0 }}>
-      <style>{`
-        @keyframes pulse-ring {
-          0% { transform: scale(1); opacity: 0.6; }
-          100% { transform: scale(2.2); opacity: 0; }
-        }
-      `}</style>
-      <span style={{
-        position: 'absolute', inset: 0, borderRadius: '50%',
-        background: color, animation: 'pulse-ring 1.3s ease-out infinite',
-      }} />
-      <span style={{ width: 10, height: 10, borderRadius: '50%', background: color, position: 'relative' }} />
-    </span>
-  );
-}
-
-// ── Mini Month Navigator ──────────────────────────────────────────────────────
-
-function MiniMonth({
-  navDate, today, onNavigate, onSelectDate, dark,
+function TaskPopover({
+  task, block, position, onClose, onUpdate, dark,
 }: {
-  navDate: Date;
-  today: Date;
-  onNavigate: (d: Date) => void;
-  onSelectDate: (d: Date) => void;
+  task: PlanTask;
+  block: TimeBlock;
+  position: { x: number; y: number };
+  onClose: () => void;
+  onUpdate: () => void;
   dark: boolean;
 }) {
-  const year  = navDate.getFullYear();
-  const month = navDate.getMonth();
-  const firstDay = getFirstDayOfMonth(year, month);
-  const daysInMonth = getDaysInMonth(year, month);
-  const cells: (number | null)[] = [...Array(firstDay).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
-  while (cells.length % 7 !== 0) cells.push(null);
+  const [name, setName] = useState(task.name);
+  const [desc, setDesc] = useState(task.description || '');
+  const border = dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+  const bg = dark ? '#1a1a1a' : '#fff';
+  const popoverRef = useRef<HTMLDivElement>(null);
 
-  const textPrimary = dark ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.82)';
-  const textDim     = dark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.28)';
-  const textMuted   = dark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.4)';
+  const handleSave = async () => {
+    if (name.trim()) {
+      await updateTaskInBlock(block.id, task.id, { name: name.trim(), description: desc.trim() || undefined });
+      onUpdate();
+    }
+    onClose();
+  };
+
+  const handleDelete = async () => {
+    if (confirm('Delete this task?')) {
+      await removeTaskFromBlock(block.id, task.id);
+      onUpdate();
+      onClose();
+    }
+  };
+
+  // Close on outside click
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    setTimeout(() => document.addEventListener('mousedown', onDown), 0);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [onClose]);
 
   return (
-    <div style={{ fontFamily: FONT_FAMILY, userSelect: 'none' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-        <button
-          onClick={() => onNavigate(new Date(year, month - 1, 1))}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: textMuted, fontSize: 14, padding: '2px 4px' }}
-        >
-          ‹
-        </button>
-        <span style={{ fontSize: 11, fontWeight: 600, color: textPrimary, letterSpacing: '0.03em' }}>
-          {MONTH_NAMES[month].slice(0, 3)} {year}
-        </span>
-        <button
-          onClick={() => onNavigate(new Date(year, month + 1, 1))}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: textMuted, fontSize: 14, padding: '2px 4px' }}
-        >
-          ›
-        </button>
+    <div
+      ref={popoverRef}
+      style={{
+        position: 'fixed',
+        left: position.x,
+        top: position.y,
+        width: 320,
+        background: bg,
+        border: `1px solid ${border}`,
+        borderRadius: 12,
+        boxShadow: dark ? '0 20px 25px -5px rgba(0,0,0,0.3)' : '0 20px 25px -5px rgba(0,0,0,0.1)',
+        zIndex: 1000,
+        fontFamily: FONT_FAMILY,
+        padding: 16,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+      }}
+    >
+      {/* Task name */}
+      <div>
+        <label style={{ fontSize: 10, fontWeight: 600, opacity: 0.5, textTransform: 'uppercase' }}>Task Name</label>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+          autoFocus
+          style={{
+            width: '100%',
+            fontSize: 14,
+            fontFamily: FONT_FAMILY,
+            padding: '8px 10px',
+            border: `1px solid ${border}`,
+            borderRadius: 8,
+            background: dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
+            color: 'inherit',
+            outline: 'none',
+            marginTop: 6,
+          }}
+        />
       </div>
-      {/* Day labels */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 1, marginBottom: 3 }}>
-        {DAY_SHORT.map(d => (
-          <div key={d} style={{ textAlign: 'center', fontSize: 9, color: textDim, fontWeight: 600 }}>{d}</div>
-        ))}
+
+      {/* Description */}
+      <div>
+        <label style={{ fontSize: 10, fontWeight: 600, opacity: 0.5, textTransform: 'uppercase' }}>Description</label>
+        <textarea
+          value={desc}
+          onChange={(e) => setDesc(e.target.value)}
+          placeholder="Optional prompt or notes..."
+          rows={2}
+          style={{
+            width: '100%',
+            fontSize: 12,
+            fontFamily: FONT_FAMILY,
+            padding: '8px 10px',
+            border: `1px solid ${border}`,
+            borderRadius: 8,
+            background: dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
+            color: 'inherit',
+            outline: 'none',
+            resize: 'none',
+            marginTop: 6,
+          }}
+        />
       </div>
-      {/* Day cells */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 1 }}>
-        {cells.map((day, idx) => {
-          if (day === null) return <div key={idx} />;
-          const cellDate = new Date(year, month, day);
-          const isToday = isSameDay(cellDate, today);
-          const isSelected = isSameDay(cellDate, navDate) && !isToday;
-          return (
+
+      {/* Status */}
+      <div>
+        <label style={{ fontSize: 10, fontWeight: 600, opacity: 0.5, textTransform: 'uppercase' }}>Status</label>
+        <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+          {(['not_started', 'in_progress', 'completed'] as const).map((status) => (
             <button
-              key={idx}
-              onClick={() => onSelectDate(cellDate)}
+              key={status}
+              onClick={() => updateTaskInBlock(block.id, task.id, { status }).then(() => onUpdate())}
               style={{
-                background: isToday ? '#3b82f6' : isSelected ? (dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.07)') : 'transparent',
-                border: 'none', borderRadius: 4, cursor: 'pointer',
-                fontSize: 10, fontFamily: FONT_FAMILY, fontWeight: isToday ? 700 : 400,
-                color: isToday ? '#fff' : textPrimary,
-                padding: '3px 0', textAlign: 'center', lineHeight: 1.4,
-                transition: 'background 0.12s',
+                flex: 1,
+                padding: '6px 10px',
+                fontSize: 11,
+                fontWeight: 600,
+                borderRadius: 6,
+                border: task.status === status ? 'none' : `1px solid ${border}`,
+                background: task.status === status ? block.color : 'transparent',
+                color: task.status === status ? '#fff' : 'inherit',
+                cursor: 'pointer',
+                transition: 'all 0.12s',
               }}
             >
-              {day}
+              {status === 'not_started' ? 'Not started' : status === 'in_progress' ? 'In progress' : 'Done'}
             </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ── Left Sidebar ──────────────────────────────────────────────────────────────
-
-function Sidebar({
-  view, setView, navDate, today, onNavigate, onSelectDate,
-  stats, onNewTask, dark,
-}: {
-  view: CalView;
-  setView: (v: CalView) => void;
-  navDate: Date;
-  today: Date;
-  onNavigate: (d: Date) => void;
-  onSelectDate: (d: Date) => void;
-  stats: { pending: number; completed: number; failed: number };
-  onNewTask: () => void;
-  dark: boolean;
-}) {
-  const bg      = dark ? '#141414' : '#f9f9f9';
-  const border  = dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
-  const textPri = dark ? 'rgba(255,255,255,0.88)' : 'rgba(0,0,0,0.82)';
-
-  const views: { key: CalView; label: string }[] = [
-    { key: 'month', label: 'Month' },
-    { key: 'week', label: 'Week' },
-    { key: 'day', label: 'Day' },
-  ];
-
-  return (
-    <div style={{
-      width: 220, flexShrink: 0,
-      background: bg, borderRight: `1px solid ${border}`,
-      display: 'flex', flexDirection: 'column', padding: '20px 16px',
-      gap: 20, overflowY: 'auto',
-    }}>
-      {/* Title */}
-      <div style={{ fontSize: 16, fontWeight: 700, color: textPri, fontFamily: FONT_FAMILY }}>
-        Tasks
-      </div>
-
-      {/* View switcher */}
-      <div style={{
-        display: 'flex', gap: 4,
-        background: dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-        borderRadius: 8, padding: 3,
-      }}>
-        {views.map(v => (
-          <button
-            key={v.key}
-            onClick={() => setView(v.key)}
-            style={{
-              flex: 1, fontFamily: FONT_FAMILY, fontSize: 11, fontWeight: 600,
-              padding: '5px 0', borderRadius: 6, border: 'none', cursor: 'pointer',
-              transition: 'background 0.14s, color 0.14s',
-              background: view === v.key
-                ? (dark ? 'rgba(255,255,255,0.12)' : '#fff')
-                : 'transparent',
-              color: view === v.key ? textPri : (dark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)'),
-              boxShadow: view === v.key ? (dark ? 'none' : '0 1px 3px rgba(0,0,0,0.10)') : 'none',
-            }}
-          >
-            {v.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Mini month */}
-      <MiniMonth
-        navDate={navDate}
-        today={today}
-        onNavigate={onNavigate}
-        onSelectDate={(d) => { onSelectDate(d); setView('day'); }}
-        dark={dark}
-      />
-
-      {/* Stats */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', color: dark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.35)', fontFamily: FONT_FAMILY, textTransform: 'uppercase' }}>
-          Stats
+          ))}
         </div>
-        {[
-          { label: 'Pending',   count: stats.pending,   color: '#f59e0b' },
-          { label: 'Completed', count: stats.completed, color: '#22c55e' },
-          { label: 'Failed',    count: stats.failed,    color: '#ef4444' },
-        ].map(s => (
-          <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: FONT_FAMILY }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
-            <span style={{ fontSize: 12, color: dark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.60)', flex: 1 }}>{s.label}</span>
-            <span style={{ fontSize: 12, fontWeight: 600, color: dark ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.70)' }}>{s.count}</span>
-          </div>
-        ))}
       </div>
 
-      {/* Spacer */}
-      <div style={{ flex: 1 }} />
-
-      {/* New Task button */}
-      <button
-        onClick={onNewTask}
-        style={{
-          fontFamily: FONT_FAMILY, fontSize: 13, fontWeight: 600,
-          padding: '9px 0', borderRadius: 8, border: 'none', cursor: 'pointer',
-          background: '#3b82f6', color: '#fff',
-          transition: 'opacity 0.14s',
-        }}
-        onMouseEnter={e => (e.currentTarget.style.opacity = '0.88')}
-        onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
-      >
-        + New Task
-      </button>
+      {/* Actions */}
+      <div style={{ display: 'flex', gap: 8, paddingTop: 8, borderTop: `1px solid ${border}` }}>
+        <button
+          onClick={handleSave}
+          style={{
+            flex: 1,
+            padding: '8px 12px',
+            fontSize: 12,
+            fontWeight: 600,
+            borderRadius: 8,
+            border: 'none',
+            background: block.color,
+            color: '#fff',
+            cursor: 'pointer',
+          }}
+        >
+          Save
+        </button>
+        <button
+          onClick={handleDelete}
+          style={{
+            padding: '8px 12px',
+            fontSize: 12,
+            fontWeight: 600,
+            borderRadius: 8,
+            border: `1px solid ${border}`,
+            background: 'transparent',
+            color: '#ef4444',
+            cursor: 'pointer',
+          }}
+          title="Delete task"
+        >
+          Delete
+        </button>
+      </div>
     </div>
   );
 }
 
-// ── Month View ────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+// BLOCK DETAIL PANEL (task queue inside a block)
+// ════════════════════════════════════════════════════════════════════════════
 
-function MonthView({
-  navDate, today, tasks, onDayClick, dark,
+function BlockDetail({
+  block, onClose, onUpdate, dark,
 }: {
-  navDate: Date;
-  today: Date;
-  tasks: ScheduledTask[];
-  onDayClick: (d: Date) => void;
+  block: TimeBlock;
+  onClose: () => void;
+  onUpdate: () => void;
   dark: boolean;
 }) {
-  const year  = navDate.getFullYear();
-  const month = navDate.getMonth();
-  const firstDay = getFirstDayOfMonth(year, month);
-  const daysInMonth = getDaysInMonth(year, month);
+  const [newTaskName, setNewTaskName] = useState('');
+  const [newTaskDesc, setNewTaskDesc] = useState('');
+  const [selectedTask, setSelectedTask] = useState<PlanTask | null>(null);
+  const [popoverPos, setPopoverPos] = useState<{ x: number; y: number } | null>(null);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const border = dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+  const bg2 = dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)';
+  const activeTask = block.tasks.find((t) => t.status === 'in_progress');
 
-  const cells: { date: Date | null; isCurrentMonth: boolean }[] = [];
+  const handleAddTask = async () => {
+    if (!newTaskName.trim()) return;
+    await addTaskToBlock(block.id, newTaskName.trim(), newTaskDesc.trim() || undefined);
+    setNewTaskName('');
+    setNewTaskDesc('');
+    onUpdate();
+  };
 
-  // Prev month filler
-  const prevMonth = month === 0 ? 11 : month - 1;
-  const prevYear  = month === 0 ? year - 1 : year;
-  const daysInPrev = getDaysInMonth(prevYear, prevMonth);
-  for (let i = firstDay - 1; i >= 0; i--) {
-    cells.push({ date: new Date(prevYear, prevMonth, daysInPrev - i), isCurrentMonth: false });
-  }
+  const handleTaskClick = (task: PlanTask, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedTask(task);
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setPopoverPos({ x: rect.left + rect.width + 12, y: rect.top });
+  };
 
-  // Current month
-  for (let d = 1; d <= daysInMonth; d++) {
-    cells.push({ date: new Date(year, month, d), isCurrentMonth: true });
-  }
-
-  // Next month filler
-  const nextMonth = month === 11 ? 0 : month + 1;
-  const nextYear  = month === 11 ? year + 1 : year;
-  let nd = 1;
-  while (cells.length % 7 !== 0) {
-    cells.push({ date: new Date(nextYear, nextMonth, nd++), isCurrentMonth: false });
-  }
-
-  const border  = dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
-  const textPri = dark ? 'rgba(255,255,255,0.88)' : 'rgba(0,0,0,0.82)';
-  const textDim = dark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.22)';
-
-  function tasksForDay(d: Date): ScheduledTask[] {
-    return tasks.filter(t => isSameDay(new Date(t.runAt), d));
-  }
+  // Drag reorder
+  const handleDragEnd = async () => {
+    if (dragIdx === null || dragOverIdx === null || dragIdx === dragOverIdx) {
+      setDragIdx(null); setDragOverIdx(null); return;
+    }
+    const ids = block.tasks.map((t) => t.id);
+    const [moved] = ids.splice(dragIdx, 1);
+    ids.splice(dragOverIdx, 0, moved);
+    await reorderTasksInBlock(block.id, ids);
+    setDragIdx(null); setDragOverIdx(null);
+    onUpdate();
+  };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-      {/* Day headers */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(7,1fr)',
-        borderBottom: `1px solid ${border}`,
-      }}>
-        {DAY_ABBREV.map(d => (
-          <div key={d} style={{
-            padding: '10px 0', textAlign: 'center',
-            fontSize: 11, fontWeight: 600, fontFamily: FONT_FAMILY,
-            color: textDim, letterSpacing: '0.04em',
-          }}>
-            {d}
+    <div style={{ width: 320, flexShrink: 0, borderLeft: `1px solid ${border}`, display: 'flex', flexDirection: 'column', fontFamily: FONT_FAMILY, background: dark ? '#0f0f0f' : '#fafafa', overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{ padding: '14px 16px', borderBottom: `1px solid ${border}`, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+        <div style={{ width: 10, height: 10, borderRadius: 3, background: block.color, flexShrink: 0 }} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>{block.title}</div>
+          <div style={{ fontSize: 10, opacity: 0.5, marginTop: 2 }}>
+            {parseIsoDay(block.day).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} · {fmtHour(block.startHour)} — {fmtHour(block.endHour)}
           </div>
-        ))}
+        </div>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, opacity: 0.4, padding: 4 }}>×</button>
       </div>
-      {/* Grid */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(7,1fr)',
-        gridTemplateRows: `repeat(${cells.length / 7}, 1fr)`,
-        flex: 1, overflow: 'hidden',
-      }}>
-        {cells.map((cell, idx) => {
-          if (!cell.date) return <div key={idx} />;
-          const isToday = isSameDay(cell.date, today);
-          const dayTasks = tasksForDay(cell.date);
-          const isLast = idx === cells.length - 1;
-          const isLastInRow = (idx + 1) % 7 === 0;
+
+      {/* Task queue */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>
+        {block.tasks.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '30px 0', opacity: 0.3, fontSize: 12 }}>
+            No tasks in this block yet.
+          </div>
+        )}
+
+        {block.tasks.map((task, idx) => {
+          const isActive = task.status === 'in_progress';
+          const isDone = task.status === 'completed';
+          const isDragOver = dragOverIdx === idx;
+
           return (
             <div
-              key={idx}
-              onClick={() => cell.date && onDayClick(cell.date)}
+              key={task.id}
+              draggable
+              onContextMenu={(e) => e.preventDefault()}
+              onClick={(e) => handleTaskClick(task, e)}
+              onDragStart={() => setDragIdx(idx)}
+              onDragOver={(e) => { e.preventDefault(); setDragOverIdx(idx); }}
+              onDrop={handleDragEnd}
+              onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); }}
               style={{
-                borderRight: isLastInRow ? 'none' : `1px solid ${border}`,
-                borderBottom: isLast || idx >= cells.length - 7 ? 'none' : `1px solid ${border}`,
-                padding: '8px 8px 6px',
+                padding: '8px 10px',
+                borderRadius: 8,
+                border: `1px solid ${isActive ? block.color : isDragOver ? '#3b82f680' : border}`,
+                background: isActive ? `${block.color}12` : isDragOver ? 'rgba(59,130,246,0.05)' : 'transparent',
+                marginBottom: 6,
                 cursor: 'pointer',
-                background: isToday
-                  ? (dark ? 'rgba(59,130,246,0.08)' : 'rgba(59,130,246,0.05)')
-                  : 'transparent',
-                transition: 'background 0.12s',
-                display: 'flex', flexDirection: 'column', gap: 3, overflow: 'hidden',
-              }}
-              onMouseEnter={e => {
-                if (!isToday) e.currentTarget.style.background = dark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)';
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.background = isToday ? (dark ? 'rgba(59,130,246,0.08)' : 'rgba(59,130,246,0.05)') : 'transparent';
+                opacity: isDone ? 0.5 : 1,
+                transition: 'all 0.12s',
               }}
             >
-              {/* Date number */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{
-                  fontFamily: FONT_FAMILY,
-                  fontSize: 12, fontWeight: isToday ? 700 : 400,
-                  color: !cell.isCurrentMonth ? textDim : isToday ? '#3b82f6' : textPri,
-                  ...(isToday ? {
-                    width: 22, height: 22, borderRadius: '50%',
-                    background: '#3b82f6', color: '#fff',
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  } : {}),
-                }}>
-                  {cell.date.getDate()}
-                </span>
-              </div>
-              {/* Task dots / bars */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                {dayTasks.slice(0, 5).map(t => (
-                  <span
-                    key={t.id}
-                    title={t.prompt.slice(0, 60)}
-                    style={{
-                      width: 6, height: 6, borderRadius: '50%',
-                      background: statusColor(t.status), flexShrink: 0,
-                    }}
-                  />
-                ))}
-                {dayTasks.length > 5 && (
-                  <span style={{ fontSize: 9, color: textDim, fontFamily: FONT_FAMILY }}>+{dayTasks.length - 5}</span>
-                )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {/* Status button */}
+                <button
+                  onContextMenu={(e) => e.preventDefault()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (isActive) {
+                      updateTaskInBlock(block.id, task.id, { status: 'completed' }).then(() => onUpdate());
+                    } else if (!isDone) {
+                      updateTaskInBlock(block.id, task.id, { status: 'in_progress' }).then(() => onUpdate());
+                    }
+                  }}
+                  style={{
+                    width: 20, height: 20, borderRadius: 6,
+                    border: `2px solid ${statusColor(task.status)}`,
+                    background: isDone ? statusColor(task.status) : 'transparent',
+                    color: isDone ? '#fff' : statusColor(task.status),
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 10, fontWeight: 700, cursor: 'pointer', flexShrink: 0, padding: 0,
+                  }}
+                >
+                  {statusIcon(task.status)}
+                </button>
+
+                {/* Name */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, textDecoration: isDone ? 'line-through' : 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {task.name}
+                  </div>
+                  {task.description && (
+                    <div style={{ fontSize: 10, opacity: 0.5, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {task.description}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           );
         })}
       </div>
+
+      {/* Add task form */}
+      <div style={{ padding: '10px 12px', borderTop: `1px solid ${border}`, flexShrink: 0 }}>
+        <input
+          value={newTaskName}
+          onChange={(e) => setNewTaskName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleAddTask()}
+          onContextMenu={(e) => e.preventDefault()}
+          placeholder="Task name..."
+          style={{ width: '100%', fontSize: 12, fontFamily: FONT_FAMILY, padding: '8px 10px', border: `1px solid ${border}`, borderRadius: 6, background: bg2, color: 'inherit', outline: 'none', marginBottom: 6 }}
+        />
+        <textarea
+          value={newTaskDesc}
+          onChange={(e) => setNewTaskDesc(e.target.value)}
+          onContextMenu={(e) => e.preventDefault()}
+          placeholder="Description / prompt for NEURO... (optional)"
+          rows={2}
+          style={{ width: '100%', fontSize: 11, fontFamily: FONT_FAMILY, padding: '6px 10px', border: `1px solid ${border}`, borderRadius: 6, background: bg2, color: 'inherit', outline: 'none', resize: 'none', marginBottom: 6 }}
+        />
+        <button
+          onClick={handleAddTask}
+          disabled={!newTaskName.trim()}
+          style={{
+            width: '100%', fontSize: 11, fontWeight: 600, fontFamily: FONT_FAMILY,
+            padding: '7px 0', borderRadius: 6, border: 'none',
+            background: newTaskName.trim() ? block.color : border,
+            color: newTaskName.trim() ? '#fff' : (dark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)'),
+            cursor: newTaskName.trim() ? 'pointer' : 'not-allowed',
+            transition: 'all 0.12s',
+          }}
+        >
+          Add Task
+        </button>
+      </div>
+
+      {/* Task popover */}
+      {selectedTask && popoverPos && (
+        <TaskPopover
+          task={selectedTask}
+          block={block}
+          position={popoverPos}
+          onClose={() => { setSelectedTask(null); setPopoverPos(null); }}
+          onUpdate={onUpdate}
+          dark={dark}
+        />
+      )}
     </div>
   );
 }
 
-// ── Week View ─────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+// CALENDAR GRID
+// ════════════════════════════════════════════════════════════════════════════
 
-function WeekView({
-  navDate, today, tasks, onSlotClick, onTaskClick, dark,
+function WeekCalendar({
+  blocks, onBlockClick, onRefresh, dark, weekStart, setWeekStart,
 }: {
-  navDate: Date;
-  today: Date;
-  tasks: ScheduledTask[];
-  onSlotClick: (date: Date, hour: number) => void;
-  onTaskClick: (task: ScheduledTask) => void;
+  blocks: TimeBlock[];
+  onBlockClick: (block: TimeBlock) => void;
+  onRefresh: () => void;
   dark: boolean;
+  weekStart: Date;
+  setWeekStart: (d: Date) => void;
 }) {
-  const weekStart = startOfWeek(navDate);
-  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
 
-  const border    = dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
-  const textPri   = dark ? 'rgba(255,255,255,0.88)' : 'rgba(0,0,0,0.82)';
-  const textMuted = dark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.32)';
+  const [dragCreate, setDragCreate] = useState<{ colIdx: number; startY: number; currentY: number } | null>(null);
+  const [dragBlock, setDragBlock] = useState<{ blockId: string; action: 'move' | 'resize'; startMouseY: number; startMouseX: number; origStartHour: number; origEndHour: number; origCol: number } | null>(null);
 
-  // Current time fraction of hour (for indicator)
-  const nowHour = new Date().getHours() + new Date().getMinutes() / 60;
+  const border = dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+  const textMuted = dark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)';
+  const today = new Date();
+  const todayIso = isoDay(today);
+  const todayStartOfDay = new Date(today);
+  todayStartOfDay.setHours(0, 0, 0, 0);
 
-  const HOUR_HEIGHT = 56; // px per hour
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = Math.max(0, today.getHours() * HOUR_PX - 300);
+  }, []);
+
+  // ── Create block by drag ──
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('[data-block]')) return;
+    const rect = gridRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const col = xToCol(e.clientX, rect);
+    const y = e.clientY - rect.top + (scrollRef.current?.scrollTop || 0);
+    setDragCreate({ colIdx: col, startY: y, currentY: y });
+    e.preventDefault();
+  }, []);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!dragCreate || !gridRef.current) return;
+    const rect = gridRef.current.getBoundingClientRect();
+    const y = e.clientY - rect.top + (scrollRef.current?.scrollTop || 0);
+    setDragCreate((prev) => prev ? { ...prev, currentY: y } : null);
+  }, [dragCreate]);
+
+  const handleMouseUp = useCallback(async (e: React.MouseEvent) => {
+    if (!dragCreate) return;
+    const y1 = Math.min(dragCreate.startY, dragCreate.currentY);
+    const y2 = Math.max(dragCreate.startY, dragCreate.currentY);
+    if (y2 - y1 < HOUR_PX * 0.3) { setDragCreate(null); return; }
+    const startH = yToHour(y1);
+    const endH = yToHour(y2);
+    const day = isoDay(days[dragCreate.colIdx]);
+    const blockDay = parseIsoDay(day);
+
+    // Prevent past date scheduling
+    if (blockDay < todayStartOfDay) {
+      alert('Cannot schedule tasks in the past');
+      setDragCreate(null);
+      return;
+    }
+
+    const colorIdx = blocks.length % BLOCK_COLORS.length;
+    const created = await createBlock(day, startH, endH, 'Work session', BLOCK_COLORS[colorIdx]);
+    setDragCreate(null);
+    onRefresh();
+    onBlockClick(created);
+  }, [dragCreate, days, blocks.length, onRefresh, onBlockClick, todayStartOfDay]);
+
+  // ── Move/resize existing block ──
+  const startBlockDrag = useCallback((e: React.MouseEvent, block: TimeBlock, action: 'move' | 'resize') => {
+    e.stopPropagation(); e.preventDefault();
+    const rect = gridRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setDragBlock({
+      blockId: block.id, action,
+      startMouseY: e.clientY, startMouseX: e.clientX,
+      origStartHour: block.startHour, origEndHour: block.endHour,
+      origCol: days.findIndex((d) => isoDay(d) === block.day),
+    });
+  }, [days]);
+
+  useEffect(() => {
+    if (!dragBlock) return;
+    const onUp = async (e: MouseEvent) => {
+      const rect = gridRef.current?.getBoundingClientRect();
+      if (!rect) { setDragBlock(null); return; }
+      const deltaY = e.clientY - dragBlock.startMouseY;
+      const deltaHours = snapHour(deltaY / HOUR_PX);
+      const newCol = xToCol(e.clientX, rect);
+      const dayDelta = newCol - dragBlock.origCol;
+      const newDay = isoDay(addDays(weekStart, newCol));
+      const newDayParsed = parseIsoDay(newDay);
+
+      // Prevent moving to past
+      if (newDayParsed < todayStartOfDay) {
+        alert('Cannot schedule tasks in the past');
+        setDragBlock(null);
+        return;
+      }
+
+      if (dragBlock.action === 'move') {
+        await moveBlock(dragBlock.blockId, newDay, dragBlock.origStartHour + deltaHours, dragBlock.origEndHour + deltaHours);
+      } else {
+        await resizeBlock(dragBlock.blockId, dragBlock.origEndHour + deltaHours);
+      }
+      setDragBlock(null);
+      onRefresh();
+    };
+    document.addEventListener('mouseup', onUp);
+    return () => document.removeEventListener('mouseup', onUp);
+  }, [dragBlock, weekStart, onRefresh, todayStartOfDay]);
+
+  const goWeek = (d: number) => setWeekStart(addDays(weekStart, d * 7));
+  const nowHour = today.getHours() + today.getMinutes() / 60;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', fontFamily: FONT_FAMILY }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', fontFamily: FONT_FAMILY }}>
+      {/* Nav */}
+      <div style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', borderBottom: `1px solid ${border}`, gap: 10, flexShrink: 0 }}>
+        <button onClick={() => goWeek(-1)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, opacity: 0.4, padding: '0 4px' }}>‹</button>
+        <div style={{ fontSize: 13, fontWeight: 600, minWidth: 200 }}>
+          {weekStart.toLocaleDateString([], { month: 'long', day: 'numeric' })} — {addDays(weekStart, 6).toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' })}
+        </div>
+        <button onClick={() => goWeek(1)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, opacity: 0.4, padding: '0 4px' }}>›</button>
+        <button onClick={() => setWeekStart(mondayOfWeek(new Date()))} style={{ fontSize: 10, fontWeight: 600, padding: '4px 12px', borderRadius: 6, border: `1px solid ${border}`, background: 'transparent', cursor: 'pointer', fontFamily: FONT_FAMILY }}>Today</button>
+      </div>
+
       {/* Day headers */}
-      <div style={{ display: 'flex', borderBottom: `1px solid ${border}`, flexShrink: 0 }}>
-        <div style={{ width: 52, flexShrink: 0 }} />
-        {days.map((d, i) => {
-          const isToday = isSameDay(d, today);
+      <div style={{ display: 'grid', gridTemplateColumns: `${TIME_GUTTER}px repeat(7, 1fr)`, borderBottom: `1px solid ${border}`, flexShrink: 0 }}>
+        <div />
+        {days.map((day) => {
+          const iso = isoDay(day);
+          const isToday = iso === todayIso;
           return (
-            <div key={i} style={{
-              flex: 1, padding: '10px 0', textAlign: 'center',
-              borderLeft: `1px solid ${border}`,
-            }}>
-              <div style={{ fontSize: 10, fontWeight: 600, color: textMuted, letterSpacing: '0.04em' }}>
-                {DAY_ABBREV[d.getDay()].toUpperCase()}
-              </div>
-              <div style={{
-                fontSize: 18, fontWeight: isToday ? 700 : 400,
-                color: isToday ? '#3b82f6' : textPri,
-                marginTop: 2,
-              }}>
-                {d.getDate()}
+            <div key={iso} style={{ textAlign: 'center', padding: '8px 0 6px', borderLeft: `1px solid ${border}` }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: isToday ? '#3b82f6' : textMuted }}>{DAY_NAMES[days.indexOf(day)]}</div>
+              <div style={{ fontSize: 20, fontWeight: 700, marginTop: 2, width: 32, height: 32, lineHeight: '32px', borderRadius: '50%', margin: '0 auto', background: isToday ? '#3b82f6' : 'transparent', color: isToday ? '#fff' : dark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.8)' }}>
+                {day.getDate()}
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Scrollable body */}
-      <div style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
-        <div style={{ display: 'flex', position: 'relative' }}>
-          {/* Time labels column */}
-          <div style={{ width: 52, flexShrink: 0 }}>
-            {HOURS.map(h => (
-              <div key={h} style={{
-                height: HOUR_HEIGHT, display: 'flex', alignItems: 'flex-start',
-                justifyContent: 'flex-end', paddingRight: 8, paddingTop: 4,
-                fontSize: 10, color: textMuted,
-              }}>
-                {h === 12 ? '12 PM' : h < 12 ? `${h} AM` : `${h - 12} PM`}
+      {/* Grid */}
+      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto' }}>
+        <div
+          ref={gridRef}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onContextMenu={(e) => e.preventDefault()}
+          style={{ display: 'grid', gridTemplateColumns: `${TIME_GUTTER}px repeat(7, 1fr)`, position: 'relative', minHeight: HOURS.length * HOUR_PX, userSelect: 'none', cursor: dragCreate ? 'ns-resize' : 'default' }}
+        >
+          {/* Time labels */}
+          <div>
+            {HOURS.map((h) => (
+              <div key={h} style={{ height: HOUR_PX, fontSize: 9, color: textMuted, textAlign: 'right', paddingRight: 6, paddingTop: 2, borderBottom: `1px solid ${border}`, boxSizing: 'border-box' }}>
+                {fmtHour(h)}
               </div>
             ))}
           </div>
 
           {/* Day columns */}
-          {days.map((d, di) => {
-            const dayTasks = tasks.filter(t => isSameDay(new Date(t.runAt), d));
-            const isToday  = isSameDay(d, today);
+          {days.map((day, colIdx) => {
+            const iso = isoDay(day);
+            const colBlocks = blocks.filter((b) => b.day === iso);
 
             return (
-              <div key={di} style={{
-                flex: 1, borderLeft: `1px solid ${border}`, position: 'relative',
-                background: isToday ? (dark ? 'rgba(59,130,246,0.04)' : 'rgba(59,130,246,0.025)') : 'transparent',
-              }}>
-                {/* Hour slots */}
-                {HOURS.map(h => (
-                  <div
-                    key={h}
-                    onClick={() => onSlotClick(d, h)}
-                    style={{
-                      height: HOUR_HEIGHT,
-                      borderTop: `1px solid ${border}`,
-                      cursor: 'pointer',
-                      position: 'relative',
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.background = dark ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.015)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                  />
+              <div key={iso} style={{ position: 'relative', borderLeft: `1px solid ${border}` }} onContextMenu={(e) => e.preventDefault()}>
+                {HOURS.map((h) => (
+                  <div key={h} style={{ height: HOUR_PX, borderBottom: `1px solid ${border}` }} />
                 ))}
 
-                {/* Tasks as time blocks */}
-                {dayTasks.map(task => {
-                  const taskH = taskHour(task);
-                  const minH = HOURS[0];
-                  const maxH = HOURS[HOURS.length - 1] + 1;
-                  if (taskH < minH || taskH >= maxH) return null;
-                  const topPct = ((taskH - minH) / (maxH - minH)) * 100;
-                  const heightPx = Math.max(24, HOUR_HEIGHT * 0.5);
+                {/* Blocks */}
+                {colBlocks.map((block) => {
+                  const top = hourToY(block.startHour);
+                  const height = Math.max((block.endHour - block.startHour) * HOUR_PX, 24);
+                  const taskCount = block.tasks.length;
+                  const doneCount = block.tasks.filter((t) => t.status === 'completed').length;
+
                   return (
                     <div
-                      key={task.id}
-                      onClick={e => { e.stopPropagation(); onTaskClick(task); }}
-                      title={task.prompt}
+                      key={block.id}
+                      data-block
+                      onClick={(e) => { e.stopPropagation(); onBlockClick(block); }}
+                      onContextMenu={(e) => e.preventDefault()}
+                      onMouseDown={(e) => {
+                        if ((e.target as HTMLElement).dataset.resize) startBlockDrag(e, block, 'resize');
+                        else startBlockDrag(e, block, 'move');
+                      }}
+                      onDragOver={(e) => e.preventDefault()}
                       style={{
-                        position: 'absolute',
-                        top: `${topPct}%`,
-                        left: 3, right: 3,
-                        height: heightPx,
-                        borderRadius: 5,
-                        background: statusBg(task.status, dark),
-                        borderLeft: `3px solid ${statusColor(task.status)}`,
-                        padding: '3px 6px',
+                        position: 'absolute', top, left: 3, right: 3, height,
+                        background: `${block.color}15`,
+                        border: `1px solid ${block.color}50`,
+                        borderLeft: `4px solid ${block.color}`,
+                        borderRadius: 8,
+                        padding: '4px 8px',
                         cursor: 'pointer',
                         overflow: 'hidden',
-                        zIndex: 2,
-                        transition: 'opacity 0.12s',
+                        zIndex: 3,
+                        transition: 'box-shadow 0.15s',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
                       }}
-                      onMouseEnter={e => { e.currentTarget.style.opacity = '0.8'; }}
-                      onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
                     >
-                      <div style={{ fontSize: 10, fontWeight: 600, color: statusColor(task.status), fontFamily: FONT_FAMILY, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {formatTime(task.runAt)}
+                      <div style={{ fontSize: 11, fontWeight: 700, color: block.color, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {block.title}
                       </div>
-                      <div style={{ fontSize: 10, color: dark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.65)', fontFamily: FONT_FAMILY, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {task.prompt.slice(0, 30)}
+                      <div style={{ fontSize: 9, color: textMuted, marginTop: 1 }}>
+                        {fmtHour(block.startHour)} — {fmtHour(block.endHour)}
                       </div>
+
+                      {/* Task preview */}
+                      {taskCount > 0 && height > 60 && (
+                        <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          {block.tasks.slice(0, Math.floor((height - 50) / 16)).map((t) => (
+                            <div key={t.id} style={{ fontSize: 9, display: 'flex', alignItems: 'center', gap: 4, opacity: t.status === 'completed' ? 0.4 : 1 }}>
+                              <span style={{ color: statusColor(t.status), fontSize: 8 }}>{statusIcon(t.status)}</span>
+                              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: t.status === 'completed' ? 'line-through' : 'none' }}>{t.name}</span>
+                            </div>
+                          ))}
+                          {taskCount > Math.floor((height - 50) / 16) && (
+                            <div style={{ fontSize: 8, opacity: 0.4 }}>+{taskCount - Math.floor((height - 50) / 16)} more</div>
+                          )}
+                        </div>
+                      )}
+
+                      {taskCount > 0 && height <= 60 && (
+                        <div style={{ fontSize: 8, opacity: 0.5, marginTop: 2 }}>
+                          {doneCount}/{taskCount} done
+                        </div>
+                      )}
+
+                      {/* Resize handle */}
+                      <div data-resize="true" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 6, cursor: 'ns-resize', borderRadius: '0 0 8px 8px', background: `${block.color}25` }} />
                     </div>
                   );
                 })}
 
-                {/* Current time indicator */}
-                {isToday && nowHour >= HOURS[0] && nowHour < HOURS[HOURS.length - 1] + 1 && (
-                  <div style={{
-                    position: 'absolute',
-                    top: `${((nowHour - HOURS[0]) / (HOURS[HOURS.length - 1] + 1 - HOURS[0])) * 100}%`,
-                    left: 0, right: 0, height: 2,
-                    background: '#3b82f6',
-                    zIndex: 3,
-                    pointerEvents: 'none',
-                  }} />
+                {/* Drag-create highlight */}
+                {dragCreate && dragCreate.colIdx === colIdx && (() => {
+                  const y1 = Math.min(dragCreate.startY, dragCreate.currentY);
+                  const y2 = Math.max(dragCreate.startY, dragCreate.currentY);
+                  return (
+                    <div style={{ position: 'absolute', top: y1, height: y2 - y1, left: 3, right: 3, background: 'rgba(59,130,246,0.12)', border: '2px dashed rgba(59,130,246,0.5)', borderRadius: 8, zIndex: 20, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#3b82f6', fontWeight: 600 }}>
+                      {fmtHour(yToHour(y1))} — {fmtHour(yToHour(y2))}
+                    </div>
+                  );
+                })()}
+
+                {/* Now line */}
+                {iso === todayIso && nowHour >= HOURS[0] && nowHour <= HOURS[HOURS.length - 1] + 1 && (
+                  <div style={{ position: 'absolute', top: hourToY(nowHour), left: 0, right: 0, height: 2, background: '#ef4444', zIndex: 10, pointerEvents: 'none' }}>
+                    <div style={{ position: 'absolute', left: -4, top: -3, width: 8, height: 8, borderRadius: '50%', background: '#ef4444' }} />
+                  </div>
                 )}
               </div>
             );
@@ -642,841 +746,50 @@ function WeekView({
   );
 }
 
-// ── Day View ──────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+// MAIN
+// ════════════════════════════════════════════════════════════════════════════
 
-function DayView({
-  navDate, today, tasks, onSlotClick, onTaskClick, dark,
-}: {
-  navDate: Date;
-  today: Date;
-  tasks: ScheduledTask[];
-  onSlotClick: (date: Date, hour: number) => void;
-  onTaskClick: (task: ScheduledTask) => void;
-  dark: boolean;
-}) {
-  const border    = dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
-  const textPri   = dark ? 'rgba(255,255,255,0.88)' : 'rgba(0,0,0,0.82)';
-  const textMuted = dark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.32)';
-  const isToday   = isSameDay(navDate, today);
-  const nowHour   = new Date().getHours() + new Date().getMinutes() / 60;
+export function TasksPage() {
+  const { dark } = useTheme();
+  const [blocks, setBlocks] = useState<TimeBlock[]>([]);
+  const [openBlock, setOpenBlock] = useState<TimeBlock | null>(null);
+  const [weekStart, setWeekStart] = useState(() => mondayOfWeek(new Date()));
 
-  const dayTasks = tasks.filter(t => isSameDay(new Date(t.runAt), navDate));
-  const HOUR_HEIGHT = 72;
-
-  // All hours: midnight to 11pm
-  const ALL_HOURS: number[] = Array.from({ length: 24 }, (_, i) => i);
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', fontFamily: FONT_FAMILY }}>
-      {/* Day header */}
-      <div style={{
-        padding: '16px 24px 12px',
-        borderBottom: `1px solid ${border}`,
-        flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12,
-      }}>
-        <div>
-          <div style={{
-            fontSize: 22, fontWeight: 700,
-            color: isToday ? '#3b82f6' : textPri,
-          }}>
-            {navDate.getDate()}
-          </div>
-          <div style={{ fontSize: 12, color: textMuted, marginTop: 1 }}>
-            {DAY_ABBREV[navDate.getDay()]}, {MONTH_NAMES[navDate.getMonth()]} {navDate.getFullYear()}
-          </div>
-        </div>
-        {dayTasks.length > 0 && (
-          <div style={{ fontSize: 12, color: textMuted, marginLeft: 8 }}>
-            {dayTasks.length} task{dayTasks.length !== 1 ? 's' : ''}
-          </div>
-        )}
-      </div>
-
-      {/* Timeline */}
-      <div style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
-        <div style={{ display: 'flex', position: 'relative' }}>
-          {/* Time labels */}
-          <div style={{ width: 64, flexShrink: 0 }}>
-            {ALL_HOURS.map(h => (
-              <div key={h} style={{
-                height: HOUR_HEIGHT,
-                display: 'flex', alignItems: 'flex-start',
-                justifyContent: 'flex-end', paddingRight: 12, paddingTop: 5,
-                fontSize: 11, color: textMuted,
-              }}>
-                {h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`}
-              </div>
-            ))}
-          </div>
-
-          {/* Main column */}
-          <div style={{ flex: 1, borderLeft: `1px solid ${border}`, position: 'relative' }}>
-            {ALL_HOURS.map(h => (
-              <div
-                key={h}
-                onClick={() => onSlotClick(navDate, h)}
-                style={{
-                  height: HOUR_HEIGHT,
-                  borderTop: `1px solid ${border}`,
-                  cursor: 'pointer',
-                  position: 'relative',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.background = dark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.01)'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-              />
-            ))}
-
-            {/* Task cards */}
-            {dayTasks.map(task => {
-              const taskH = taskHour(task);
-              const topPx = taskH * HOUR_HEIGHT;
-              const heightPx = Math.max(36, HOUR_HEIGHT * 0.75);
-              return (
-                <div
-                  key={task.id}
-                  onClick={e => { e.stopPropagation(); onTaskClick(task); }}
-                  style={{
-                    position: 'absolute',
-                    top: topPx + 4,
-                    left: 12, right: 12,
-                    minHeight: heightPx,
-                    borderRadius: 8,
-                    background: statusBg(task.status, dark),
-                    borderLeft: `4px solid ${statusColor(task.status)}`,
-                    padding: '8px 12px',
-                    cursor: 'pointer',
-                    zIndex: 2,
-                    transition: 'box-shadow 0.12s',
-                    boxShadow: dark ? '0 2px 8px rgba(0,0,0,0.25)' : '0 1px 4px rgba(0,0,0,0.10)',
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.boxShadow = dark ? '0 4px 16px rgba(0,0,0,0.35)' : '0 3px 10px rgba(0,0,0,0.14)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.boxShadow = dark ? '0 2px 8px rgba(0,0,0,0.25)' : '0 1px 4px rgba(0,0,0,0.10)'; }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: statusColor(task.status), flexShrink: 0 }} />
-                    <span style={{ fontSize: 11, fontWeight: 600, color: statusColor(task.status) }}>
-                      {formatTime(task.runAt)}
-                    </span>
-                    <span style={{ fontSize: 10, color: textMuted, marginLeft: 'auto' }}>
-                      {task.status.charAt(0).toUpperCase() + task.status.slice(1)}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: textPri, lineHeight: 1.4, wordBreak: 'break-word' }}>
-                    {task.prompt.slice(0, 120)}{task.prompt.length > 120 ? '...' : ''}
-                  </div>
-                  {task.repeat && (
-                    <div style={{ fontSize: 10, color: textMuted, marginTop: 4 }}>
-                      Repeats every {Math.round(task.repeat.interval / 60000)}m
-                      {task.repeat.maxRuns ? ` (max ${task.repeat.maxRuns})` : ''}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-
-            {/* Current time indicator */}
-            {isToday && (
-              <div style={{
-                position: 'absolute',
-                top: nowHour * HOUR_HEIGHT,
-                left: 0, right: 0, height: 2,
-                background: '#3b82f6',
-                zIndex: 3,
-                pointerEvents: 'none',
-              }}>
-                <div style={{
-                  position: 'absolute', left: -5, top: -4,
-                  width: 10, height: 10, borderRadius: '50%', background: '#3b82f6',
-                }} />
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Main Area Header ──────────────────────────────────────────────────────────
-
-function MainHeader({
-  view, navDate, today, onPrev, onNext, onToday, dark,
-}: {
-  view: CalView;
-  navDate: Date;
-  today: Date;
-  onPrev: () => void;
-  onNext: () => void;
-  onToday: () => void;
-  dark: boolean;
-}) {
-  const border  = dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
-  const textPri = dark ? 'rgba(255,255,255,0.88)' : 'rgba(0,0,0,0.82)';
-  const textMuted = dark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.32)';
-
-  function title() {
-    if (view === 'month') return `${MONTH_NAMES[navDate.getMonth()]} ${navDate.getFullYear()}`;
-    if (view === 'day') return formatDate(navDate);
-    const ws = startOfWeek(navDate);
-    const we = addDays(ws, 6);
-    if (ws.getMonth() === we.getMonth()) {
-      return `${MONTH_NAMES[ws.getMonth()]} ${ws.getDate()} – ${we.getDate()}, ${ws.getFullYear()}`;
-    }
-    return `${MONTH_NAMES[ws.getMonth()]} ${ws.getDate()} – ${MONTH_NAMES[we.getMonth()]} ${we.getDate()}, ${ws.getFullYear()}`;
-  }
-
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 12,
-      padding: '12px 20px',
-      borderBottom: `1px solid ${border}`,
-      flexShrink: 0, fontFamily: FONT_FAMILY,
-    }}>
-      <span style={{ fontSize: 16, fontWeight: 600, color: textPri, flex: 1 }}>{title()}</span>
-      <button
-        onClick={onToday}
-        style={{
-          fontSize: 11, fontFamily: FONT_FAMILY, fontWeight: 600,
-          padding: '5px 12px', borderRadius: 6,
-          border: `1px solid ${border}`,
-          background: 'transparent', color: textMuted, cursor: 'pointer',
-        }}
-      >
-        Today
-      </button>
-      <div style={{ display: 'flex', gap: 2 }}>
-        {['‹', '›'].map((arrow, i) => (
-          <button
-            key={arrow}
-            onClick={i === 0 ? onPrev : onNext}
-            style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              fontSize: 18, color: textMuted, padding: '2px 8px', borderRadius: 5,
-              fontFamily: FONT_FAMILY,
-              transition: 'color 0.12s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.color = textPri; }}
-            onMouseLeave={e => { e.currentTarget.style.color = textMuted; }}
-          >
-            {arrow}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── Right Panel — Create / Edit Task ─────────────────────────────────────────
-
-interface PanelState {
-  open: boolean;
-  task: ScheduledTask | null; // null = create mode
-  prefillDate?: Date;
-  prefillHour?: number;
-}
-
-function TaskPanel({
-  state, onClose, onSaved, onDeleted, dark,
-}: {
-  state: PanelState;
-  onClose: () => void;
-  onSaved: () => void;
-  onDeleted: () => void;
-  dark: boolean;
-}) {
-  const isEdit = !!state.task;
-  const task   = state.task;
-
-  // Form state
-  const [prompt, setPrompt]         = useState('');
-  const [datetimeVal, setDatetime]  = useState('');
-  const [repeatMode, setRepeatMode] = useState<'none' | 'daily' | 'weekly' | 'custom'>('none');
-  const [customMinutes, setCustomM] = useState('60');
-  const [maxRuns, setMaxRuns]       = useState('');
-  const [priority, setPriority]     = useState<'normal' | 'high'>('normal');
-  const [saving, setSaving]         = useState(false);
-  const [error, setError]           = useState('');
-
-  // Populate form when panel opens
-  useEffect(() => {
-    if (!state.open) return;
-    if (task) {
-      setPrompt(task.prompt);
-      setDatetime(toDatetimeLocal(task.runAt));
-      if (task.repeat) {
-        const min = task.repeat.interval / 60000;
-        if (min === 1440) { setRepeatMode('daily'); }
-        else if (min === 10080) { setRepeatMode('weekly'); }
-        else { setRepeatMode('custom'); setCustomM(String(min)); }
-        setMaxRuns(task.repeat.maxRuns ? String(task.repeat.maxRuns) : '');
-      } else {
-        setRepeatMode('none');
-        setMaxRuns('');
-      }
-    } else {
-      setPrompt('');
-      // Prefill from slot click
-      const base = state.prefillDate || new Date();
-      const h    = state.prefillHour !== undefined ? state.prefillHour : base.getHours() + 1;
-      const d    = new Date(base);
-      d.setHours(h, 0, 0, 0);
-      setDatetime(toDatetimeLocal(d.getTime()));
-      setRepeatMode('none');
-      setCustomM('60');
-      setMaxRuns('');
-      setPriority('normal');
-    }
-    setError('');
-    setSaving(false);
-  }, [state.open, state.task, state.prefillDate, state.prefillHour]);
-
-  const bg      = dark ? '#1a1a1a' : '#fff';
-  const border  = dark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.09)';
-  const textPri = dark ? 'rgba(255,255,255,0.88)' : 'rgba(0,0,0,0.82)';
-  const textMut = dark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.4)';
-  const inputBg = dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)';
-
-  const inputStyle: React.CSSProperties = {
-    fontFamily: FONT_FAMILY, fontSize: 13, color: textPri,
-    background: inputBg, border: `1px solid ${border}`,
-    borderRadius: 7, padding: '8px 10px', width: '100%',
-    outline: 'none', boxSizing: 'border-box',
-    transition: 'border-color 0.12s',
-  };
-
-  const labelStyle: React.CSSProperties = {
-    fontSize: 11, fontWeight: 600, color: textMut, fontFamily: FONT_FAMILY,
-    textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5,
-  };
-
-  async function handleSchedule() {
-    if (!prompt.trim()) { setError('Please enter a prompt.'); return; }
-    if (!datetimeVal) { setError('Please choose a date and time.'); return; }
-    const runAt = new Date(datetimeVal).getTime();
-    if (isNaN(runAt)) { setError('Invalid date/time.'); return; }
-
-    let repeat: { interval: number; maxRuns?: number } | undefined;
-    if (repeatMode === 'daily')   repeat = { interval: 1440 * 60000 };
-    if (repeatMode === 'weekly')  repeat = { interval: 10080 * 60000 };
-    if (repeatMode === 'custom')  repeat = { interval: Number(customMinutes) * 60000 };
-    if (repeat && maxRuns) repeat.maxRuns = Number(maxRuns);
-
-    setSaving(true);
-    setError('');
-    try {
-      await scheduleTask(prompt.trim(), runAt, { repeat });
-      onSaved();
-    } catch (e) {
-      setError('Failed to schedule task.');
-      setSaving(false);
-    }
-  }
-
-  async function handleCancel() {
-    if (!task) return;
-    await cancelTask(task.id);
-    onDeleted();
-  }
-
-  async function handleDelete() {
-    if (!task) return;
-    await deleteTask(task.id);
-    onDeleted();
-  }
-
-  return (
-    <>
-      {/* Overlay */}
-      {state.open && (
-        <div
-          onClick={onClose}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 40,
-            background: 'transparent',
-          }}
-        />
-      )}
-      {/* Panel */}
-      <div
-        style={{
-          position: 'fixed', top: 0, right: 0, bottom: 0,
-          width: 320,
-          background: bg,
-          borderLeft: `1px solid ${border}`,
-          boxShadow: dark ? '-8px 0 32px rgba(0,0,0,0.4)' : '-4px 0 20px rgba(0,0,0,0.08)',
-          zIndex: 50,
-          display: 'flex', flexDirection: 'column',
-          transform: state.open ? 'translateX(0)' : 'translateX(100%)',
-          transition: 'transform 0.22s cubic-bezier(0.22,1,0.36,1)',
-          fontFamily: FONT_FAMILY,
-        }}
-      >
-        {/* Panel header */}
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '16px 20px',
-          borderBottom: `1px solid ${border}`,
-          flexShrink: 0,
-        }}>
-          <span style={{ fontSize: 15, fontWeight: 700, color: textPri }}>
-            {isEdit ? (task?.prompt.slice(0, 32) + (task && task.prompt.length > 32 ? '...' : '')) : 'New Task'}
-          </span>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              fontSize: 18, color: textMut, padding: '2px 6px', borderRadius: 5,
-              lineHeight: 1, fontFamily: FONT_FAMILY,
-            }}
-          >
-            x
-          </button>
-        </div>
-
-        {/* Panel body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: 18 }}>
-
-          {/* Status badge for existing task */}
-          {isEdit && task && (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <span style={{
-                fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
-                background: statusBg(task.status, dark),
-                color: statusColor(task.status),
-                fontFamily: FONT_FAMILY, letterSpacing: '0.04em',
-              }}>
-                {task.status.toUpperCase()}
-              </span>
-              <span style={{ fontSize: 11, color: textMut }}>
-                Created {new Date(task.createdAt).toLocaleDateString()}
-              </span>
-            </div>
-          )}
-
-          {/* Prompt */}
-          {!isEdit && (
-            <div>
-              <label style={labelStyle}>What should NEURO do?</label>
-              <textarea
-                value={prompt}
-                onChange={e => setPrompt(e.target.value)}
-                placeholder="Describe the task..."
-                rows={4}
-                style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }}
-              />
-            </div>
-          )}
-
-          {/* Prompt (read-only edit) */}
-          {isEdit && task && (
-            <div>
-              <label style={labelStyle}>Prompt</label>
-              <div style={{
-                ...inputStyle,
-                lineHeight: 1.5, wordBreak: 'break-word', whiteSpace: 'pre-wrap',
-                minHeight: 60, userSelect: 'text',
-              }}>
-                {task.prompt}
-              </div>
-            </div>
-          )}
-
-          {/* Date + Time */}
-          {!isEdit && (
-            <div>
-              <label style={labelStyle}>When</label>
-              <input
-                type="datetime-local"
-                value={datetimeVal}
-                onChange={e => setDatetime(e.target.value)}
-                style={{ ...inputStyle, colorScheme: dark ? 'dark' : 'light' }}
-              />
-            </div>
-          )}
-
-          {/* Scheduled time (read-only for edit) */}
-          {isEdit && task && (
-            <div>
-              <label style={labelStyle}>Scheduled</label>
-              <div style={{ fontSize: 13, color: textPri }}>{formatDate(new Date(task.runAt))} at {formatTime(task.runAt)}</div>
-            </div>
-          )}
-
-          {/* Repeat */}
-          {!isEdit && (
-            <div>
-              <label style={labelStyle}>Repeat</label>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {(['none', 'daily', 'weekly', 'custom'] as const).map(r => (
-                  <button
-                    key={r}
-                    onClick={() => setRepeatMode(r)}
-                    style={{
-                      fontFamily: FONT_FAMILY, fontSize: 11, fontWeight: 600,
-                      padding: '5px 11px', borderRadius: 6,
-                      border: `1px solid ${repeatMode === r ? '#3b82f6' : border}`,
-                      background: repeatMode === r ? (dark ? 'rgba(59,130,246,0.18)' : 'rgba(59,130,246,0.10)') : 'transparent',
-                      color: repeatMode === r ? '#3b82f6' : textMut,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {r.charAt(0).toUpperCase() + r.slice(1)}
-                  </button>
-                ))}
-              </div>
-              {repeatMode === 'custom' && (
-                <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <input
-                    type="number"
-                    value={customMinutes}
-                    onChange={e => setCustomM(e.target.value)}
-                    min="1"
-                    style={{ ...inputStyle, width: 80 }}
-                  />
-                  <span style={{ fontSize: 12, color: textMut }}>minutes</span>
-                </div>
-              )}
-              {repeatMode !== 'none' && (
-                <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <label style={{ ...labelStyle, marginBottom: 0, whiteSpace: 'nowrap' }}>Max runs</label>
-                  <input
-                    type="number"
-                    value={maxRuns}
-                    onChange={e => setMaxRuns(e.target.value)}
-                    placeholder="unlimited"
-                    min="1"
-                    style={{ ...inputStyle, width: 100 }}
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Repeat info for existing task */}
-          {isEdit && task?.repeat && (
-            <div>
-              <label style={labelStyle}>Repeat</label>
-              <div style={{ fontSize: 13, color: textPri }}>
-                Every {Math.round(task.repeat.interval / 60000)} minutes
-                {task.repeat.maxRuns ? ` (max ${task.repeat.maxRuns} runs)` : ' (unlimited)'}
-                {task.runsCompleted !== undefined && ` — ${task.runsCompleted} completed`}
-              </div>
-            </div>
-          )}
-
-          {/* Priority */}
-          {!isEdit && (
-            <div>
-              <label style={labelStyle}>Priority</label>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {(['normal', 'high'] as const).map(p => (
-                  <button
-                    key={p}
-                    onClick={() => setPriority(p)}
-                    style={{
-                      fontFamily: FONT_FAMILY, fontSize: 11, fontWeight: 600,
-                      padding: '5px 14px', borderRadius: 6,
-                      border: `1px solid ${priority === p ? (p === 'high' ? '#ef4444' : '#3b82f6') : border}`,
-                      background: priority === p
-                        ? (p === 'high'
-                          ? (dark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.10)')
-                          : (dark ? 'rgba(59,130,246,0.18)' : 'rgba(59,130,246,0.10)'))
-                        : 'transparent',
-                      color: priority === p ? (p === 'high' ? '#ef4444' : '#3b82f6') : textMut,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {p.charAt(0).toUpperCase() + p.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Error */}
-          {error && (
-            <div style={{ fontSize: 12, color: '#ef4444', fontFamily: FONT_FAMILY }}>{error}</div>
-          )}
-        </div>
-
-        {/* Panel footer */}
-        <div style={{
-          padding: '16px 20px', borderTop: `1px solid ${border}`,
-          flexShrink: 0, display: 'flex', gap: 8, flexDirection: 'column',
-        }}>
-          {!isEdit && (
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                onClick={handleSchedule}
-                disabled={saving}
-                style={{
-                  flex: 1, fontFamily: FONT_FAMILY, fontSize: 13, fontWeight: 700,
-                  padding: '10px 0', borderRadius: 8, border: 'none',
-                  background: '#3b82f6', color: '#fff', cursor: saving ? 'not-allowed' : 'pointer',
-                  opacity: saving ? 0.6 : 1, transition: 'opacity 0.14s',
-                }}
-              >
-                {saving ? 'Scheduling...' : 'Schedule'}
-              </button>
-            </div>
-          )}
-          {isEdit && task && (
-            <div style={{ display: 'flex', gap: 8 }}>
-              {task.status === 'pending' && (
-                <button
-                  onClick={handleCancel}
-                  style={{
-                    flex: 1, fontFamily: FONT_FAMILY, fontSize: 12, fontWeight: 600,
-                    padding: '8px 0', borderRadius: 7,
-                    border: `1px solid ${dark ? 'rgba(245,158,11,0.3)' : 'rgba(245,158,11,0.4)'}`,
-                    background: 'transparent', color: '#f59e0b', cursor: 'pointer',
-                  }}
-                >
-                  Cancel Task
-                </button>
-              )}
-              <button
-                onClick={handleDelete}
-                style={{
-                  flex: 1, fontFamily: FONT_FAMILY, fontSize: 12, fontWeight: 600,
-                  padding: '8px 0', borderRadius: 7,
-                  border: `1px solid ${dark ? 'rgba(239,68,68,0.3)' : 'rgba(239,68,68,0.4)'}`,
-                  background: 'transparent', color: '#ef4444', cursor: 'pointer',
-                }}
-              >
-                Delete
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </>
-  );
-}
-
-// ── Main Component ────────────────────────────────────────────────────────────
-
-export default function TasksPage() {
-  const { isDarkMode: dark } = useTheme();
-  const today = useRef(new Date()).current;
-
-  const [tasks, setTasks]   = useState<ScheduledTask[]>([]);
-  const [stats, setStats]   = useState({ pending: 0, completed: 0, failed: 0 });
-  const [view, setView]     = useState<CalView>('week');
-  const [navDate, setNavDate] = useState<Date>(new Date());
-
-  // Panel state
-  const [panel, setPanel] = useState<PanelState>({ open: false, task: null });
-
-  // Poll for tasks
   const refresh = useCallback(async () => {
-    const [fetched, s] = await Promise.all([getScheduledTasks(), getTaskStats()]);
-    setTasks(fetched);
-    setStats({ pending: s.pending, completed: s.completed, failed: s.failed });
-  }, []);
+    const b = await getBlocks();
+    setBlocks(b);
+    // Refresh open block
+    if (openBlock) {
+      const updated = b.find((x) => x.id === openBlock.id);
+      if (updated) setOpenBlock(updated);
+      else setOpenBlock(null);
+    }
+  }, [openBlock]);
 
-  useEffect(() => {
-    refresh();
-    const id = setInterval(refresh, 15_000);
-    return () => clearInterval(id);
-  }, [refresh]);
-
-  // Navigation
-  function navigatePrev() {
-    if (view === 'month') setNavDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1));
-    else if (view === 'week') setNavDate(d => addDays(d, -7));
-    else setNavDate(d => addDays(d, -1));
-  }
-
-  function navigateNext() {
-    if (view === 'month') setNavDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1));
-    else if (view === 'week') setNavDate(d => addDays(d, 7));
-    else setNavDate(d => addDays(d, 1));
-  }
-
-  function goToday() {
-    setNavDate(new Date());
-  }
-
-  // Panel handlers
-  function openNewTask(prefillDate?: Date, prefillHour?: number) {
-    setPanel({ open: true, task: null, prefillDate, prefillHour });
-  }
-
-  function openEditTask(task: ScheduledTask) {
-    setPanel({ open: true, task });
-  }
-
-  function closePanel() {
-    setPanel(p => ({ ...p, open: false }));
-  }
-
-  function handleSaved() {
-    closePanel();
-    refresh();
-  }
-
-  function handleDeleted() {
-    closePanel();
-    refresh();
-  }
-
-  // Running task
-  const runningTask = tasks.find(isRunningNow) || null;
-
-  const bg     = dark ? '#111' : '#fff';
-  const border = dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
+  useEffect(() => { refresh(); }, []);
+  useEffect(() => { const iv = setInterval(refresh, 4000); return () => clearInterval(iv); }, [refresh]);
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column',
-      width: '100%', height: '100%',
-      background: bg, fontFamily: FONT_FAMILY,
-      overflow: 'hidden',
-    }}>
-      {/* Running banner */}
-      {runningTask && <RunningBanner task={runningTask} dark={dark} />}
+    <div style={{ display: 'flex', height: '100%', fontFamily: FONT_FAMILY, background: dark ? '#0a0a0a' : '#fff', color: dark ? '#fff' : '#000' }}>
+      <style>{`@keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.3 } }`}</style>
 
-      {/* Body */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Left sidebar — hidden below 768px via media query (inline style can't do this, so we use a class approach) */}
-        <style>{`
-          @media (max-width: 767px) {
-            .tasks-sidebar { display: none !important; }
-            .tasks-mobile-header { display: flex !important; }
-          }
-          @media (min-width: 768px) {
-            .tasks-mobile-header { display: none !important; }
-          }
-        `}</style>
-
-        <div className="tasks-sidebar" style={{ display: 'flex' }}>
-          <Sidebar
-            view={view}
-            setView={(v) => { setView(v); }}
-            navDate={navDate}
-            today={today}
-            onNavigate={setNavDate}
-            onSelectDate={(d) => { setNavDate(d); setView('day'); }}
-            stats={stats}
-            onNewTask={() => openNewTask()}
-            dark={dark}
-          />
-        </div>
-
-        {/* Main calendar area */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
-          {/* Mobile view switcher (hidden on desktop) */}
-          <div
-            className="tasks-mobile-header"
-            style={{
-              display: 'none',
-              alignItems: 'center', justifyContent: 'space-between',
-              padding: '10px 16px',
-              borderBottom: `1px solid ${border}`,
-              flexShrink: 0,
-            }}
-          >
-            <span style={{ fontSize: 15, fontWeight: 700, color: dark ? 'rgba(255,255,255,0.88)' : 'rgba(0,0,0,0.82)', fontFamily: FONT_FAMILY }}>Tasks</span>
-            <div style={{ display: 'flex', gap: 4 }}>
-              {(['month', 'week', 'day'] as const).map(v => (
-                <button
-                  key={v}
-                  onClick={() => setView(v)}
-                  style={{
-                    fontFamily: FONT_FAMILY, fontSize: 11, fontWeight: 600,
-                    padding: '5px 10px', borderRadius: 6,
-                    border: `1px solid ${view === v ? '#3b82f6' : border}`,
-                    background: view === v ? (dark ? 'rgba(59,130,246,0.18)' : 'rgba(59,130,246,0.10)') : 'transparent',
-                    color: view === v ? '#3b82f6' : (dark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)'),
-                    cursor: 'pointer',
-                  }}
-                >
-                  {v.charAt(0).toUpperCase() + v.slice(1)}
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={() => openNewTask()}
-              style={{
-                fontFamily: FONT_FAMILY, fontSize: 12, fontWeight: 600,
-                padding: '6px 12px', borderRadius: 7, border: 'none',
-                background: '#3b82f6', color: '#fff', cursor: 'pointer',
-              }}
-            >
-              + New
-            </button>
-          </div>
-
-          {/* Nav header */}
-          <MainHeader
-            view={view}
-            navDate={navDate}
-            today={today}
-            onPrev={navigatePrev}
-            onNext={navigateNext}
-            onToday={goToday}
-            dark={dark}
-          />
-
-          {/* Calendar views — animate between them */}
-          <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-            <div style={{
-              position: 'absolute', inset: 0, display: 'flex',
-              opacity: view === 'month' ? 1 : 0,
-              pointerEvents: view === 'month' ? 'auto' : 'none',
-              transition: 'opacity 0.15s',
-            }}>
-              <MonthView
-                navDate={navDate}
-                today={today}
-                tasks={tasks}
-                onDayClick={(d) => { setNavDate(d); setView('day'); }}
-                dark={dark}
-              />
-            </div>
-            <div style={{
-              position: 'absolute', inset: 0, display: 'flex',
-              opacity: view === 'week' ? 1 : 0,
-              pointerEvents: view === 'week' ? 'auto' : 'none',
-              transition: 'opacity 0.15s',
-            }}>
-              <WeekView
-                navDate={navDate}
-                today={today}
-                tasks={tasks}
-                onSlotClick={(date, hour) => openNewTask(date, hour)}
-                onTaskClick={openEditTask}
-                dark={dark}
-              />
-            </div>
-            <div style={{
-              position: 'absolute', inset: 0, display: 'flex',
-              opacity: view === 'day' ? 1 : 0,
-              pointerEvents: view === 'day' ? 'auto' : 'none',
-              transition: 'opacity 0.15s',
-            }}>
-              <DayView
-                navDate={navDate}
-                today={today}
-                tasks={tasks}
-                onSlotClick={(date, hour) => openNewTask(date, hour)}
-                onTaskClick={openEditTask}
-                dark={dark}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Right panel */}
-      <TaskPanel
-        state={panel}
-        onClose={closePanel}
-        onSaved={handleSaved}
-        onDeleted={handleDeleted}
+      {/* Calendar */}
+      <WeekCalendar
+        blocks={blocks}
+        onBlockClick={(b) => setOpenBlock(b)}
+        onRefresh={refresh}
         dark={dark}
+        weekStart={weekStart}
+        setWeekStart={setWeekStart}
       />
+
+      {/* Right panel: block detail only */}
+      {openBlock && (
+        <BlockDetail block={openBlock} onClose={() => setOpenBlock(null)} onUpdate={refresh} dark={dark} />
+      )}
     </div>
   );
 }
+
+export default TasksPage;
