@@ -172,29 +172,52 @@ function printBanner() {
 // ── Help ─────────────────────────────────────────────────────────────────────
 function printHelp() {
   process.stdout.write('\n');
-  process.stdout.write('  Commands:\n');
-  process.stdout.write('    exit             quit the CLI\n');
-  process.stdout.write('    clear            clear conversation history\n');
-  process.stdout.write('    help             show this help\n');
-  process.stdout.write('    /doc [prompt]    generate a document with streaming\n');
-  process.stdout.write('    /edit [section]  edit a specific section (use after /doc)\n');
-  process.stdout.write('    /show            display current document prettified\n');
-  process.stdout.write('    /save            save current document to file\n');
-  process.stdout.write('    /versions        list all saved document versions\n');
-  process.stdout.write('    /canvas          show all pending patches (count + preview)\n');
-  process.stdout.write('    /canvas apply    apply all pending patches (per-patch accept/reject prompt)\n');
-  process.stdout.write('    /canvas reset    discard all pending patches\n');
+  process.stdout.write('  ╔════════════════════════════════════════════════════════════════╗\n');
+  process.stdout.write('  ║                     NEURO CLI — Agent Interface                ║\n');
+  process.stdout.write('  ╚════════════════════════════════════════════════════════════════╝\n');
   process.stdout.write('\n');
-  process.stdout.write('  Flags (command line):\n');
-  process.stdout.write('    --benchmark/-b   run 6-test architecture benchmark\n');
-  process.stdout.write('    --health/-h      run service health checks\n');
-  process.stdout.write('    --parallel/-p    run parallelization tests (Promise.all, batched, race)\n');
-  process.stdout.write('    --debug/-d       verbose mode (tool output, token counts, step timing)\n');
-  process.stdout.write('    --ws             start WebSocket server (default port 8890) alongside CLI\n');
+  process.stdout.write('  📝 Chat & Agent:\n');
+  process.stdout.write('    Just type anything → Agent responds with reasoning & tools\n');
+  process.stdout.write('    Type anything for agent-powered analysis, code generation, research...\n');
+  process.stdout.write('    Supported: research, coding, analysis, data scraping, document generation\n');
   process.stdout.write('\n');
-  process.stdout.write('  Env vars:\n');
-  process.stdout.write('    DEBUG=*                            same as --debug\n');
-  process.stdout.write('    VITE_INFRASTRUCTURE_MODE=local     local or remote (default: local)\n');
+  process.stdout.write('  📄 Document Generation:\n');
+  process.stdout.write('    /doc [prompt]     Generate a document (blog, article, report, etc)\n');
+  process.stdout.write('    /show             Display current document nicely formatted\n');
+  process.stdout.write('    /edit [section]   Edit a specific section or lines\n');
+  process.stdout.write('    /save             Save document to file\n');
+  process.stdout.write('    /versions         List and manage document versions\n');
+  process.stdout.write('\n');
+  process.stdout.write('  🎨 Code & Canvas:\n');
+  process.stdout.write('    /canvas           Show all pending code patches\n');
+  process.stdout.write('    /canvas apply     Apply pending patches with approval\n');
+  process.stdout.write('    /canvas reset     Discard all pending patches\n');
+  process.stdout.write('\n');
+  process.stdout.write('  🔧 System & Debug:\n');
+  process.stdout.write('    /status           Show system status & token usage\n');
+  process.stdout.write('    /model [name]     Switch LLM model\n');
+  process.stdout.write('    /clear            Clear chat history\n');
+  process.stdout.write('    /exit             Quit the CLI\n');
+  process.stdout.write('    /help             Show this help message\n');
+  process.stdout.write('\n');
+  process.stdout.write('  🚀 Command-line Flags:\n');
+  process.stdout.write('    --health/-h       Run service health checks\n');
+  process.stdout.write('    --benchmark/-b    Run architecture benchmark (6 tests)\n');
+  process.stdout.write('    --parallel/-p     Test parallelization performance\n');
+  process.stdout.write('    --debug/-d        Verbose output (tools, tokens, timing)\n');
+  process.stdout.write('    --infra/-i        Test infrastructure (Ollama, Wayfarer, SearXNG)\n');
+  process.stdout.write('    --ws              Start WebSocket server (port 8890)\n');
+  process.stdout.write('\n');
+  process.stdout.write('  🌍 Environment:\n');
+  process.stdout.write('    VITE_INFRASTRUCTURE_MODE=local|remote  (default: local)\n');
+  process.stdout.write('    DEBUG=*                                Enable debug logging\n');
+  process.stdout.write('    VITE_OLLAMA_URL                        Custom Ollama endpoint\n');
+  process.stdout.write('\n');
+  process.stdout.write('  💡 Tips:\n');
+  process.stdout.write('    • Ask for research: "research the market for AI agents"\n');
+  process.stdout.write('    • Ask for code: "write a React component for authentication"\n');
+  process.stdout.write('    • Generate documents: /doc write a blog post about web3\n');
+  process.stdout.write('    • Check status: /status\n');
   process.stdout.write('\n');
 }
 
@@ -491,10 +514,23 @@ async function main() {
     // Keep currentState in sync with canvasState
     currentState.canvasPending = canvasState.pendingPatches.length;
 
-    const canvasPrompt = canvasState.pendingPatches.length > 0
-      ? `[canvas: ${canvasState.pendingPatches.length} pending] > `
-      : '> ';
-    rl.question(canvasPrompt, async (input) => {
+    // Build intelligent prompt with context
+    const parts: string[] = [];
+    if (canvasState.pendingPatches.length > 0) {
+      parts.push(`canvas:${canvasState.pendingPatches.length}`);
+    }
+    if (conversationHistory.length > 0) {
+      const msgCount = Math.ceil(conversationHistory.length / 2);
+      parts.push(`msgs:${msgCount}`);
+    }
+    if (currentState.tokens > 0) {
+      parts.push(`tokens:${currentState.tokens}`);
+    }
+
+    const contextPart = parts.length > 0 ? `[${parts.join(' ')}] ` : '';
+    const prompt = `${contextPart}» `;
+
+    rl.question(prompt, async (input) => {
       const userInput = input.trim();
 
       // JSON Task Mode: detect if input is JSON (for programmatic benchmark execution)
@@ -559,8 +595,40 @@ async function main() {
         return;
       }
 
-      if (userInput.toLowerCase() === 'help') {
+      if (userInput.toLowerCase() === 'help' || userInput.toLowerCase() === '/help') {
         printHelp();
+        ask();
+        return;
+      }
+
+      if (userInput.toLowerCase() === '/status') {
+        process.stdout.write('\n  ┌─ System Status ────────────────────────────────────┐\n');
+        process.stdout.write(`  │ Model:        ${currentState.model.padEnd(36)} │\n`);
+        process.stdout.write(`  │ Tokens used:  ${currentState.tokens.toString().padEnd(36)} │\n`);
+        process.stdout.write(`  │ Mode:         ${currentState.mode.padEnd(36)} │\n`);
+        process.stdout.write(`  │ Patches:      ${canvasState.pendingPatches.length} pending, ${canvasState.appliedPatches.length} applied, ${canvasState.rejectedPatches.length} rejected │\n`);
+        process.stdout.write(`  │ Chat history: ${conversationHistory.length} messages                           │\n`);
+        process.stdout.write('  └────────────────────────────────────────────────────┘\n\n');
+        ask();
+        return;
+      }
+
+      if (userInput.toLowerCase().startsWith('/model')) {
+        const modelName = userInput.slice(6).trim();
+        if (!modelName) {
+          process.stdout.write('  Available models:\n');
+          process.stdout.write('    qwen3.5:0.8b   - Fast, 530MB (compression, extraction)\n');
+          process.stdout.write('    qwen3.5:2b     - Small, 1.5GB (synthesis, archiving)\n');
+          process.stdout.write('    qwen3.5:4b     - Medium, 2.8GB (orchestration, analysis)\n');
+          process.stdout.write('    qwen3.5:9b     - Large, 6.6GB (council, chat, generation)\n');
+          process.stdout.write('    qwen3.5:27b    - XL, 18GB (deep creative work)\n');
+          process.stdout.write('    gpt-oss-20b    - Resident, 13GB (agent, file, executor)\n\n');
+          process.stdout.write('  Usage: /model qwen3.5:9b\n\n');
+          ask();
+          return;
+        }
+        currentState.model = modelName;
+        process.stdout.write(`  Switched to: ${modelName}\n\n`);
         ask();
         return;
       }
