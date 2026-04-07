@@ -5,12 +5,11 @@
  * - Create tasks with simple title + description
  * - Click to edit inline
  * - Delete with trash/recovery
- * - Run long-running tasks
- * - Progress tracking
- * - Crash recovery built-in
+ * - Run long-running tasks (with heartbeat crash recovery)
+ * - Progress tracking with checkpoints
+ * - Automatic retry on failure
  */
 
-// @ts-nocheck
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { FONT_FAMILY } from '../constants/ui';
@@ -47,17 +46,32 @@ export function TaskManager({ isDarkMode: parentIsDark }: { isDarkMode?: boolean
   const [showCompleted, setShowCompleted] = useState(false);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
 
+  // Store abort controllers so we can cancel tasks
+  const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
+
   const border = dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
   const bg2 = dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)';
   const hover = dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
 
-  // Load tasks on mount
+  // Load tasks on mount and clean up on unmount
   useEffect(() => {
     (async () => {
       const allTasks = await getAllTasks();
       setTasks(allTasks);
       await startHeartbeat();
     })();
+
+    // Clean up on unmount: abort all running tasks
+    return () => {
+      abortControllersRef.current.forEach(controller => {
+        try {
+          controller.abort();
+        } catch (e) {
+          console.warn('Error aborting task controller:', e);
+        }
+      });
+      abortControllersRef.current.clear();
+    };
   }, []);
 
   // Refresh tasks every 5 seconds
@@ -94,27 +108,112 @@ export function TaskManager({ isDarkMode: parentIsDark }: { isDarkMode?: boolean
     const task = await getTask(taskId);
     if (!task) return;
 
-    await startTask(taskId);
-    setActiveTaskId(taskId);
-    await refresh();
-
-    // Execute the task
     try {
-      const result = await runAgentLoop(task.prompt, '', {
-        signal: new AbortController().signal,
-        onEvent: async (event: any) => {
-          // Record heartbeat
-          await recordHeartbeat(taskId);
+      await startTask(taskId);
+      setActiveTaskId(taskId);
+      await refresh();
 
-          // Update progress based on event type
-          if (event.type === 'tool_start') {
-            await addCheckpoint(taskId, `Running ${event.toolCall?.name}`, task.progress + 1);
-          } else if (event.type === 'response_chunk') {
-            // Increment progress slowly
-            const currentTask = await getTask(taskId);
-            if (currentTask && currentTask.progress < 95) {
-              await addCheckpoint(taskId, 'Processing...', currentTask.progress + 1);
+      // Create abort controller for this task
+      const controller = new AbortController();
+      abortControllersRef.current.set(taskId, controller);
+
+      // Execute the task with proper heartbeat/checkpoint updates
+      const result = await runAgentLoop(task.prompt, '', {
+        signal: controller.signal,
+        onEvent: async (event: any) => {
+          try {
+            // Record heartbeat for crash detection
+            await recordHeartbeat(taskId);
+
+            // Update progress based on event type
+            if (event.type === 'tool_start' && event.toolCall) {
+              await addCheckpoint(taskId, `Running ${event.toolCall.name}`, task.progress + 1);
+            } else if (event.type === 'response_chunk') {
+              // Increment progress slowly
+              const currentTask = await getTask(taskId);
+              if (currentTask && currentTask.progress < 95) {
+                await addCheckpoint(taskId, 'Processing...', currentTask.progress + 1);
+              }
             }
+          } catch (e) {
+            console.warn('Error updating task progress:', e);
+            // Continue execution even if progress update fails
+          }
+        },
+      });
+
+      // Task completed successfully
+      await completeTask(taskId, result.finalResponse || 'Task completed');
+    } catch (error) {
+      // Check if aborted by user
+      const msg = error instanceof Error ? error.message : String(error);
+      const isAborted = msg === 'AbortError' || msg.includes('Aborted') || msg.includes('abort');
+
+      if (isAborted) {
+        // User paused — keep current checkpoint
+        await pauseTask(taskId);
+        console.log(`Task ${taskId} paused by user`);
+      } else {
+        // Real error — call failTask for retry logic
+        console.error('Task execution error:', msg);
+        await import('../utils/taskExecutor').then(m => m.failTask(taskId, msg));
+      }
+    } finally {
+      // Clean up abort controller
+      abortControllersRef.current.delete(taskId);
+      await refresh();
+      setActiveTaskId(null);
+    }
+  };
+
+  // ── Pause/Resume ──
+  const handlePauseTask = async (taskId: string) => {
+    // Abort the running task
+    const controller = abortControllersRef.current.get(taskId);
+    if (controller) {
+      controller.abort();
+      abortControllersRef.current.delete(taskId);
+    }
+    await pauseTask(taskId);
+    await refresh();
+  };
+
+  const handleResumeTask = async (taskId: string) => {
+    try {
+      // Get task and last checkpoint for context
+      const task = await getTask(taskId);
+      if (!task) return;
+
+      // Check if task can be resumed (hasn't exceeded max retries)
+      if (task.failureCount >= task.maxRetries) {
+        console.error(`Task ${taskId} has exceeded max retries (${task.failureCount}/${task.maxRetries})`);
+        await refresh();
+        return;
+      }
+
+      await resumeTask(taskId);
+      setActiveTaskId(taskId);
+
+      // Get checkpoint info for context
+      const lastCheckpoint = await import('../utils/taskExecutor').then(m => m.getLastCheckpoint(taskId));
+      if (lastCheckpoint) {
+        console.log(`Resuming task ${taskId} from checkpoint: ${lastCheckpoint.phase} (${lastCheckpoint.progress}%)`);
+      }
+
+      await refresh();
+
+      // Create abort controller for resume
+      const controller = new AbortController();
+      abortControllersRef.current.set(taskId, controller);
+
+      // Re-execute from checkpoint
+      const result = await runAgentLoop(task.prompt, '', {
+        signal: controller.signal,
+        onEvent: async (event: any) => {
+          try {
+            await recordHeartbeat(taskId);
+          } catch (e) {
+            console.warn('Error recording heartbeat:', e);
           }
         },
       });
@@ -122,42 +221,17 @@ export function TaskManager({ isDarkMode: parentIsDark }: { isDarkMode?: boolean
       await completeTask(taskId, result.finalResponse || 'Task completed');
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      console.error('Task execution error:', msg);
-    }
+      console.error('Resume failed:', msg);
 
-    await refresh();
-    setActiveTaskId(null);
-  };
-
-  // ── Pause/Resume ──
-  const handlePauseTask = async (taskId: string) => {
-    await pauseTask(taskId);
-    await refresh();
-  };
-
-  const handleResumeTask = async (taskId: string) => {
-    try {
-      await resumeTask(taskId);
-      setActiveTaskId(taskId);
-      await refresh();
-
-      // Re-execute
-      const task = await getTask(taskId);
-      if (task) {
-        const result = await runAgentLoop(task.prompt, '', {
-          signal: new AbortController().signal,
-          onEvent: async (event: any) => {
-            await recordHeartbeat(taskId);
-          },
-        });
-        await completeTask(taskId, result.finalResponse || 'Task completed');
+      // Mark as failed if not aborted
+      if (!msg.includes('AbortError') && !msg.includes('Aborted')) {
+        await import('../utils/taskExecutor').then(m => m.failTask(taskId, `Resume failed: ${msg}`));
       }
-    } catch (error) {
-      console.error('Resume failed:', error);
+    } finally {
+      abortControllersRef.current.delete(taskId);
+      await refresh();
+      setActiveTaskId(null);
     }
-
-    await refresh();
-    setActiveTaskId(null);
   };
 
   // ── Edit Task ──
@@ -254,7 +328,7 @@ export function TaskManager({ isDarkMode: parentIsDark }: { isDarkMode?: boolean
           flexShrink: 0,
         }}
       >
-        <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>📝 Tasks</div>
+        <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>Tasks</div>
 
         {/* Quick Add */}
         <div style={{ display: 'flex', gap: 8, flexDirection: 'column' }}>
