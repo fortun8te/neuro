@@ -44,6 +44,7 @@ import { runParallelizationTestCLI } from './cli/cliParallelizationTest';
 import { initLogger, closeLogger, getLogPath, log as logEntry } from './cli/cliLogger';
 import * as cliState from './cli/cliState';
 import * as cliTasks from './cli/cliTaskManager';
+import * as cliRemote from './cli/cliRemoteResearch';
 
 setupNodeEnvironment();
 
@@ -181,7 +182,12 @@ function printHelp() {
   process.stdout.write('    Just type anything → Agent responds with reasoning & tools\n');
   process.stdout.write('    Supported: research, coding, analysis, data scraping, generation\n');
   process.stdout.write('\n');
-  process.stdout.write('  Long-Running Tasks (10+ hours with crash recovery):\n');
+  process.stdout.write('  Research (AI-Powered, 10+ hours):\n');
+  process.stdout.write('    /research on "Topic"               Start live 10-hour research with live logs\n');
+  process.stdout.write('    /research watch <task-id>          Monitor research progress in real-time\n');
+  process.stdout.write('    /research list                      List all research tasks\n');
+  process.stdout.write('\n');
+  process.stdout.write('  Long-Running Tasks (crash recovery, 10+ hours):\n');
   process.stdout.write('    /task create "Title" [description]  Create a new task\n');
   process.stdout.write('    /task list                          List all tasks\n');
   process.stdout.write('    /task start <id>                    Start/execute a task\n');
@@ -872,6 +878,85 @@ async function main() {
         } else {
           ask();
         }
+        return;
+      }
+
+      // ── Remote Research Command ────────────────────────────────────────────
+      if (userInput.toLowerCase().startsWith('/research')) {
+        (async () => {
+          const parts = userInput.slice(9).trim().split(/\s+/);
+          const subcommand = parts[0]?.toLowerCase();
+
+          try {
+            if (!subcommand || subcommand === 'help') {
+              process.stdout.write('\n  /research on <title>      Start 10-hour research task\n');
+              process.stdout.write('  /research watch <task-id>  Monitor live progress\n');
+              process.stdout.write('  /research list             List research tasks\n\n');
+              ask();
+              return;
+            }
+
+            if (subcommand === 'on') {
+              // Create and start research task
+              const titleMatch = userInput.match(/\/research\s+on\s+"([^"]*)"/);
+              const title = titleMatch ? titleMatch[1] : userInput.slice(12).trim();
+
+              if (!title) {
+                process.stdout.write('  Usage: /research on "Research Title"\n\n');
+                ask();
+                return;
+              }
+
+              const researchPrompt = `Comprehensive research on: ${title}.
+
+Scope: Deep investigation covering all relevant technical solutions, tools, libraries, approaches, frameworks, platforms, and emerging technologies. Explore traditional methods, AI-based solutions, procedural generation, hybrid approaches, and experimental techniques.
+
+Research intensity: Maximum depth. Keep investigating until all major options are evaluated. Do not stop prematurely.
+
+Deliverables:
+1. Tool/solution comparison matrix
+2. Pros/cons analysis for each approach
+3. Production timeline estimates
+4. Cost breakdown
+5. Code examples for top solutions
+6. Quality benchmarks if applicable
+7. Risk assessment
+8. Final recommendations
+
+Keep researching continuously, exploring deeper, finding more options, comparing, analyzing. Maximum depth. Thoroughness is key.`;
+
+              const taskId = await cliRemote.createResearchTask(title, researchPrompt);
+              await cliRemote.executeResearch(taskId);
+              ask();
+              return;
+            }
+
+            if (subcommand === 'watch') {
+              const taskId = parts[1];
+              if (!taskId) {
+                process.stdout.write('  Usage: /research watch <task-id>\n\n');
+                ask();
+                return;
+              }
+              await cliRemote.watchResearch(taskId);
+              // watchResearch exits on Ctrl+C
+              return;
+            }
+
+            if (subcommand === 'list') {
+              await cliTasks.listTasks();
+              ask();
+              return;
+            }
+
+            process.stdout.write('  Unknown command. Try: /research help\n\n');
+            ask();
+          } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            process.stdout.write(`  Error: ${msg}\n\n`);
+            ask();
+          }
+        })();
         return;
       }
 
