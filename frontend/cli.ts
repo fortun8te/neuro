@@ -43,6 +43,7 @@ import { runBenchmarkCLI } from './cli/architectureBenchmark';
 import { runParallelizationTestCLI } from './cli/cliParallelizationTest';
 import { initLogger, closeLogger, getLogPath, log as logEntry } from './cli/cliLogger';
 import * as cliState from './cli/cliState';
+import * as cliTasks from './cli/cliTaskManager';
 
 setupNodeEnvironment();
 
@@ -176,24 +177,31 @@ function printHelp() {
   process.stdout.write('  ║                     NEURO CLI — Agent Interface                ║\n');
   process.stdout.write('  ╚════════════════════════════════════════════════════════════════╝\n');
   process.stdout.write('\n');
-  process.stdout.write('  📝 Chat & Agent:\n');
+  process.stdout.write('  Chat & Agent:\n');
   process.stdout.write('    Just type anything → Agent responds with reasoning & tools\n');
-  process.stdout.write('    Type anything for agent-powered analysis, code generation, research...\n');
-  process.stdout.write('    Supported: research, coding, analysis, data scraping, document generation\n');
+  process.stdout.write('    Supported: research, coding, analysis, data scraping, generation\n');
   process.stdout.write('\n');
-  process.stdout.write('  📄 Document Generation:\n');
-  process.stdout.write('    /doc [prompt]     Generate a document (blog, article, report, etc)\n');
-  process.stdout.write('    /show             Display current document nicely formatted\n');
-  process.stdout.write('    /edit [section]   Edit a specific section or lines\n');
+  process.stdout.write('  Long-Running Tasks (10+ hours with crash recovery):\n');
+  process.stdout.write('    /task create "Title" [description]  Create a new task\n');
+  process.stdout.write('    /task list                          List all tasks\n');
+  process.stdout.write('    /task start <id>                    Start/execute a task\n');
+  process.stdout.write('    /task pause <id>                    Pause running task\n');
+  process.stdout.write('    /task resume <id>                   Resume paused task\n');
+  process.stdout.write('    /task view <id>                     View task details\n');
+  process.stdout.write('    /task delete <id>                   Delete a task\n');
+  process.stdout.write('\n');
+  process.stdout.write('  Document Generation:\n');
+  process.stdout.write('    /doc [prompt]     Generate a document\n');
+  process.stdout.write('    /show             Display current document\n');
   process.stdout.write('    /save             Save document to file\n');
-  process.stdout.write('    /versions         List and manage document versions\n');
+  process.stdout.write('    /versions         List document versions\n');
   process.stdout.write('\n');
-  process.stdout.write('  🎨 Code & Canvas:\n');
-  process.stdout.write('    /canvas           Show all pending code patches\n');
-  process.stdout.write('    /canvas apply     Apply pending patches with approval\n');
-  process.stdout.write('    /canvas reset     Discard all pending patches\n');
+  process.stdout.write('  Code & Canvas:\n');
+  process.stdout.write('    /canvas           Show pending code patches\n');
+  process.stdout.write('    /canvas apply     Apply patches with approval\n');
+  process.stdout.write('    /canvas reset     Discard all patches\n');
   process.stdout.write('\n');
-  process.stdout.write('  🔧 System & Debug:\n');
+  process.stdout.write('  System & Debug:\n');
   process.stdout.write('    /status           Show system status & token usage\n');
   process.stdout.write('    /model [name]     Switch LLM model\n');
   process.stdout.write('    /clear            Clear chat history\n');
@@ -496,6 +504,20 @@ async function main() {
   if (typeof window !== 'undefined') {
     vramManager.startKeepAlive();
   }
+
+  // Start task heartbeat system for crash recovery
+  (async () => {
+    try {
+      const { startHeartbeat } = await import('./utils/taskExecutor');
+      await startHeartbeat();
+      if (debugMode) {
+        process.stdout.write('  [tasks] Heartbeat monitoring started\n');
+      }
+    } catch (e) {
+      // Non-fatal if heartbeat fails
+      console.warn('Warning: Could not start task heartbeat:', e);
+    }
+  })();
 
   // In piped/non-interactive mode, stdin closes right after delivering input.
   // Track that so we exit cleanly after processing completes (not before).
@@ -850,6 +872,85 @@ async function main() {
         } else {
           ask();
         }
+        return;
+      }
+
+      // ── Task Management Commands ──────────────────────────────────────────
+      if (userInput.toLowerCase().startsWith('/task')) {
+        (async () => {
+          const parts = userInput.slice(5).trim().split(/\s+/);
+          const subcommand = parts[0]?.toLowerCase();
+          const args = parts.slice(1);
+
+          try {
+            if (subcommand === 'create') {
+              if (args.length === 0) {
+                process.stdout.write('  Usage: /task create "Title" [description]\n\n');
+              } else {
+                // Parse quoted title and optional description
+                const fullArg = userInput.slice(5).trim().slice('create'.length).trim();
+                const match = fullArg.match(/^"([^"]*)"\s*(.*)?$/);
+                if (match) {
+                  const title = match[1];
+                  const description = match[2] || '';
+                  await cliTasks.createTask(title, description);
+                } else {
+                  process.stdout.write('  Error: Title must be quoted. Usage: /task create "Title" [description]\n\n');
+                }
+              }
+            } else if (subcommand === 'list') {
+              await cliTasks.listTasks();
+            } else if (subcommand === 'start') {
+              if (args.length === 0) {
+                process.stdout.write('  Usage: /task start <task-id>\n\n');
+              } else {
+                const taskId = args[0];
+                await cliTasks.startTask(taskId);
+              }
+            } else if (subcommand === 'pause') {
+              if (args.length === 0) {
+                process.stdout.write('  Usage: /task pause <task-id>\n\n');
+              } else {
+                const taskId = args[0];
+                await cliTasks.pauseTask(taskId);
+              }
+            } else if (subcommand === 'resume') {
+              if (args.length === 0) {
+                process.stdout.write('  Usage: /task resume <task-id>\n\n');
+              } else {
+                const taskId = args[0];
+                await cliTasks.resumeTask(taskId);
+              }
+            } else if (subcommand === 'view') {
+              if (args.length === 0) {
+                process.stdout.write('  Usage: /task view <task-id>\n\n');
+              } else {
+                const taskId = args[0];
+                await cliTasks.viewTask(taskId);
+              }
+            } else if (subcommand === 'delete') {
+              if (args.length === 0) {
+                process.stdout.write('  Usage: /task delete <task-id>\n\n');
+              } else {
+                const taskId = args[0];
+                rl.question(`  Delete task ${taskId}? (y/n) > `, async (answer) => {
+                  if (answer.toLowerCase() === 'y') {
+                    await cliTasks.deleteTask(taskId);
+                  }
+                  ask();
+                });
+                return;
+              }
+            } else {
+              process.stdout.write('  Unknown command. Use /help for task commands.\n\n');
+            }
+            ask();
+          } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            process.stdout.write(`  Error: ${msg}\n\n`);
+            ask();
+          }
+        })();
         return;
       }
 
