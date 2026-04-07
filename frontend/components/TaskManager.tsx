@@ -27,6 +27,8 @@ import {
   addCheckpoint,
   recordHeartbeat,
   startHeartbeat,
+  failTask,
+  getLastCheckpoint,
   formatDuration,
   type ExecutableTask,
   type TaskStatus,
@@ -156,7 +158,7 @@ export function TaskManager({ isDarkMode: parentIsDark }: { isDarkMode?: boolean
       } else {
         // Real error — call failTask for retry logic
         console.error('Task execution error:', msg);
-        await import('../utils/taskExecutor').then(m => m.failTask(taskId, msg));
+        await failTask(taskId, msg);
       }
     } finally {
       // Clean up abort controller
@@ -195,7 +197,7 @@ export function TaskManager({ isDarkMode: parentIsDark }: { isDarkMode?: boolean
       setActiveTaskId(taskId);
 
       // Get checkpoint info for context
-      const lastCheckpoint = await import('../utils/taskExecutor').then(m => m.getLastCheckpoint(taskId));
+      const lastCheckpoint = await getLastCheckpoint(taskId);
       if (lastCheckpoint) {
         console.log(`Resuming task ${taskId} from checkpoint: ${lastCheckpoint.phase} (${lastCheckpoint.progress}%)`);
       }
@@ -225,7 +227,7 @@ export function TaskManager({ isDarkMode: parentIsDark }: { isDarkMode?: boolean
 
       // Mark as failed if not aborted
       if (!msg.includes('AbortError') && !msg.includes('Aborted')) {
-        await import('../utils/taskExecutor').then(m => m.failTask(taskId, `Resume failed: ${msg}`));
+        await failTask(taskId, `Resume failed: ${msg}`);
       }
     } finally {
       abortControllersRef.current.delete(taskId);
