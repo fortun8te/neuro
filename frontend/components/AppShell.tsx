@@ -14,7 +14,7 @@ import { SettingsModal } from './SettingsModal';
 import { LoginScreen } from './LoginScreen';
 import { AgentPanel } from './AgentPanel';
 import { HomeScreen } from './HomeScreen';
-import TasksPage from './TasksPage';
+import TaskManager from './TaskManager';
 import { SettingsIcon, LogOutIcon, ChevronDown, SidebarIcon } from './Icons';
 import BlobAvatar, { getAgentColor } from './BlobAvatar';
 import { getUserAvatarSeed, getUserAvatarColor, getUserInitials } from './UserAvatar';
@@ -587,7 +587,8 @@ export function AppShell() {
           {!user && !authLoading ? (
             <LoginScreen onLogin={() => {}} onSignup={() => {}} />
           ) : activeView === 'tasks' ? (
-            <TasksPage />
+            <TaskManager isDarkMode={isDarkMode} />/antml:parameter>
+</invoke>
           ) : showHome ? (
             <HomeScreen
               onContinue={() => {
