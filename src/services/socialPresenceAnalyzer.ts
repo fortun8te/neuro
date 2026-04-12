@@ -470,12 +470,12 @@ export class SocialPresenceAnalyzer {
           topCountries: data.demographics?.topCountries || [],
           interests: data.demographics?.interests || [],
         },
-        communityTone: (data.communityTone as any) || 'neutral',
+        communityTone: ((data.communityTone || 'neutral') as 'supportive' | 'critical' | 'neutral' | 'mixed'),
         communitySize: 'medium',
         topCommonQuestions: data.topCommonQuestions || [],
         commonConcerns: data.commonConcerns || [],
         resonantTopics: data.resonantTopics || [],
-        brandSentiment: sentimentMap[score] || 'neutral',
+        brandSentiment: (sentimentMap[score] || 'neutral') as 'very-positive' | 'positive' | 'neutral' | 'negative' | 'very-negative',
       };
 
       log.debug(`Extracted audience insights for ${platform}: sentiment=${insights.brandSentiment}`);
@@ -492,6 +492,7 @@ export class SocialPresenceAnalyzer {
         },
         communityTone: 'neutral',
         communitySize: 'medium',
+        brandSentiment: 'neutral',
       };
     }
   }
@@ -516,7 +517,7 @@ export class SocialPresenceAnalyzer {
       const contentTypesGoViral = Object.entries(data.contentTypesViralCount || {})
         .map(([format, frequency]) => ({
           format,
-          frequency: frequency > 5 ? 'common' : frequency > 2 ? 'occasional' : 'rare',
+          frequency: (frequency > 5 ? 'common' : frequency > 2 ? 'occasional' : 'rare') as 'common' | 'occasional' | 'rare',
           avgReach: frequency * 1000,
         }));
 

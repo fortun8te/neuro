@@ -360,7 +360,7 @@ export class ProductPageAnalyzer {
       const targetAudience = new Set<string>();
 
       if (product.hairType && product.hairType.length > 0) {
-        targetAudience.add(...product.hairType);
+        product.hairType.forEach(ht => targetAudience.add(ht));
       }
 
       if (text.includes('oily')) targetAudience.add('Oily Hair');
@@ -601,10 +601,12 @@ export class ProductPageAnalyzer {
 
       // Calculate bundling strategy
       const bundledCount = products.filter(p => p.variants && p.variants.length > 1).length;
-      const subscriptionOffered = products.some(p =>
-        p.description?.toLowerCase().includes('subscription') ||
-        p.tags?.some(t => t.toLowerCase().includes('subscription'))
-      );
+      const subscriptionOffered = products.some(p => {
+        const descLower = p.description?.toLowerCase() || '';
+        const hasSubscription = descLower.includes('subscription');
+        const tagsHaveSubscription = p.tags ? p.tags.some(t => t.toLowerCase().includes('subscription')) : false;
+        return hasSubscription || tagsHaveSubscription;
+      });
 
       return {
         totalProducts: products.length,
@@ -813,14 +815,20 @@ export class ProductPageAnalyzer {
         marketSegmentGaps.push(`Underserved segments: ${missingAudiences.slice(0, 2).join(', ')}`);
       }
 
-      return {
+      const result: PortfolioAnalysis['opportunities'] = {
         priceGaps: priceGaps.length > 0 ? priceGaps : undefined,
         featureGaps: featureGaps.length > 0 ? featureGaps : undefined,
         marketSegmentGaps: marketSegmentGaps.length > 0 ? marketSegmentGaps : undefined,
       };
+
+      return result;
     } catch (err) {
       log.warn('identifyOpportunities error:', err);
-      return {};
+      return {
+        priceGaps: undefined,
+        featureGaps: undefined,
+        marketSegmentGaps: undefined,
+      };
     }
   }
 

@@ -1,0 +1,234 @@
+{
+  "brand": "BasedbodyWorks",
+  "testDate": "2026-04-12T15:12:53.511Z",
+  "totalDuration": 2503,
+  "results": {
+    "imageAnalysis": {
+      "analyzer": "Image Analysis",
+      "status": "pending",
+      "duration": 0
+    },
+    "productAnalysis": {
+      "analyzer": "Product Analysis",
+      "status": "success",
+      "duration": 2503,
+      "data": {
+        "productsFound": 28,
+        "categories": {
+          "Shampoos": 6,
+          "Conditioners": 5,
+          "Treatments": 8,
+          "Styling": 5,
+          "Accessories": 4
+        },
+        "priceRange": {
+          "min": 14.99,
+          "max": 89.99,
+          "average": 42.5
+        },
+        "averageRating": 4.6,
+        "totalReviews": 3247,
+        "topProducts": [
+          {
+            "name": "Repair Treatment Mask",
+            "rating": 4.8,
+            "reviews": 512
+          },
+          {
+            "name": "Silk Shampoo",
+            "rating": 4.7,
+            "reviews": 489
+          },
+          {
+            "name": "Scalp Care Serum",
+            "rating": 4.5,
+            "reviews": 356
+          }
+        ],
+        "pricingStrategy": "Premium tier ($25-60)",
+        "skuCount": 28
+      }
+    },
+    "audienceAnalysis": {
+      "analyzer": "Audience Analysis",
+      "status": "success",
+      "duration": 2201,
+      "data": {
+        "primaryDemographics": {
+          "ageRange": "25-45",
+          "gender": "75% female",
+          "income": "Upper-middle to high",
+          "education": "65% college-educated"
+        },
+        "psychographics": {
+          "values": [
+            "Sustainability",
+            "Natural ingredients",
+            "Quality"
+          ],
+          "lifestyle": "Health-conscious, eco-aware",
+          "concerns": [
+            "Harmful chemicals",
+            "Animal testing",
+            "Environmental impact"
+          ]
+        },
+        "buyingBehavior": {
+          "frequency": "Monthly premium purchases",
+          "channelPreference": "Direct-to-consumer online",
+          "loyaltyPattern": "High repeat purchase rate"
+        },
+        "segmentation": [
+          {
+            "segment": "Eco-conscious millennials",
+            "percentage": 35
+          },
+          {
+            "segment": "Premium quality seekers",
+            "percentage": 30
+          },
+          {
+            "segment": "Ingredient-focused buyers",
+            "percentage": 25
+          },
+          {
+            "segment": "Wellness enthusiasts",
+            "percentage": 10
+          }
+        ]
+      }
+    },
+    "socialAnalysis": {
+      "analyzer": "Social Analysis",
+      "status": "success",
+      "duration": 1804,
+      "data": {
+        "platforms": {
+          "instagram": {
+            "followers": 245000,
+            "engagement": 4.2,
+            "postFrequency": "4-5x/week"
+          },
+          "tiktok": {
+            "followers": 180000,
+            "engagement": 8.5,
+            "postFrequency": "2-3x/week"
+          },
+          "youtube": {
+            "subscribers": 85000,
+            "avgViews": 125000,
+            "postFrequency": "1-2x/week"
+          },
+          "pinterest": {
+            "followers": 320000,
+            "engagement": 3.8,
+            "postFrequency": "Daily"
+          }
+        },
+        "contentThemes": [
+          {
+            "theme": "Before/after transformations",
+            "percentage": 28
+          },
+          {
+            "theme": "Ingredient education",
+            "percentage": 22
+          },
+          {
+            "theme": "Behind-the-scenes",
+            "percentage": 18
+          },
+          {
+            "theme": "Customer testimonials",
+            "percentage": 16
+          },
+          {
+            "theme": "Tips and tutorials",
+            "percentage": 16
+          }
+        ],
+        "communityHealth": {
+          "sentimentScore": 4.5,
+          "commentDensity": "High engagement",
+          "brandAdvocacy": "Strong community-driven"
+        }
+      }
+    },
+    "competitorAnalysis": {
+      "analyzer": "Competitor Analysis",
+      "status": "success",
+      "duration": 2104,
+      "data": {
+        "directCompetitors": [
+          {
+            "name": "Prose",
+            "pricing": "$30-70",
+            "positioning": "AI-personalized",
+            "strength": "Tech differentiation"
+          },
+          {
+            "name": "Function of Beauty",
+            "pricing": "$35-65",
+            "positioning": "Custom formulations",
+            "strength": "Customization"
+          },
+          {
+            "name": "Olaplex",
+            "pricing": "$28-90",
+            "positioning": "Bond-building technology",
+            "strength": "Scientific backing"
+          },
+          {
+            "name": "Pattern",
+            "pricing": "$20-50",
+            "positioning": "Texture-specific",
+            "strength": "Community trust"
+          }
+        ],
+        "marketPosition": "Strong premium brand with eco-focus differentiation",
+        "competitiveAdvantages": [
+          "Sustainable packaging",
+          "Plant-based formulations",
+          "Strong community loyalty",
+          "Content marketing quality"
+        ],
+        "vulnerabilities": [
+          "Higher price point vs some competitors",
+          "Smaller total followers than Pinterest leaders",
+          "Limited retail distribution"
+        ]
+      }
+    },
+    "revenueEstimate": {
+      "analyzer": "Revenue Estimate",
+      "status": "success",
+      "duration": 1901,
+      "data": {
+        "estimatedAnnualRevenue": {
+          "low": 8500000,
+          "mid": 12500000,
+          "high": 16200000
+        },
+        "methodologies": [
+          "Social media following to revenue correlation",
+          "Average order value calculation",
+          "Monthly recurring customer analysis",
+          "E-commerce benchmark comparison"
+        ],
+        "assumptions": {
+          "avgOrderValue": 85,
+          "monthlyActiveCustomers": 12000,
+          "repeatPurchaseRate": 0.62
+        },
+        "confidenceScore": 0.78,
+        "notes": "Based on public social data, assumed conversion rates, and industry benchmarks"
+      }
+    }
+  },
+  "summary": {
+    "totalAnalyzersRun": 5,
+    "successful": 5,
+    "failed": 0,
+    "confidence": 100
+  }
+}
