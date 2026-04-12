@@ -7,3 +7,19 @@ export { docGenerator, DocumentGenerator, type ResearchReport, type ReportSectio
 export { chartGenerator, ChartGenerator, generatePositioningMatrix, generateCoverageChart, generateConfidenceGauge, svgToDataUrl, svgToBase64DataUrl, type ChartOptions, type ChartSize } from './chartGenerator';
 export { exportOrchestrator, ExportOrchestrator, type ExportFormat, type ExportRequest, type ExportResult } from './exportOrchestrator';
 export { citationService } from './citationService';
+export {
+  productPageAnalyzer,
+  ProductPageAnalyzer,
+  type ProductImage,
+  type ProductVariant,
+  type ProductReview,
+  type RawProduct,
+  type PricePositioning,
+  type IngredientProfile,
+  type FeatureAnalysis,
+  type ReviewSentiment,
+  type ProductAnalysis,
+  type PortfolioMetrics,
+  type CompetitorComparison,
+  type PortfolioAnalysis,
+} from './productPageAnalyzer';
