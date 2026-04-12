@@ -4,12 +4,12 @@
  * Handles:
  * - Task execution with checkpoint system
  * - Automatic heartbeat/recovery
- * - Persistent state to IndexedDB
+ * - Persistent state (IndexedDB in browser, file-based in Node.js)
  * - Streaming progress updates
  * - Graceful recovery from crashes
  */
 
-import { openDB, type DBSchema } from 'idb';
+import * as taskStorage from './taskStorageAdapter';
 
 export type TaskStatus = 'draft' | 'queued' | 'running' | 'paused' | 'completed' | 'error' | 'archived';
 
@@ -49,27 +49,7 @@ export interface ExecutableTask {
   error?: string;
 }
 
-interface TaskDB extends DBSchema {
-  tasks: { key: string; value: ExecutableTask };
-}
-
-const DB_NAME = 'neuro_tasks';
-const DB_VERSION = 1;
-
-let _db: ReturnType<typeof openDB<TaskDB>> | null = null;
-
-async function db() {
-  if (!_db) {
-    _db = await openDB<TaskDB>(DB_NAME, DB_VERSION, {
-      upgrade(db) {
-        if (!db.objectStoreNames.contains('tasks')) {
-          db.createObjectStore('tasks', { keyPath: 'id' });
-        }
-      },
-    });
-  }
-  return _db;
-}
+// No longer needed - taskStorageAdapter handles DB initialization
 
 // ── Task CRUD ────────────────────────────────────────────────────────────────
 
@@ -95,33 +75,28 @@ export async function createTask(
     estimatedDuration: estimatedDuration || 60,
   };
 
-  const taskDb = await db();
-  await taskDb.put('tasks', task);
+  await taskStorage.putTask(task);
   return task;
 }
 
 export async function getTask(taskId: string): Promise<ExecutableTask | undefined> {
-  const taskDb = await db();
-  return taskDb.get('tasks', taskId);
+  return taskStorage.getTask(taskId);
 }
 
 export async function getAllTasks(): Promise<ExecutableTask[]> {
-  const taskDb = await db();
-  return taskDb.getAll('tasks');
+  return taskStorage.getAllTasks();
 }
 
 export async function updateTask(taskId: string, updates: Partial<ExecutableTask>): Promise<void> {
-  const taskDb = await db();
-  const task = await taskDb.get('tasks', taskId);
+  const task = await taskStorage.getTask(taskId);
   if (!task) return;
 
   const updated = { ...task, ...updates };
-  await taskDb.put('tasks', updated);
+  await taskStorage.putTask(updated);
 }
 
 export async function deleteTask(taskId: string): Promise<void> {
-  const taskDb = await db();
-  await taskDb.delete('tasks', taskId);
+  await taskStorage.deleteTask(taskId);
 }
 
 export async function archiveTask(taskId: string): Promise<void> {

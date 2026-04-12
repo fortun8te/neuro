@@ -47,7 +47,7 @@ function getInfrastructureMode(): 'local' | 'remote' {
 /**
  * Get active Ollama URL based on infrastructure mode
  * - Local: localhost:11434 (user's machine)
- * - Remote: 100.74.135.83:11434 (remote server via Tailscale)
+ * - Remote: 100.74.135.83:11440 (remote server via Tailscale)
  * Can be overridden with VITE_OLLAMA_URL env var
  */
 function getOllamaUrl(): string {
@@ -58,7 +58,7 @@ function getOllamaUrl(): string {
   if (mode === 'local') {
     return 'http://localhost:11434';
   } else {
-    return 'http://100.74.135.83:11434';
+    return 'http://100.74.135.83:11440';
   }
 }
 
@@ -76,7 +76,7 @@ function getWayfarerUrl(): string {
   if (mode === 'local') {
     return 'http://localhost:8889';
   } else {
-    return 'http://100.74.135.83:8889';
+    return 'http://100.74.135.83:8891';
   }
 }
 

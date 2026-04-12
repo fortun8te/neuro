@@ -587,8 +587,7 @@ export function AppShell() {
           {!user && !authLoading ? (
             <LoginScreen onLogin={() => {}} onSignup={() => {}} />
           ) : activeView === 'tasks' ? (
-            <TaskManager isDarkMode={isDarkMode} />/antml:parameter>
-</invoke>
+            <TaskManager isDarkMode={isDarkMode} />
           ) : showHome ? (
             <HomeScreen
               onContinue={() => {

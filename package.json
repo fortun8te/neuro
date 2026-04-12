@@ -31,9 +31,13 @@
     "batch": "tsx src/cli-batch.ts",
     "batch:quick": "tsx src/cli-batch.ts -- --limit 10",
     "batch:marketing": "tsx src/cli-batch.ts -- --category marketing",
-    "batch:technical": "tsx src/cli-batch.ts -- --category technical"
+    "batch:technical": "tsx src/cli-batch.ts -- --category technical",
+    "deep-research": "tsx src/cli-deep-research.ts",
+    "deep-research:dev": "tsx --watch src/cli-deep-research.ts",
+    "test:phase1": "tsx test-phase1-e2e.ts"
   },
   "dependencies": {
+    "@inquirer/prompts": "^8.4.1",
     "@novnc/novnc": "^1.6.0",
     "@paper-design/shaders-react": "^0.0.72",
     "@radix-ui/react-accordion": "^1.2.12",
@@ -44,7 +48,10 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tailwindcss/postcss": "^4.2.1",
     "@types/ws": "^8.18.1",
+    "better-sqlite3": "^12.8.0",
+    "chalk": "^5.6.2",
     "class-variance-authority": "^0.7.1",
+    "cli-table3": "^0.6.5",
     "docx": "^9.6.1",
     "dompurify": "^3.3.3",
     "dotenv": "^17.3.1",
@@ -70,6 +77,7 @@
     "recharts": "^3.8.1",
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
+    "strip-ansi": "^7.2.0",
     "telegraf": "^4.16.3",
     "vis-network": "^10.0.2",
     "ws": "^8.20.0",

@@ -11,9 +11,8 @@ loadDotenv({ path: resolve(process.cwd(), '.env') });
 
 // ── Browser API shims (MUST run before any module imports that use them) ────
 if (typeof globalThis.indexedDB === 'undefined') {
-  (globalThis as any).indexedDB = {
-    open: () => ({ addEventListener: () => {}, onsuccess: null, onerror: null }),
-  };
+  // Minimal stub — tasks use nodeTaskStore (file-based) in Node.js, not IndexedDB
+  (globalThis as any).indexedDB = { open: () => null };
 }
 if (typeof globalThis.localStorage === 'undefined') {
   const store: Record<string, string> = {};
@@ -44,7 +43,6 @@ import { runParallelizationTestCLI } from './cli/cliParallelizationTest';
 import { initLogger, closeLogger, getLogPath, log as logEntry } from './cli/cliLogger';
 import * as cliState from './cli/cliState';
 import * as cliTasks from './cli/cliTaskManager';
-import * as cliRemote from './cli/cliRemoteResearch';
 
 setupNodeEnvironment();
 
@@ -881,161 +879,128 @@ async function main() {
         return;
       }
 
-      // ── Remote Research Command ────────────────────────────────────────────
+      // ── Research Command — runs agent loop directly with live logs ───────────
       if (userInput.toLowerCase().startsWith('/research')) {
-        (async () => {
-          const parts = userInput.slice(9).trim().split(/\s+/);
-          const subcommand = parts[0]?.toLowerCase();
+        const researchInput = userInput.slice(9).trim();
+        const subcommand = researchInput.split(/\s+/)[0]?.toLowerCase();
+
+        if (!subcommand || subcommand === 'help') {
+          process.stdout.write('\n  /research on "topic"   Run deep research with live output\n\n');
+          ask();
+          return;
+        }
+
+        if (subcommand === 'on') {
+          const titleMatch = userInput.match(/\/research\s+on\s+"([^"]*)"/);
+          const title = titleMatch ? titleMatch[1] : researchInput.slice(3).trim();
+
+          if (!title) {
+            process.stdout.write('  Usage: /research on "topic to research"\n\n');
+            ask();
+            return;
+          }
+
+          const researchPrompt = `Deep research on: ${title}
+
+Explore every possible approach and technology that could work. Look at:
+- Established methods that exist today
+- Newer and emerging techniques
+- AI-powered approaches and what models can generate
+- Algorithmic or code-based generation (procedural)
+- Hybrid combinations mixing multiple methods
+- Any experimental or unconventional solutions
+
+For each major approach found, evaluate:
+- How it works and what it produces
+- Strengths and weaknesses
+- Production timeline and effort
+- Cost (time, money, complexity)
+- Quality and output potential
+- Real-world examples and references
+- Risks and how to mitigate them
+
+Find at least 5-10 distinct approaches. Compare them thoroughly. Give clear rankings and a final recommendation. Keep investigating until you have comprehensive coverage.`;
+
+          process.stdout.write(`\n  Starting research: ${title}\n`);
+          process.stdout.write(`  ${'─'.repeat(60)}\n\n`);
+
+          const controller = new AbortController();
+          const onSigint = () => {
+            controller.abort();
+            process.stdout.write('\n\n  Research stopped.\n\n');
+          };
+          process.once('SIGINT', onSigint);
 
           try {
-            if (!subcommand || subcommand === 'help') {
-              process.stdout.write('\n  /research on <title>      Start 10-hour research task\n');
-              process.stdout.write('  /research watch <task-id>  Monitor live progress\n');
-              process.stdout.write('  /research list             List research tasks\n\n');
-              ask();
-              return;
+            await runAgentLoop(researchPrompt, '', {
+              signal: controller.signal,
+              skipSemanticRouting: true,
+              onEvent: (event: AgentEngineEvent) => {
+                displayEvent(event, debugMode);
+              },
+            });
+          } catch (err: any) {
+            if (!err?.message?.includes('abort') && !err?.message?.includes('Abort')) {
+              process.stdout.write(`\n  Error: ${err?.message || err}\n`);
             }
-
-            if (subcommand === 'on') {
-              // Create and start research task
-              const titleMatch = userInput.match(/\/research\s+on\s+"([^"]*)"/);
-              const title = titleMatch ? titleMatch[1] : userInput.slice(12).trim();
-
-              if (!title) {
-                process.stdout.write('  Usage: /research on "Research Title"\n\n');
-                ask();
-                return;
-              }
-
-              const researchPrompt = `Comprehensive research on: ${title}.
-
-Scope: Deep investigation covering all relevant technical solutions, tools, libraries, approaches, frameworks, platforms, and emerging technologies. Explore traditional methods, AI-based solutions, procedural generation, hybrid approaches, and experimental techniques.
-
-Research intensity: Maximum depth. Keep investigating until all major options are evaluated. Do not stop prematurely.
-
-Deliverables:
-1. Tool/solution comparison matrix
-2. Pros/cons analysis for each approach
-3. Production timeline estimates
-4. Cost breakdown
-5. Code examples for top solutions
-6. Quality benchmarks if applicable
-7. Risk assessment
-8. Final recommendations
-
-Keep researching continuously, exploring deeper, finding more options, comparing, analyzing. Maximum depth. Thoroughness is key.`;
-
-              const taskId = await cliRemote.createResearchTask(title, researchPrompt);
-              await cliRemote.executeResearch(taskId);
-              ask();
-              return;
-            }
-
-            if (subcommand === 'watch') {
-              const taskId = parts[1];
-              if (!taskId) {
-                process.stdout.write('  Usage: /research watch <task-id>\n\n');
-                ask();
-                return;
-              }
-              await cliRemote.watchResearch(taskId);
-              // watchResearch exits on Ctrl+C
-              return;
-            }
-
-            if (subcommand === 'list') {
-              await cliTasks.listTasks();
-              ask();
-              return;
-            }
-
-            process.stdout.write('  Unknown command. Try: /research help\n\n');
-            ask();
-          } catch (error) {
-            const msg = error instanceof Error ? error.message : String(error);
-            process.stdout.write(`  Error: ${msg}\n\n`);
-            ask();
+          } finally {
+            process.removeListener('SIGINT', onSigint);
           }
-        })();
+
+          process.stdout.write(`\n  ${'─'.repeat(60)}\n  Done.\n\n`);
+          ask();
+          return;
+        }
+
+        process.stdout.write('  Unknown. Try: /research on "topic"\n\n');
+        ask();
         return;
       }
 
       // ── Task Management Commands ──────────────────────────────────────────
       if (userInput.toLowerCase().startsWith('/task')) {
-        (async () => {
-          const parts = userInput.slice(5).trim().split(/\s+/);
-          const subcommand = parts[0]?.toLowerCase();
-          const args = parts.slice(1);
+        const taskInput = userInput.slice(5).trim();
+        const taskParts = taskInput.split(/\s+/);
+        const subcommand = taskParts[0]?.toLowerCase();
+        const taskArgs = taskParts.slice(1);
 
-          try {
-            if (subcommand === 'create') {
-              if (args.length === 0) {
-                process.stdout.write('  Usage: /task create "Title" [description]\n\n');
-              } else {
-                // Parse quoted title and optional description
-                const fullArg = userInput.slice(5).trim().slice('create'.length).trim();
-                const match = fullArg.match(/^"([^"]*)"\s*(.*)?$/);
-                if (match) {
-                  const title = match[1];
-                  const description = match[2] || '';
-                  await cliTasks.createTask(title, description);
-                } else {
-                  process.stdout.write('  Error: Title must be quoted. Usage: /task create "Title" [description]\n\n');
-                }
-              }
-            } else if (subcommand === 'list') {
-              await cliTasks.listTasks();
-            } else if (subcommand === 'start') {
-              if (args.length === 0) {
-                process.stdout.write('  Usage: /task start <task-id>\n\n');
-              } else {
-                const taskId = args[0];
-                await cliTasks.startTask(taskId);
-              }
-            } else if (subcommand === 'pause') {
-              if (args.length === 0) {
-                process.stdout.write('  Usage: /task pause <task-id>\n\n');
-              } else {
-                const taskId = args[0];
-                await cliTasks.pauseTask(taskId);
-              }
-            } else if (subcommand === 'resume') {
-              if (args.length === 0) {
-                process.stdout.write('  Usage: /task resume <task-id>\n\n');
-              } else {
-                const taskId = args[0];
-                await cliTasks.resumeTask(taskId);
-              }
-            } else if (subcommand === 'view') {
-              if (args.length === 0) {
-                process.stdout.write('  Usage: /task view <task-id>\n\n');
-              } else {
-                const taskId = args[0];
-                await cliTasks.viewTask(taskId);
-              }
-            } else if (subcommand === 'delete') {
-              if (args.length === 0) {
-                process.stdout.write('  Usage: /task delete <task-id>\n\n');
-              } else {
-                const taskId = args[0];
-                rl.question(`  Delete task ${taskId}? (y/n) > `, async (answer) => {
-                  if (answer.toLowerCase() === 'y') {
-                    await cliTasks.deleteTask(taskId);
-                  }
-                  ask();
-                });
-                return;
-              }
+        try {
+          if (subcommand === 'list') {
+            await cliTasks.listTasks();
+          } else if (subcommand === 'create') {
+            const fullArg = taskInput.slice('create'.length).trim();
+            const match = fullArg.match(/^"([^"]*)"\s*(.*)?$/);
+            if (match) {
+              await cliTasks.createTask(match[1], match[2] || '');
             } else {
-              process.stdout.write('  Unknown command. Use /help for task commands.\n\n');
+              process.stdout.write('  Usage: /task create "Title" [description]\n\n');
             }
-            ask();
-          } catch (error) {
-            const msg = error instanceof Error ? error.message : String(error);
-            process.stdout.write(`  Error: ${msg}\n\n`);
-            ask();
+          } else if (subcommand === 'view') {
+            if (!taskArgs[0]) {
+              process.stdout.write('  Usage: /task view <id>\n\n');
+            } else {
+              await cliTasks.viewTask(taskArgs[0]);
+            }
+          } else if (subcommand === 'delete') {
+            if (!taskArgs[0]) {
+              process.stdout.write('  Usage: /task delete <id>\n\n');
+            } else {
+              rl.question(`  Delete ${taskArgs[0]}? (y/n) > `, async (ans) => {
+                if (ans.toLowerCase() === 'y') {
+                  try { await cliTasks.deleteTask(taskArgs[0]); } catch (e: any) { process.stdout.write(`  Error: ${e.message}\n\n`); }
+                }
+                ask();
+              });
+              return;
+            }
+          } else {
+            process.stdout.write('  Commands: /task list | /task create "Title" | /task view <id> | /task delete <id>\n\n');
           }
-        })();
+        } catch (err: any) {
+          process.stdout.write(`  Error: ${err?.message || String(err)}\n\n`);
+        }
+
+        ask();
         return;
       }
 

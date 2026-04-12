@@ -15,6 +15,7 @@ import { createLogger } from './logger';
 import { logModelUsage } from './modelUsageLogger';
 import { getOrCreateBreaker } from './circuitBreaker';
 import { validateOllamaResponse } from './schemas/ollama.schemas';
+import { loadMonitor } from '../services/loadMonitor';
 
 const log = createLogger('ollama');
 
@@ -225,6 +226,19 @@ export const ollamaService = {
     // Log model usage start
     const startTime = Date.now();
 
+    // Check load monitor before attempting request
+    // Wait for capacity with 5-minute timeout
+    try {
+      await loadMonitor.waitForCapacity(cleanModel, 300_000);
+    } catch (loadErr) {
+      log.warn('Load monitor rejection', { model: cleanModel }, loadErr);
+      onError?.(loadErr as Error);
+      throw loadErr;
+    }
+
+    // Record task start
+    const taskId = loadMonitor.recordTask(cleanModel);
+
     // Check circuit breaker before attempting request
     const breaker = getOrCreateBreaker('ollama', {
       failureThreshold: 5,
@@ -235,6 +249,7 @@ export const ollamaService = {
     try {
       breaker.canAttempt();
     } catch (cbError) {
+      loadMonitor.releaseTask(cleanModel, taskId);
       log.warn('Circuit breaker blocking request', {}, cbError);
       onError?.(cbError as Error);
       throw cbError;
@@ -507,6 +522,9 @@ export const ollamaService = {
         // Record success in circuit breaker
         breaker.recordSuccess();
 
+        // Release task capacity
+        loadMonitor.releaseTask(cleanModel, taskId);
+
         return fullResponse;
       } catch (error) {
         if (timeoutId) clearTimeout(timeoutId);
@@ -518,6 +536,7 @@ export const ollamaService = {
 
         // Don't retry on user abort
         if (signal?.aborted) {
+          loadMonitor.releaseTask(cleanModel, taskId);
           onError?.(lastError);
           throw lastError;
         }
@@ -547,6 +566,9 @@ export const ollamaService = {
             ? `Cannot reach Ollama at ${apiBase}. Is the server running? Check Settings > Connection.`
             : lastError.message
         );
+
+        // Release task capacity before throwing
+        loadMonitor.releaseTask(cleanModel, taskId);
         onError?.(finalError);
         throw finalError;
       }
@@ -565,6 +587,8 @@ export const ollamaService = {
       error: fallbackErr.message,
     });
 
+    // Release task capacity before throwing
+    loadMonitor.releaseTask(cleanModel, taskId);
     onError?.(fallbackErr);
     throw fallbackErr;
   },

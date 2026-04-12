@@ -502,6 +502,28 @@ function identifyCriticalWeaknesses(
 ): string[] {
   const weaknesses: string[] = [];
 
+  // CRITICAL: Check for missing fundamentals sections
+  // Company/Topic/Repo fundamentals MUST be present with 80%+ coverage
+  const fundamentalsSections = ['company-profile', 'company_profile', 'topic-fundamentals', 'topic_fundamentals',
+                                  'repo-fundamentals', 'repo_fundamentals', 'problem-fundamentals', 'problem_fundamentals'];
+
+  const hasFundamentals = Array.from(dimensionAssessments.keys()).some(dim =>
+    fundamentalsSections.some(fund => dim.toLowerCase().includes(fund.toLowerCase()))
+  );
+
+  if (!hasFundamentals) {
+    weaknesses.push('CRITICAL: Missing foundational research (company/topic/repo fundamentals not researched)');
+  } else {
+    // Check if fundamentals section has adequate coverage
+    const fundamentalsSection = Array.from(dimensionAssessments.values()).find(dim =>
+      fundamentalsSections.some(fund => dim.dimension.toLowerCase().includes(fund.toLowerCase()))
+    );
+
+    if (fundamentalsSection && fundamentalsSection.overallScore < 80) {
+      weaknesses.push(`CRITICAL: Fundamentals section too weak (${fundamentalsSection.overallScore}% — need 80%+ before proceeding to analysis)`);
+    }
+  }
+
   const lowQualityFindings = findingScores.filter(f => f.score < 40).length;
   if (lowQualityFindings > 0) {
     weaknesses.push(`${lowQualityFindings} findings with very low quality scores (<40)`);
@@ -510,6 +532,14 @@ function identifyCriticalWeaknesses(
   const lowConfidenceDims = Array.from(dimensionAssessments.values()).filter(d => d.confidenceLevel === 'low');
   if (lowConfidenceDims.length > 2) {
     weaknesses.push(`${lowConfidenceDims.length} dimensions with low confidence`);
+  }
+
+  // Flag ANY section under 60% coverage in core dimensions
+  const underCoveredSections = Array.from(dimensionAssessments.values())
+    .filter(d => d.overallScore < 60)
+    .map(d => d.dimension);
+  if (underCoveredSections.length > 0) {
+    weaknesses.push(`Weak coverage in: ${underCoveredSections.slice(0, 3).join(', ')} (all sections should be 70%+)`);
   }
 
   if (sourceMetrics.uniqueDomains < 5) {
@@ -555,6 +585,22 @@ function generateRecommendations(
   sourceMetrics: any,
 ): string[] {
   const recommendations: string[] = [];
+
+  // CRITICAL: Fundamentals MUST be researched and strong before analysis
+  const fundamentalsSections = ['company-profile', 'company_profile', 'topic-fundamentals', 'topic_fundamentals',
+                                  'repo-fundamentals', 'repo_fundamentals', 'problem-fundamentals', 'problem_fundamentals'];
+
+  const fundamentalsSection = Array.from(dimensionAssessments.values()).find(dim =>
+    fundamentalsSections.some(fund => dim.dimension.toLowerCase().includes(fund.toLowerCase()))
+  );
+
+  if (!fundamentalsSection) {
+    recommendations.unshift('PRIORITY: Research company/topic/repository fundamentals before proceeding to comparative analysis');
+    recommendations.unshift('You cannot analyze competitors without knowing what the core entity is');
+  } else if (fundamentalsSection.overallScore < 80) {
+    recommendations.unshift(`PRIORITY: Strengthen fundamentals research (currently ${fundamentalsSection.overallScore}% — need 80%+ coverage of what it is, products, customers, market position)`);
+    recommendations.unshift('You are missing core information about the company/topic/repo itself');
+  }
 
   // Low-quality findings
   const lowQuality = findingScores.filter(f => f.recommendation === 'requestion_needed');
