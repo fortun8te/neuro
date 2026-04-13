@@ -47,7 +47,7 @@ function parseJsonBlock<T>(text: string, fallback: T): T {
 /** Determine price point label from price text */
 function classifyPricePoint(priceText: string): CompetitorProfile['pricePoint'] {
   const lower = priceText.toLowerCase();
-  if (lower.includes('luxury') || lower.includes('premium') && lower.includes('high-end')) return 'luxury';
+  if (lower.includes('luxury') || (lower.includes('premium') && lower.includes('high-end'))) return 'luxury';
   if (lower.includes('premium') || lower.includes('high-end') || lower.includes('expensive')) return 'premium';
   if (lower.includes('budget') || lower.includes('cheap') || lower.includes('affordable') || lower.includes('low-cost')) return 'budget';
   return 'mid';
@@ -161,7 +161,7 @@ Extract the competitor profile JSON.`;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), ANALYSIS_TIMEOUT_MS);
     const mergedSignal = signal
-      ? (AbortSignal as any).any([signal, controller.signal])
+      ? AbortSignal.any([signal, controller.signal])
       : controller.signal;
 
     const raw = await ollamaService.generateStream(userPrompt, systemPrompt, {
@@ -275,7 +275,7 @@ Identify the market gaps, positioning opportunities, and direct threats.`;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), ANALYSIS_TIMEOUT_MS);
     const mergedSignal = signal
-      ? (AbortSignal as any).any([signal, controller.signal])
+      ? AbortSignal.any([signal, controller.signal])
       : controller.signal;
 
     const raw = await ollamaService.generateStream(userPrompt, systemPrompt, {
@@ -434,10 +434,10 @@ export function generatePositioningRecommendations(matrix: CompetitiveMatrix): s
     recs.push('Significant mid-market gap — position as the premium-quality, accessible option');
   }
 
-  // Highlight unique strengths vs all competitors
+  // Highlight repeated weaknesses shared across competitors
   const allCompetitorWeaknesses = matrix.competitors.flatMap(c => c.weaknesses);
   const repeatedWeaknesses = allCompetitorWeaknesses.filter(
-    (w, i) => allCompetitorWeaknesses.findIndex(x => x.toLowerCase() === w.toLowerCase()) !== i
+    (w, i) => allCompetitorWeaknesses.findIndex(x => x.toLowerCase() === w.toLowerCase()) === i && allCompetitorWeaknesses.some((x, j) => j !== i && x.toLowerCase() === w.toLowerCase())
   );
   if (repeatedWeaknesses.length > 0) {
     recs.push(`Differentiate on: ${repeatedWeaknesses[0]} — all competitors fail here`);
