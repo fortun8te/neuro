@@ -118,8 +118,7 @@ class HealthMonitor {
         svc.latencyMs = latency;
         svc.lastError = `HTTP ${resp.status}`;
         svc.status = svc.consecutiveFailures >= DOWN_THRESHOLD ? 'down'
-          : svc.consecutiveFailures >= DEGRADED_THRESHOLD ? 'degraded'
-          : 'degraded'; // any non-2xx is at least degraded on first failure
+          : 'degraded'; // any non-2xx is at least degraded
       }
     } catch (err) {
       svc.consecutiveFailures++;
