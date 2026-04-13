@@ -116,6 +116,39 @@ function setScreenshotCache(url: string, data: { image_base64: string; width: nu
 // Screenshot Batch Function
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * Screenshots multiple competitor URLs with caching and parallelization
+ *
+ * Two-phase process:
+ * 1. Check cache for all URLs, reuse cached screenshots
+ * 2. Batch screenshot uncached URLs via Wayfarer (Playwright, concurrency 3)
+ *
+ * Results sorted to match original URL order for consistency.
+ *
+ * @param urls - Array of competitor website URLs to screenshot
+ * @param config - VisualScoutConfig with viewport, quality, concurrency settings
+ * @param onProgress - Optional callback for progress messages
+ * @returns Array<{url, image_base64, width, height, error?}> - Screenshots in original URL order
+ *
+ * Side effects:
+ * - Calls Wayfarer API (screenshotService.screenshotBatch)
+ * - Updates screenshot cache with new entries
+ * - May throw if config.signal (AbortSignal) is aborted
+ *
+ * Performance characteristics:
+ * - Cache hits: O(n) lookup, immediate return
+ * - Cache misses: ~20-40s for 5 URLs (3 concurrent Playwright instances)
+ *
+ * Example:
+ * ```
+ * const shots = await batchScreenshot(
+ *   ["https://stripe.com", "https://paddle.com"],
+ *   {maxScreenshotConcurrency: 3, viewportWidth: 1280},
+ *   (msg) => console.log(msg)
+ * );
+ * // Returns: [{url: "https://stripe.com", image_base64: "...", width: 1280, height: 720}, ...]
+ * ```
+ */
 async function batchScreenshot(
   urls: string[],
   config: VisualScoutConfig,
@@ -180,6 +213,51 @@ async function batchScreenshot(
 // Vision Analysis — Extract Visual Properties
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * Analyzes competitor website screenshot using vision LLM
+ *
+ * Sends base64 JPEG + structured prompt to qwen3.5:9b vision model.
+ * Extracts 18 visual properties: colors, layout, tone, CTA, typography, insights.
+ *
+ * If screenshot is missing/empty, returns default partial result with confidence 0.
+ * If vision analysis fails, returns default with low confidence but no error thrown.
+ *
+ * @param url - Competitor website URL (for reference in output)
+ * @param screenshot_base64 - JPEG image data as base64 string
+ * @param width - Screenshot viewport width in pixels
+ * @param height - Screenshot viewport height in pixels
+ * @param onChunk - Optional callback for streaming tokens from vision model
+ * @param signal - Optional AbortSignal for cancellation
+ * @returns Promise<Partial<CompetitorVisual>> - Visual properties extracted from screenshot
+ *
+ * Side effects:
+ * - Calls Ollama generateStream API (ollamaService)
+ * - May stream tokens to onChunk callback
+ * - Respects AbortSignal if provided
+ *
+ * Extracted properties:
+ * - dominantColors: {primary, secondary?, accent?, description}
+ * - layoutPattern: 'hero-dominant|multi-section|grid-based|vertical-scroll|mixed|unknown'
+ * - visualTone: 'professional|casual|premium|playful|minimalist|bold|unknown'
+ * - ctaPresent: boolean, ctaStyle, ctaColor, ctaDescription
+ * - headlineStyle, imageUsagePattern, competitiveInsight, differentiationOpportunity
+ * - confidence: 0-1 (vision model's self-assessed confidence)
+ *
+ * ⚠️ IMPORTANT: Graceful degradation. If vision analysis fails, returns partial
+ * default result with low confidence rather than throwing. Prevents one bad screenshot
+ * from breaking entire visual scouting round.
+ *
+ * Example:
+ * ```
+ * const visual = await analyzeScreenshotWithVision(
+ *   "https://stripe.com",
+ *   "data:image/jpeg;base64,/9j/4AAQSkZJRg...",
+ *   1280, 720,
+ *   (chunk) => console.log(chunk)
+ * );
+ * // Returns: {url, dominantColors, layoutPattern, visualTone, confidence: 0.85, ...}
+ * ```
+ */
 async function analyzeScreenshotWithVision(
   url: string,
   screenshot_base64: string,

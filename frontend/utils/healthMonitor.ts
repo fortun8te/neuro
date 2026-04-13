@@ -1,7 +1,38 @@
 /**
- * Health Monitor — Continuous heartbeat system for all services
- * Polls Wayfayer, SearXNG, and Ollama at regular intervals.
- * Ollama endpoint is read dynamically from getOllamaEndpoint() on each check.
+ * Health Monitor — Phase G System Health Monitoring
+ *
+ * Continuous heartbeat polling (30s intervals) for all research backend services:
+ * - Wayfarer (web scraping, /health)
+ * - SearXNG (search engine, /healthz)
+ * - Ollama (LLM inference, /api/tags)
+ *
+ * Per-service tracking:
+ * - status: 'healthy' → 'degraded' (2+ failures) → 'down' (4+ failures)
+ * - latency (ms), last check timestamp, consecutive failures, last error
+ *
+ * Dynamic Ollama endpoint resolution: reads from getOllamaEndpoint() each check
+ * (respects user settings changes without restart).
+ *
+ * Integration:
+ * - Called by Activity Bar to show service status indicator
+ * - Feeds circuit breaker decisions (down → open circuit)
+ * - Logs status changes to debug logs
+ * - Status change listeners notify UI on health transitions
+ *
+ * Performance:
+ * - 30-second polling interval (configurable)
+ * - Parallel HTTP pings to all services
+ * - Latency < 100ms per service (timeout after 5s per request)
+ *
+ * Example:
+ * ```
+ * healthMonitor.start();
+ * healthMonitor.onStatusChange((name, old, new) => {
+ *   console.log(`${name}: ${old} → ${new}`);
+ * });
+ * const status = healthMonitor.getStatus();
+ * // Returns: {ollama: {status: "healthy", latencyMs: 45, ...}, wayfarer: {...}, ...}
+ * ```
  */
 import { getOllamaEndpoint } from './modelConfig';
 import { INFRASTRUCTURE } from '../config/infrastructure';

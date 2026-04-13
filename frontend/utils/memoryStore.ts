@@ -1,8 +1,41 @@
 /**
- * memoryStore — Persistent memory for the agent (localStorage-backed)
+ * memoryStore — Phase F Long-Term Memory System (localStorage-backed)
  *
- * Provides typed memory storage with tagging, access tracking, and
- * a React hook via useSyncExternalStore.
+ * Provides persistent campaign learnings across cycles via browser localStorage.
+ * Tracks: insights, patterns, failures, successes, audience signals, creative wins.
+ *
+ * Key features:
+ * - Typed memory entries with timestamps + access tracking
+ * - Content deduplication (hash-based O(1) lookup)
+ * - Deletion tombstone tracking (prevent re-adding deleted entries)
+ * - React hook integration (useSyncExternalStore for external state)
+ * - Seeded with default insights on first run
+ *
+ * Integration:
+ * - Memory consolidation (Phase F) → archiveMemory() stores cycle learnings
+ * - Pre-cycle prediction → getRelevantMemories() retrieves similar patterns
+ * - Dashboard display → useMemoriesStore() hook for React components
+ *
+ * Performance:
+ * - Load: O(1) cached until write (invalidated on mutation)
+ * - Add: O(1) append + hash index update
+ * - Search: O(n) scan by tags/type (small dataset expected)
+ *
+ * Persistence: localStorage key 'nomad_agent_memories' (JSON array)
+ * Deletion tracking: 'nomad_deleted_memories' (user-deleted IDs never re-added)
+ *
+ * Example:
+ * ```
+ * archiveMemory({
+ *   type: 'success',
+ *   content: 'Long-form storytelling drives 3x engagement in fitness niche',
+ *   tags: ['fitness', 'storytelling', 'engagement'],
+ *   impactLevel: 'high'
+ * });
+ *
+ * const memories = getRelevantMemories('storytelling');
+ * // Returns: all memories with 'storytelling' tag, sorted by relevance
+ * ```
  */
 
 

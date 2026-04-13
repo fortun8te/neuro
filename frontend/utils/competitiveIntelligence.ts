@@ -1,7 +1,22 @@
 // ══════════════════════════════════════════════════════
-// ██  Competitive Intelligence Utility
+// ██  Competitive Intelligence Utility — Phase E
 // Scrapes competitor pages via Wayfarer, extracts profiles
 // using qwen3.5:4b, identifies gaps and opportunities.
+//
+// Key responsibilities:
+// - analyzeCompetitor(url) → CompetitorProfile with strengths/weaknesses/positioning
+// - generateCompetitiveMatrix(urls) → Aggregated matrix with threat levels & gaps
+// - identifyMarketGaps() → Opportunities based on competitor landscape
+// - calculateThreatLevel() → 0-3 threat score per competitor
+//
+// Integration:
+// - Called after Phase 2 web research (optional, triggered by orchestrator)
+// - Input: competitor URLs (extracted from research findings)
+// - Output: stored in researchFindings.competitiveProfiles + competitiveMatrix
+// - Used by Make stage to identify differentiation angles
+//
+// Performance: ~90s per competitor (Wayfarer scrape + LLM analysis)
+// Graceful degradation: stub profiles returned on error
 // ══════════════════════════════════════════════════════
 
 import { wayfayerService } from './wayfayer';
@@ -69,11 +84,48 @@ function inferThreatLevel(
 // ── Core Functions ────────────────────────────────────
 
 /**
- * Scrape a competitor URL via Wayfarer and extract a structured
- * CompetitorProfile using qwen3.5:4b.
+ * Scrapes competitor URL and extracts structured profile
  *
- * Falls back gracefully to a stub profile on any error so callers
- * always receive a typed value.
+ * Three-step process:
+ * 1. Wayfarer.analyze_page() → full page text + screenshot
+ * 2. qwen3.5:4b prompt → JSON extraction (strengths, weaknesses, positioning, channels, pricing)
+ * 3. Post-processing → threat level calculation, price point classification
+ *
+ * Gracefully degrades: returns stub profile on any error (no throwing).
+ * Ensures callers always receive typed CompetitorProfile, even if analysis fails.
+ *
+ * @param url - Competitor website URL (e.g., "https://stripe.com")
+ * @param signal - Optional AbortSignal for cancellation
+ * @returns Promise<CompetitorProfile> - Profile with strengths, weaknesses, threat level (0-3)
+ *
+ * Side effects:
+ * - Calls Wayfarer API (text + screenshot)
+ * - Calls Ollama for LLM analysis (qwen3.5:4b)
+ * - May stream to console on errors
+ * - Respects AbortSignal for cancellation
+ *
+ * Performance: ~90 seconds per competitor (Wayfarer scrape ~50s + LLM ~40s)
+ *
+ * Profile includes:
+ * - url, brand, positioning, tagline
+ * - strengths (array), weaknesses (array)
+ * - channels (distribution: web, mobile, email, etc.)
+ * - pricing, pricePoint ('luxury|premium|mid|budget')
+ * - threatLevel (0-3 based on strengths/weaknesses/channels)
+ * - hasLongForm (whether long-form copy is prominent)
+ *
+ * Example:
+ * ```
+ * const profile = await analyzeCompetitor("https://stripe.com");
+ * // Returns: {
+ * //   url: "https://stripe.com",
+ * //   brand: "Stripe",
+ * //   positioning: "Payment platform for developers",
+ * //   strengths: ["Developer-first", "Global", "..."],
+ * //   threatLevel: 3,
+ * //   pricePoint: "premium"
+ * // }
+ * ```
  */
 export async function analyzeCompetitor(
   url: string,

@@ -1,7 +1,37 @@
 /**
- * Fact Checker Agent
- * Validates research claims against multiple sources
- * Uses Wayfarer + LLM verification
+ * Fact Checker Agent — Phase D Multi-Source Claim Validation
+ *
+ * Validates research claims by:
+ * 1. Extracting verifiable claims (numbers, statistics, market claims)
+ * 2. Searching web for supporting evidence via Wayfarer
+ * 3. Verifying claims against evidence using LLM
+ * 4. Assessing source authority (academic 0.95, news 0.80, Reddit 0.50, blogs 0.40)
+ * 5. Flagging unreliable/contradicted/unverified claims
+ *
+ * Prevents unsupported claims from entering creative brief (Make stage).
+ *
+ * Dependencies: ollamaService, wayfayerService, researchAudit
+ *
+ * Key exports:
+ * - extractClaimables(findings) — Extract verifiable claims from findings
+ * - verifyClaimsWithWeb(claims) — Web search evidence for claims
+ * - evaluateClaimVeracity(claim, evidence) — LLM claim verification
+ * - generateFactCheckReport(findings) — Full fact-check report generation
+ *
+ * Integration:
+ * - Called after Phase 2 web research completes
+ * - Output: FactCheckReport with flagged claims, evidence summary
+ * - Used by reflection agent to assess research quality
+ *
+ * Example flow:
+ * ```
+ * const claims = extractClaimables(researchFindings);
+ * const verified = await verifyClaimsWithWeb(claims);
+ * const report = await generateFactCheckReport(researchFindings);
+ * if (report.flaggedCount > 0) {
+ *   // Suggest additional research on flagged claims
+ * }
+ * ```
  */
 
 import { ollamaService } from './ollama';
@@ -65,6 +95,33 @@ const SOURCE_AUTHORITY_DB: Record<string, Partial<SourceAuthority>> = {
 // Extract verifiable claims from findings
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * Extracts verifiable claims from research findings
+ *
+ * Scans findings sections for claims containing:
+ * - Numbers, percentages, dollar amounts (statistics)
+ * - Market/positioning statements (facts)
+ * - Customer complaints/pain points (trends)
+ * - Superlatives (common, widespread, majority)
+ *
+ * Each claim tagged with source section, index, type (statistic|fact|trend), confidence.
+ *
+ * @param findings - Complete ResearchFindings object from Phase 2
+ * @returns FactClaim[] - Array of extractable claims with metadata
+ *
+ * Side effects:
+ * - No external I/O or mutations
+ * - Creates temporary arrays during extraction
+ *
+ * Example:
+ * ```
+ * const claims = extractClaimables(findings);
+ * // Returns: [
+ * //   {id: "claim-objection-0", claim: "65% of users cite price", type: "statistic"},
+ * //   {id: "claim-positioning-0", claim: "Premium market positioning", type: "fact"}
+ * // ]
+ * ```
+ */
 export function extractClaimables(findings: ResearchFindings): FactClaim[] {
   const claims: FactClaim[] = [];
   let claimId = 0;
