@@ -21,12 +21,27 @@ export interface VisualSiteEvent {
   capturedAt?: number;
 }
 
+export interface VisualPattern {
+  pattern: string;
+  frequency: number;
+  strength: 'dominant' | 'common' | 'emerging' | 'rare';
+}
+
+export interface ColorPaletteDisplay {
+  primary: string;
+  secondary?: string;
+  accent?: string;
+  description?: string;
+}
+
 export interface VisualBatchState {
   batchId: number;
   sites: VisualSiteEvent[];
   synthesisStatus?: 'pending' | 'running' | 'done';
   commonPatterns?: string[];
   visualGaps?: string[];
+  patterns?: VisualPattern[];
+  colorPatterns?: ColorPaletteDisplay[];
 }
 
 // ─── Internal state ───
@@ -121,13 +136,28 @@ export const visualProgressStore = {
     }
   },
 
-  /** Update synthesis status */
-  setSynthesisStatus(status: 'pending' | 'running' | 'done', patterns?: string[], gaps?: string[]) {
+  /** Update synthesis status with patterns, gaps, and color palettes */
+  setSynthesisStatus(
+    status: 'pending' | 'running' | 'done',
+    patterns?: string[] | VisualPattern[],
+    gaps?: string[],
+    colorPatterns?: ColorPaletteDisplay[],
+  ) {
     const batch = batches[activeBatchIdx];
     if (!batch) return;
     batch.synthesisStatus = status;
-    if (patterns) batch.commonPatterns = patterns;
+    if (patterns) {
+      // Support both string[] and VisualPattern[]
+      if (Array.isArray(patterns) && patterns.length > 0) {
+        if (typeof patterns[0] === 'string') {
+          batch.commonPatterns = patterns as string[];
+        } else {
+          batch.patterns = patterns as VisualPattern[];
+        }
+      }
+    }
     if (gaps) batch.visualGaps = gaps;
+    if (colorPatterns) batch.colorPatterns = colorPatterns;
     emit();
   },
 

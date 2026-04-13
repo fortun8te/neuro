@@ -1,0 +1,177 @@
+{
+  "id": "healthcare",
+  "name": "Healthcare Research",
+  "description": "Regulatory landscape, patient outcomes, provider adoption, clinical evidence, reimbursement",
+  "category": "healthcare",
+  "icon": "⚕️",
+  "targetAudience": "Healthcare companies, medical device makers, digital health platforms, pharmaceutical",
+  "bestFor": "Medical product marketing, healthcare provider sales, patient education campaigns",
+  "suggestedPreset": "EX",
+  "estimatedTotalTime": 120,
+  "exampleBrands": ["Teladoc", "CVS Health", "UnitedHealth", "Humana"],
+  "keywords": ["healthcare", "medical", "provider", "patient", "clinical", "fda", "reimbursement"],
+  "sections": [
+    {
+      "sectionId": "regulatory-landscape",
+      "title": "Regulatory & Compliance Environment",
+      "description": "FDA approval process, regulations, compliance requirements",
+      "initialQueries": [
+        "FDA medical device approval process 2025",
+        "HIPAA compliance requirements healthcare companies",
+        "healthcare regulations digital health platforms"
+      ],
+      "focusAreas": [
+        {
+          "dimension": "fda-approval",
+          "description": "Different approval pathways, timeline, requirements",
+          "keywords": ["fda", "clearance", "approval", "510k", "de novo", "clinical trial"],
+          "sources": ["fda website", "regulatory blogs", "case studies"]
+        },
+        {
+          "dimension": "data-privacy",
+          "description": "HIPAA, GDPR, state privacy laws, patient data protection",
+          "keywords": ["hipaa", "gdpr", "privacy", "data protection", "breach"],
+          "sources": ["compliance guides", "regulatory blogs", "healthcare news"]
+        },
+        {
+          "dimension": "quality-standards",
+          "description": "ISO certifications, quality management, audits",
+          "keywords": ["iso", "qms", "audit", "certification", "compliance"],
+          "sources": ["standards bodies", "certification guides", "blogs"]
+        }
+      ],
+      "estimatedTime": 30
+    },
+    {
+      "sectionId": "patient-outcomes",
+      "title": "Patient Outcomes & Clinical Evidence",
+      "description": "What patients care about, clinical trial results, evidence requirements",
+      "initialQueries": [
+        "what patients care about treatment outcomes 2025",
+        "clinical trial requirements healthcare products",
+        "patient reported outcomes measurement tools"
+      ],
+      "focusAreas": [
+        {
+          "dimension": "outcome-metrics",
+          "description": "What outcomes matter (efficacy, safety, quality of life)",
+          "keywords": ["efficacy", "safety", "quality of life", "adverse event", "efficacy"],
+          "sources": ["medical journals", "clinical trials database", "patient forums"]
+        },
+        {
+          "dimension": "evidence-requirements",
+          "description": "What clinical evidence is needed for adoption",
+          "keywords": ["clinical trial", "peer review", "publication", "evidence", "proof"],
+          "sources": ["medical journals", "healthcare blogs", "fda guidance"]
+        },
+        {
+          "dimension": "patient-concerns",
+          "description": "Side effects, effectiveness, cost, accessibility",
+          "keywords": ["side effects", "effectiveness", "cost", "accessibility", "concerns"],
+          "sources": ["patient forums", "reddit", "support groups"]
+        }
+      ],
+      "estimatedTime": 25
+    },
+    {
+      "sectionId": "provider-adoption",
+      "title": "Provider Adoption & Implementation",
+      "description": "What providers need, integration, training, workflow impact",
+      "initialQueries": [
+        "healthcare provider software integration challenges",
+        "what providers evaluate in medical products",
+        "ehr integration requirements 2025"
+      ],
+      "focusAreas": [
+        {
+          "dimension": "ehr-integration",
+          "description": "EHR systems, APIs, interoperability requirements",
+          "keywords": ["ehr", "emr", "api", "fhir", "interoperability", "cds hook"],
+          "sources": ["provider blogs", "technology blogs", "standards bodies"]
+        },
+        {
+          "dimension": "workflow-impact",
+          "description": "How much time it adds, training needed, adoption resistance",
+          "keywords": ["workflow", "time", "training", "adoption", "resistance"],
+          "sources": ["provider blogs", "case studies", "forums"]
+        },
+        {
+          "dimension": "support-requirements",
+          "description": "What support providers expect, technical issues",
+          "keywords": ["support", "training", "documentation", "help desk"],
+          "sources": ["provider blogs", "feedback forums", "case studies"]
+        }
+      ],
+      "estimatedTime": 25
+    },
+    {
+      "sectionId": "reimbursement",
+      "title": "Reimbursement & Economics",
+      "description": "Insurance coverage, pricing, reimbursement codes, payer approval",
+      "initialQueries": [
+        "healthcare reimbursement CPT codes insurance coverage 2025",
+        "medicare approval process medical devices",
+        "what affects healthcare product pricing reimbursement"
+      ],
+      "focusAreas": [
+        {
+          "dimension": "reimbursement-codes",
+          "description": "CPT codes, coverage criteria, payer policies",
+          "keywords": ["cpt code", "coverage", "reimbursement", "claim", "denial rate"],
+          "sources": ["cms", "payer websites", "healthcare blogs"]
+        },
+        {
+          "dimension": "pricing-strategy",
+          "description": "How healthcare products are priced, value-based pricing",
+          "keywords": ["pricing", "value-based", "cost-effectiveness", "roi"],
+          "sources": ["healthcare blogs", "pricing analysis", "case studies"]
+        },
+        {
+          "dimension": "payer-negotiation",
+          "description": "How to work with insurance companies, payer relationships",
+          "keywords": ["insurance", "payer", "negotiation", "contract", "formulary"],
+          "sources": ["healthcare blogs", "case studies", "payer websites"]
+        }
+      ],
+      "estimatedTime": 25
+    },
+    {
+      "sectionId": "market-dynamics",
+      "title": "Market Dynamics & Competition",
+      "description": "Market leaders, differentiation, healthcare ecosystem",
+      "initialQueries": [
+        "healthcare market leaders by segment 2025",
+        "what differentiates successful healthcare companies",
+        "digital health market trends and competition"
+      ],
+      "focusAreas": [
+        {
+          "dimension": "competitive-landscape",
+          "description": "Who the main competitors are, market consolidation",
+          "keywords": ["competitor", "market share", "consolidation", "acquisition"],
+          "sources": ["industry reports", "healthcare news", "analyst reports"]
+        },
+        {
+          "dimension": "differentiation",
+          "description": "How competitors differentiate (clinical outcomes, user experience, partnerships)",
+          "keywords": ["differentiation", "value prop", "unique", "advantage"],
+          "sources": ["company websites", "case studies", "analyst reports"]
+        },
+        {
+          "dimension": "ecosystem-partnerships",
+          "description": "Healthcare ecosystem players, partnerships, integrations",
+          "keywords": ["partnership", "integration", "ecosystem", "collaborators"],
+          "sources": ["company websites", "press releases", "analyst reports"]
+        }
+      ],
+      "estimatedTime": 15
+    }
+  ],
+  "desiredOutputFormat": {
+    "includeMarketSize": true,
+    "includeCompetitorBenchmarks": true,
+    "includeCustomerJourney": true,
+    "includePricingAnalysis": true,
+    "includeVisualScouting": false
+  }
+}

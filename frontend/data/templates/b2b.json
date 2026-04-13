@@ -1,0 +1,177 @@
+{
+  "id": "b2b",
+  "name": "B2B Sales Research",
+  "description": "Sales cycles, buyer personas, decision criteria, procurement processes, and buyer pain points",
+  "category": "b2b",
+  "icon": "🏢",
+  "targetAudience": "B2B companies selling to enterprises, mid-market, or specific industries",
+  "bestFor": "Sales enablement, buyer persona development, competitive positioning, deal strategy",
+  "suggestedPreset": "EX",
+  "estimatedTotalTime": 120,
+  "exampleBrands": ["Salesforce", "HubSpot", "Slack", "Asana", "Guidepoint"],
+  "keywords": ["b2b", "sales", "enterprise", "procurement", "buyer", "decision"],
+  "sections": [
+    {
+      "sectionId": "sales-cycle",
+      "title": "Sales Cycle & Decision Timeline",
+      "description": "How long deals take, decision stages, common bottlenecks",
+      "initialQueries": [
+        "B2B sales cycle length by company size 2025",
+        "enterprise software procurement process timeline",
+        "what slows down business software sales deals"
+      ],
+      "focusAreas": [
+        {
+          "dimension": "cycle-stages",
+          "description": "Awareness, consideration, evaluation, negotiation, closing",
+          "keywords": ["sales funnel", "stage", "evaluation period", "poc", "pilot"],
+          "sources": ["sales blogs", "gartner", "whitepapers"]
+        },
+        {
+          "dimension": "decision-timeframe",
+          "description": "How long different company sizes take to decide",
+          "keywords": ["decision timeline", "enterprise", "smb", "startup", "time to close"],
+          "sources": ["sales blogs", "research reports", "case studies"]
+        },
+        {
+          "dimension": "bottlenecks",
+          "description": "Budget approval, security review, integration testing",
+          "keywords": ["budget approval", "security review", "legal", "integration", "pilot"],
+          "sources": ["sales blogs", "reddit", "buyer interviews"]
+        }
+      ],
+      "estimatedTime": 25
+    },
+    {
+      "sectionId": "buyer-personas",
+      "title": "Buyer Personas & Committee",
+      "description": "Who evaluates, who influences, who approves, their concerns",
+      "initialQueries": [
+        "enterprise software buying committee members 2025",
+        "what CFO CTO evaluate in software purchases",
+        "influencers in B2B software buying decision"
+      ],
+      "focusAreas": [
+        {
+          "dimension": "buyer-roles",
+          "description": "Influencer, evaluator, approver, end-user roles",
+          "keywords": ["cto", "cfo", "vp engineering", "director", "analyst"],
+          "sources": ["buyer research", "whitepapers", "sales blogs"]
+        },
+        {
+          "dimension": "buyer-concerns",
+          "description": "Security, compliance, ROI, total cost of ownership",
+          "keywords": ["security", "compliance", "gdpr", "soc2", "roi", "tco"],
+          "sources": ["whitepapers", "analyst reports", "sales blogs"]
+        },
+        {
+          "dimension": "buyer-language",
+          "description": "How different buyers talk about problems",
+          "keywords": ["terms", "jargon", "talking points", "language"],
+          "sources": ["industry blogs", "linkedin", "trade publications"]
+        }
+      ],
+      "estimatedTime": 25
+    },
+    {
+      "sectionId": "procurement-process",
+      "title": "Procurement & Vendor Management",
+      "description": "RFP processes, vendor evaluation, contract negotiation",
+      "initialQueries": [
+        "RFP process enterprise software evaluation criteria",
+        "vendor evaluation scorecard what matters",
+        "enterprise software contract negotiation points"
+      ],
+      "focusAreas": [
+        {
+          "dimension": "rfp-requirements",
+          "description": "Must-have features, integration requirements, compliance",
+          "keywords": ["rfp", "requirements", "feature list", "integration", "api"],
+          "sources": ["sales blogs", "rfp templates", "analyst reports"]
+        },
+        {
+          "dimension": "vendor-comparison",
+          "description": "How vendors are compared against each other",
+          "keywords": ["evaluation matrix", "scoring", "comparison", "poc", "reference"],
+          "sources": ["research reports", "buyer guides", "blogs"]
+        },
+        {
+          "dimension": "contract-negotiation",
+          "description": "Discounts, contract terms, sla, support levels",
+          "keywords": ["discount", "term", "sla", "support", "onboarding"],
+          "sources": ["sales blogs", "negotiations guides"]
+        }
+      ],
+      "estimatedTime": 25
+    },
+    {
+      "sectionId": "industry-specifics",
+      "title": "Industry-Specific Requirements",
+      "description": "Vertical-specific concerns (compliance, regulations, use cases)",
+      "initialQueries": [
+        "industry specific software requirements compliance 2025",
+        "vertical solutions vs general software",
+        "industry regulations impact on software selection"
+      ],
+      "focusAreas": [
+        {
+          "dimension": "regulatory-compliance",
+          "description": "HIPAA, PCI-DSS, GDPR, SOC2, industry-specific",
+          "keywords": ["compliance", "regulation", "certification", "audit"],
+          "sources": ["industry blogs", "compliance databases", "analyst reports"]
+        },
+        {
+          "dimension": "industry-workflows",
+          "description": "How different industries use the software differently",
+          "keywords": ["workflow", "industry", "process", "use case", "vertical"],
+          "sources": ["case studies", "industry blogs", "webinars"]
+        },
+        {
+          "dimension": "integration-ecosystems",
+          "description": "What other tools the industry uses",
+          "keywords": ["ecosystem", "integration", "partners", "stack"],
+          "sources": ["analyst reports", "partner directories", "case studies"]
+        }
+      ],
+      "estimatedTime": 25
+    },
+    {
+      "sectionId": "competitive-positioning",
+      "title": "Competitive Positioning & Gaps",
+      "description": "Market leaders, positioning differences, differentiation",
+      "initialQueries": [
+        "market leaders software category 2025",
+        "what differentiates [category] leaders from followers",
+        "competitive advantage software vendors"
+      ],
+      "focusAreas": [
+        {
+          "dimension": "market-leaders",
+          "description": "Who the recognized leaders are in the category",
+          "keywords": ["leader", "market share", "well-known", "established"],
+          "sources": ["analyst reports", "reviews", "media coverage"]
+        },
+        {
+          "dimension": "positioning-statements",
+          "description": "How competitors position against each other",
+          "keywords": ["positioning", "value prop", "differentiator", "claim"],
+          "sources": ["websites", "marketing materials", "analyst reports"]
+        },
+        {
+          "dimension": "price-positioning",
+          "description": "Premium vs value positioning, pricing power",
+          "keywords": ["price", "premium", "value", "enterprise", "affordable"],
+          "sources": ["pricing pages", "reports", "blogs"]
+        }
+      ],
+      "estimatedTime": 20
+    }
+  ],
+  "desiredOutputFormat": {
+    "includeMarketSize": true,
+    "includeCompetitorBenchmarks": true,
+    "includeCustomerJourney": true,
+    "includePricingAnalysis": true,
+    "includeVisualScouting": false
+  }
+}

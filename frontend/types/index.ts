@@ -189,6 +189,12 @@ export interface VisualFindings {
   analysisModel: string;
   totalScreenshots: number;
   totalAnalyzed: number;
+  dominantColorPalettes?: Array<{ primary: string; secondary?: string; accent?: string; description?: string }>;
+  mostCommonLayout?: string;
+  mostCommonTone?: string;
+  mostCommonCTAStyle?: string;
+  analysisStartTime?: number;
+  analysisEndTime?: number;
 }
 
 export interface AdExample {
@@ -318,6 +324,8 @@ export interface ResearchFindings {
   auditTrail?: ResearchAuditTrail;
   // Research report — generated mini research paper
   researchReport?: ResearchReport;
+  // Fact check report — validated claims
+  factCheckReport?: import('./factCheck').FactCheckReport;
   // Thinking token content (captured during /think phases)
   thinkingTokens?: string;
   // Downloaded files from research

@@ -36,6 +36,7 @@ type SectionKind =
   | 'council-head'
   | 'council'
   | 'report'
+  | 'factcheck'
   | 'raw';
 
 interface Section {
@@ -144,6 +145,42 @@ function parseOutput(text: string): Section[] {
     if (t.startsWith('[REPORT]')) {
       if (!current || current.kind !== 'report') { push(); current = { kind: 'report', title: 'Research Report', lines: [] }; }
       const c = t.replace('[REPORT] ', '').replace('[REPORT]', ''); if (c.trim()) current.lines.push(c); continue;
+    }
+
+    // ── Fact Check ──
+    if (t.startsWith('[FACT CHECK]') || t.includes('Fact-checking')) {
+      push();
+      const m = t.match(/Fact-checking\s+(\d+)\s+claims/);
+      current = { kind: 'factcheck', title: 'Fact Check', badge: m ? `${m[1]} claims` : 'verifying', lines: [] };
+      if (t.includes('Verifying claims...')) current.lines.push('Verifying claims against sources...');
+      continue;
+    }
+    if (t.includes('Checking:') && (current?.kind === 'factcheck' || t.includes('Fact-checking'))) {
+      if (!current || current.kind !== 'factcheck') { push(); current = { kind: 'factcheck', title: 'Fact Check', lines: [] }; }
+      const m = t.match(/Checking:\s*"(.+?)"/);
+      if (m) current.lines.push(`Verifying: ${m[1].slice(0, 60)}...`);
+      continue;
+    }
+    if (t.includes('Result:') && /(VERIFIED|DISPUTED|UNVERIFIED)/.test(t)) {
+      if (current?.kind === 'factcheck') {
+        const verdict = t.match(/(VERIFIED|DISPUTED|UNVERIFIED)/)?.[1] || 'UNVERIFIED';
+        const conf = t.match(/confidence:\s*(\d+)/)?.[1] || '0';
+        const agree = t.match(/source agreement:\s*(\d+)/)?.[1] || '0';
+        const color = verdict === 'VERIFIED' ? 'text-green-500' : verdict === 'DISPUTED' ? 'text-red-500' : 'text-amber-500';
+        current.lines.push(`Result: ${verdict} (confidence: ${conf}%, agreement: ${agree}%)`);
+      }
+      continue;
+    }
+    if (t.startsWith('FACT CHECK COMPLETE')) {
+      if (current?.kind === 'factcheck') {
+        const verified = t.match(/(\d+)\s+verified/)?.[1] || '0';
+        const disputed = t.match(/(\d+)\s+disputed/)?.[1] || '0';
+        const unverified = t.match(/(\d+)\s+unverified/)?.[1] || '0';
+        const credibility = t.match(/Credibility:\s*(\d+)%/)?.[1] || '75';
+        current.badge = `${verified}v/${disputed}d/${unverified}u`;
+        current.lines.push(`Overall Credibility: ${credibility}%`);
+      }
+      continue;
     }
 
     // ── Brain ──
@@ -376,6 +413,7 @@ function getSectionBadgeType(kind: SectionKind): BadgeType {
     'council-head': 'research',
     council: 'research',
     report: 'finding',
+    factcheck: 'positive',
     raw: 'neutral',
   };
   return typeMap[kind] || 'neutral';
@@ -449,6 +487,13 @@ function ActionIcon({ kind, dark }: { kind: SectionKind; dark: boolean }) {
   if (kind === 'ads') return (
     <svg className={cls} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
       <rect x="2" y="3" width="12" height="10" rx="1.5" /><path d="M5 8l2 2 4-4" />
+    </svg>
+  );
+
+  // Fact Check — checkmark/shield
+  if (kind === 'factcheck') return (
+    <svg className={cls} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+      <path d="M8 1l5 2v4c0 3-5 5-5 5s-5-2-5-5V3l5-2z" /><path d="M5 8l2 2 4-4" />
     </svg>
   );
 
@@ -723,30 +768,91 @@ function ExpandedContent({ section, dark, isStreaming }: { section: Section; dar
         </div>
       )}
 
-      {/* Visual thumbnails */}
+      {/* Visual section: Thumbnails + Color Palettes + Patterns */}
       {section.kind === 'visual' && activeBatch && activeBatch.sites.length > 0 && (
-        <div className="grid grid-cols-3 gap-2 py-2">
-          {activeBatch.sites.slice(0, 6).map((site) => {
-            const hostname = (() => { try { return new URL(site.url).hostname.replace('www.', ''); } catch { return site.url.slice(0, 20); } })();
-            const isWorking = site.status === 'capturing' || site.status === 'analyzing';
-            return (
-              <div key={site.url} className={`rounded-lg overflow-hidden ${dark ? 'bg-zinc-900' : 'bg-zinc-100'}`}>
-                {site.thumbnail ? (
-                  <img
-                    src={`data:image/jpeg;base64,${site.thumbnail}`}
-                    alt={hostname}
-                    className="w-full aspect-[5/3] object-cover"
-                    style={{ filter: isWorking ? 'brightness(0.5)' : 'none' }}
-                  />
-                ) : (
-                  <div className={`w-full aspect-[5/3] flex items-center justify-center ${dark ? 'bg-zinc-900' : 'bg-zinc-100'}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${isWorking ? 'animate-pulse' : ''} ${dark ? 'bg-zinc-700' : 'bg-zinc-300'}`} />
+        <div className="space-y-3 py-2">
+          {/* Thumbnails grid */}
+          <div className="grid grid-cols-3 gap-2">
+            {activeBatch.sites.slice(0, 6).map((site) => {
+              const hostname = (() => { try { return new URL(site.url).hostname.replace('www.', ''); } catch { return site.url.slice(0, 20); } })();
+              const isWorking = site.status === 'capturing' || site.status === 'analyzing';
+              return (
+                <div key={site.url} className={`rounded-lg overflow-hidden ${dark ? 'bg-zinc-900' : 'bg-zinc-100'}`}>
+                  {site.thumbnail ? (
+                    <img
+                      src={`data:image/jpeg;base64,${site.thumbnail}`}
+                      alt={hostname}
+                      className="w-full aspect-[5/3] object-cover"
+                      style={{ filter: isWorking ? 'brightness(0.5)' : 'none' }}
+                    />
+                  ) : (
+                    <div className={`w-full aspect-[5/3] flex items-center justify-center ${dark ? 'bg-zinc-900' : 'bg-zinc-100'}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${isWorking ? 'animate-pulse' : ''} ${dark ? 'bg-zinc-700' : 'bg-zinc-300'}`} />
+                    </div>
+                  )}
+                  <p className={`text-[8px] truncate px-1.5 py-1 ${dark ? 'text-zinc-500' : 'text-zinc-400'}`}>{hostname}</p>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Color palettes */}
+          {activeBatch.colorPatterns && activeBatch.colorPatterns.length > 0 && (
+            <div>
+              <p className={`text-[11px] font-semibold mb-1.5 ${dark ? 'text-zinc-300' : 'text-zinc-700'}`}>Color Palettes</p>
+              <div className="space-y-1.5">
+                {activeBatch.colorPatterns.slice(0, 3).map((palette, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <div className="flex gap-1">
+                      {palette.primary && (
+                        <div
+                          className="w-5 h-5 rounded border"
+                          style={{ backgroundColor: palette.primary, borderColor: dark ? '#3f3f46' : '#e4e4e7' }}
+                          title={`Primary: ${palette.primary}`}
+                        />
+                      )}
+                      {palette.secondary && (
+                        <div
+                          className="w-5 h-5 rounded border"
+                          style={{ backgroundColor: palette.secondary, borderColor: dark ? '#3f3f46' : '#e4e4e7' }}
+                          title={`Secondary: ${palette.secondary}`}
+                        />
+                      )}
+                      {palette.accent && (
+                        <div
+                          className="w-5 h-5 rounded border"
+                          style={{ backgroundColor: palette.accent, borderColor: dark ? '#3f3f46' : '#e4e4e7' }}
+                          title={`Accent: ${palette.accent}`}
+                        />
+                      )}
+                    </div>
+                    <span className={`text-[10px] ${dimCls}`}>{palette.description || 'Multi-color'}</span>
                   </div>
-                )}
-                <p className={`text-[8px] truncate px-1.5 py-1 ${dark ? 'text-zinc-500' : 'text-zinc-400'}`}>{hostname}</p>
+                ))}
               </div>
-            );
-          })}
+            </div>
+          )}
+
+          {/* Visual patterns summary */}
+          {activeBatch.patterns && activeBatch.patterns.length > 0 && (
+            <div>
+              <p className={`text-[11px] font-semibold mb-1.5 ${dark ? 'text-zinc-300' : 'text-zinc-700'}`}>Patterns</p>
+              <div className="space-y-1">
+                {activeBatch.patterns.slice(0, 4).map((pattern, i) => (
+                  <div key={i} className="flex items-start gap-2">
+                    <div className={`text-[9px] font-bold mt-0.5 flex-shrink-0 ${
+                      pattern.strength === 'dominant' ? 'text-orange-500'
+                      : pattern.strength === 'common' ? 'text-blue-500'
+                      : 'text-zinc-500'
+                    }`}>
+                      {pattern.frequency}%
+                    </div>
+                    <div className={`text-[11px] ${dimCls}`}>{pattern.pattern}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

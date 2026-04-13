@@ -14,6 +14,14 @@ import { tokenTracker } from '../utils/tokenStats';
 import { ollamaService } from '../utils/ollama';
 import { getRelevantMemories, getCrystallizedMemories, touchMemory } from '../utils/memoryStore';
 import { set, get, del } from 'idb-keyval';
+import {
+  getRelevantMemoriesForContext,
+  buildMemoryEntry,
+  batchSaveMemories,
+  extractLearnedPatterns,
+  loadMemories as loadLTMemories,
+  pruneStaleMemories,
+} from '../utils/longTermMemory';
 import { autonomyManager, selfImprovementAgent, proactiveMonitor, type CycleMetrics } from '../utils/autonomyEngine';
 import { storage } from '../utils/storage';
 import { analyzeStageGroups, executeStageGroupsParallel } from '../utils/stageParallelizer';
@@ -295,6 +303,22 @@ export function useCycleLoop(askUser?: (question: UserQuestion) => Promise<strin
           // Orchestrated research: Desire-Driven Analysis + Web Search Researchers
           const RESEARCH_OUTPUT_CAP = 2_000_000; // 2MB rolling cap — avoids O(n²) concat on MX preset
 
+          // Long-term memory injection: load top-10 relevant memories for this brand/product
+          try {
+            const ltmContext = `${campaign.brand} ${campaign.productDescription} ${campaign.targetAudience}`;
+            const ltmEntries = await getRelevantMemoriesForContext(campaign.id, ltmContext, 10);
+            if (ltmEntries.length > 0) {
+              const ltmPatterns = ltmEntries.map((e) => {
+                const prefix = e.impact === 'high' ? '[HIGH]' : e.impact === 'medium' ? '[MED]' : '[LOW]';
+                return `  ${prefix} [${e.type}] ${e.content}`;
+              }).join('\n');
+              stage.agentOutput = `[LONG-TERM MEMORY] Previous cycles found:\n${ltmPatterns}\n\n${stage.agentOutput}`;
+              throttledSetCycle(cycle);
+            }
+          } catch (ltmErr) {
+            console.warn('[LTM] Memory injection failed (non-critical):', ltmErr instanceof Error ? ltmErr.message : String(ltmErr));
+          }
+
           // Dual-hook before inject: pull campaign-relevant memories + crystallized learnings
           // Filter by campaign tags for mem0-style relevance scoring
           const campaignTags = [
@@ -541,6 +565,18 @@ Use THEIR language — not brand speak. Every word should feel like it came from
             // Generates 15 variants → scores → filters to top 3 → polishes → generates A/B tests
             // Expected quality: 80-90/100
 
+            // Inject long-term memory patterns: successful creatives + avoid failures
+            let ltmCreativeContext = '';
+            try {
+              const ltmStore = await loadLTMemories(campaign.id);
+              const patterns = extractLearnedPatterns(ltmStore);
+              if (patterns.length > 0) {
+                ltmCreativeContext = `\nMEMORY CONTEXT (previous cycle learnings):\n${patterns.slice(0, 6).join('\n')}\n`;
+              }
+            } catch (ltmErr) {
+              console.warn('[LTM] Make stage memory injection failed:', ltmErr instanceof Error ? ltmErr.message : String(ltmErr));
+            }
+
             const findings = cycle.researchFindings;
             const objectionOutput = cycle.stages['angles']?.agentOutput || 'Not yet available';
             const strategyContext = cycle.creativeStrategy
@@ -554,6 +590,17 @@ Use THEIR language — not brand speak. Every word should feel like it came from
             const proofMechanism = findings?.rootCauseMechanism?.ahaInsight || 'Scientifically proven mechanism';
             const audienceLanguage = findings?.avatarLanguage?.join(', ') || 'Customer language';
             const competitorLandscape = findings?.competitivePositioning?.map(p => p.structuralWeakness).join(', ') || 'Market gaps';
+
+            // Visual intelligence context
+            const visualFindings = findings?.visualFindings;
+            const visualContext = visualFindings ? `
+VISUAL DIFFERENTIATION BRIEF:
+- Recommended colors: Primary ${visualFindings.dominantColorPalettes?.[0]?.primary || 'vibrant'}, layout: ${visualFindings.mostCommonLayout}
+- Competitors avoiding: ${visualFindings.recommendedDifferentiation?.map(r => r.dimension).join(', ') || 'multiple approaches'}
+- Visual gaps: ${visualFindings.visualGaps?.map(g => g.gap).slice(0, 2).join('; ') || 'none identified'}
+- Tone positioning: ${visualFindings.mostCommonTone} is saturated — opportunity for differentiation
+- CTA pattern: Most use ${visualFindings.mostCommonCTAStyle}; consider alternative approach
+` : '';
 
             stage.agentOutput = '[PHASE 3: ADVANCED MAKE STAGE]\n';
             throttledSetCycle(cycle);
@@ -574,6 +621,7 @@ Use THEIR language — not brand speak. Every word should feel like it came from
                   audienceLanguage,
                   desireIntensity,
                   model: modelForStage,
+                  visualContext: (ltmCreativeContext ? ltmCreativeContext + '\n' : '') + visualContext,  // Visual intelligence from scouting phase + LTM patterns
                 },
                 signal,
                 (passNumber, passName, data) => {
@@ -1334,6 +1382,102 @@ Use THEIR language — not brand speak. Every word should feel like it came from
           }
         } catch (autonomyErr) {
           console.warn('[Autonomy] Learning phase failed:', autonomyErr);
+        }
+
+        // ── LONG-TERM MEMORY: Extract and persist cycle insights ──
+        try {
+          const ltmEntries = [];
+          const findings = cycle.researchFindings;
+
+          // Audience patterns from research
+          if (findings?.avatarLanguage && findings.avatarLanguage.length > 0) {
+            ltmEntries.push(
+              buildMemoryEntry(
+                `Audience language patterns: ${findings.avatarLanguage.slice(0, 5).join(', ')}`,
+                campaign.id,
+                cycle.cycleNumber,
+                { type: 'audience', impact: 'medium', confidence: 0.75 }
+              )
+            );
+          }
+
+          // Deep desires (high-value audience insights)
+          if (findings?.deepDesires && findings.deepDesires.length > 0) {
+            for (const desire of findings.deepDesires.slice(0, 3)) {
+              ltmEntries.push(
+                buildMemoryEntry(
+                  `[${desire.targetSegment}] Deepest desire: "${desire.deepestDesire}" (intensity: ${desire.desireIntensity})`,
+                  campaign.id,
+                  cycle.cycleNumber,
+                  { type: 'audience', impact: desire.desireIntensity === 'extreme' || desire.desireIntensity === 'high' ? 'high' : 'medium', confidence: 0.8 }
+                )
+              );
+            }
+          }
+
+          // Competitor weaknesses (strategic insight)
+          if (findings?.competitorWeaknesses && findings.competitorWeaknesses.length > 0) {
+            ltmEntries.push(
+              buildMemoryEntry(
+                `Competitor weaknesses: ${findings.competitorWeaknesses.slice(0, 3).join('; ')}`,
+                campaign.id,
+                cycle.cycleNumber,
+                { type: 'insight', impact: 'high', confidence: 0.7 }
+              )
+            );
+          }
+
+          // Test winner (success pattern)
+          if (cycle.testVerdict?.winner) {
+            ltmEntries.push(
+              buildMemoryEntry(
+                `Winning ad concept: "${cycle.testVerdict.winner}" — next cycle improvement: ${cycle.testVerdict.nextCycleImprovement || 'N/A'}`,
+                campaign.id,
+                cycle.cycleNumber,
+                { type: 'success', impact: 'high', confidence: 0.85 }
+              )
+            );
+          }
+
+          // Failed/low-scoring concepts (failure patterns)
+          if (cycle.testVerdict?.concepts) {
+            const failures = cycle.testVerdict.concepts.filter(c => c.verdict === 'skip');
+            for (const f of failures) {
+              ltmEntries.push(
+                buildMemoryEntry(
+                  `Low-performance concept avoided: "${f.name}" (score: ${f.totalScore}) — ${f.notes}`,
+                  campaign.id,
+                  cycle.cycleNumber,
+                  { type: 'failure', impact: 'medium', confidence: 0.7 }
+                )
+              );
+            }
+          }
+
+          // Brand DNA insight
+          if (cycle.brandDNA?.positioning) {
+            ltmEntries.push(
+              buildMemoryEntry(
+                `Brand positioning: "${cycle.brandDNA.positioning}" | Voice: "${cycle.brandDNA.voiceTone}"`,
+                campaign.id,
+                cycle.cycleNumber,
+                { type: 'creative', impact: 'medium', confidence: 0.75 }
+              )
+            );
+          }
+
+          if (ltmEntries.length > 0) {
+            await batchSaveMemories(ltmEntries);
+            console.log(`[LTM] Saved ${ltmEntries.length} long-term memories from cycle ${cycle.cycleNumber}`);
+          }
+
+          // Prune stale memories periodically (every 5 cycles)
+          if (cycle.cycleNumber % 5 === 0) {
+            const ltmStore = await loadLTMemories(campaign.id);
+            await pruneStaleMemories(ltmStore);
+          }
+        } catch (ltmErr) {
+          console.warn('[LTM] Memory extraction failed (non-critical):', ltmErr instanceof Error ? ltmErr.message : String(ltmErr));
         }
       }
 

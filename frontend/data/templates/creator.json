@@ -1,0 +1,158 @@
+{
+  "id": "creator",
+  "name": "Creator Economy Research",
+  "description": "Platform algorithms, audience growth tactics, monetization models, and creator pain points",
+  "category": "creator",
+  "icon": "🎬",
+  "targetAudience": "Creators, creator tools, creator networks, creator education platforms",
+  "bestFor": "Creator product launches, creator sponsorships, creator education campaigns",
+  "suggestedPreset": "NR",
+  "estimatedTotalTime": 85,
+  "exampleBrands": ["MrBeast", "Skillshare", "Creator Fund", "Patreon"],
+  "keywords": ["creator", "youtube", "tiktok", "influencer", "content", "audience"],
+  "sections": [
+    {
+      "sectionId": "platform-algorithms",
+      "title": "Platform Algorithms & Growth",
+      "description": "How different platforms reward content, visibility tactics",
+      "initialQueries": [
+        "YouTube algorithm changes 2025 growth strategy",
+        "TikTok algorithm how to go viral content",
+        "Instagram Reels vs TikTok creator growth comparison"
+      ],
+      "focusAreas": [
+        {
+          "dimension": "algorithm-mechanics",
+          "description": "What the algorithm rewards (watch time, engagement, retention)",
+          "keywords": ["watch time", "engagement", "retention", "click-through rate", "shares"],
+          "sources": ["creator blogs", "platform updates", "youtube channel"]
+        },
+        {
+          "dimension": "growth-tactics",
+          "description": "What actually works to grow an audience",
+          "keywords": ["growth hack", "viral", "consistency", "niche", "collaboration"],
+          "sources": ["creator blogs", "reddit", "youtube"]
+        },
+        {
+          "dimension": "platform-competition",
+          "description": "Comparing growth potential across platforms",
+          "keywords": ["youtube vs tiktok", "instagram", "shorts", "reels", "platform choice"],
+          "sources": ["creator blogs", "reddit", "case studies"]
+        }
+      ],
+      "estimatedTime": 20
+    },
+    {
+      "sectionId": "audience-growth",
+      "title": "Audience Building & Community",
+      "description": "Audience expectations, engagement, building loyal communities",
+      "initialQueries": [
+        "how creators build engaged audience 2025",
+        "creator community management best practices",
+        "what audiences want from creators reddit"
+      ],
+      "focusAreas": [
+        {
+          "dimension": "audience-expectations",
+          "description": "What audiences expect from creators",
+          "keywords": ["authenticity", "consistency", "engagement", "transparency", "personality"],
+          "sources": ["reddit", "creator blogs", "comment analysis"]
+        },
+        {
+          "dimension": "engagement-tactics",
+          "description": "Comments, stories, live streams, community posts",
+          "keywords": ["engagement rate", "community posts", "live stream", "behind-the-scenes"],
+          "sources": ["creator blogs", "successful channels", "reddit"]
+        },
+        {
+          "dimension": "niche-communities",
+          "description": "Building niche audiences vs broad appeal",
+          "keywords": ["niche audience", "community", "tribe", "dedicated fans"],
+          "sources": ["creator blogs", "reddit", "case studies"]
+        }
+      ],
+      "estimatedTime": 20
+    },
+    {
+      "sectionId": "monetization-models",
+      "title": "Monetization Models & Revenue",
+      "description": "Ad revenue, sponsorships, products, diversification strategies",
+      "initialQueries": [
+        "creator monetization strategies 2025 beyond ads",
+        "YouTube sponsorship rates influencer marketing",
+        "Patreon Substack newsletter creator earnings"
+      ],
+      "focusAreas": [
+        {
+          "dimension": "ad-revenue",
+          "description": "CPM rates, platforms, ad revenue challenges",
+          "keywords": ["cpm", "rpm", "ad revenue", "youtube partner", "tiktok creator fund"],
+          "sources": ["creator blogs", "reddit", "earnings discussions"]
+        },
+        {
+          "dimension": "brand-deals",
+          "description": "Sponsorship rates, finding brands, managing partnerships",
+          "keywords": ["sponsorship", "brand deal", "rates", "negotiation", "disclosure"],
+          "sources": ["creator blogs", "reddit", "marketing platforms"]
+        },
+        {
+          "dimension": "direct-revenue",
+          "description": "Products, courses, memberships, subscriptions",
+          "keywords": ["digital product", "course", "membership", "patreon", "substack"],
+          "sources": ["creator blogs", "platforms", "case studies"]
+        },
+        {
+          "dimension": "revenue-diversification",
+          "description": "Why relying on ad revenue is risky",
+          "keywords": ["diversification", "multiple streams", "stability", "risk"],
+          "sources": ["creator blogs", "reddit", "news"]
+        }
+      ],
+      "estimatedTime": 25
+    },
+    {
+      "sectionId": "creator-pain-points",
+      "title": "Creator Pain Points & Tools",
+      "description": "Biggest frustrations, tools creators need, emerging problems",
+      "initialQueries": [
+        "biggest frustrations content creators 2025",
+        "creator tools software content creators use",
+        "burnout fatigue creator economy reddit"
+      ],
+      "focusAreas": [
+        {
+          "dimension": "platform-dependence",
+          "description": "Algorithm changes, account suspension, platform risk",
+          "keywords": ["algorithm change", "shadowban", "account suspension", "demonetization"],
+          "sources": ["reddit", "creator blogs", "news"]
+        },
+        {
+          "dimension": "time-effort",
+          "description": "Time investment, burnout, consistency pressure",
+          "keywords": ["consistency", "burnout", "time commitment", "pressure", "schedule"],
+          "sources": ["reddit", "creator interviews", "blogs"]
+        },
+        {
+          "dimension": "competition",
+          "description": "Saturation, standing out, keeping up",
+          "keywords": ["saturation", "competition", "trends", "standing out"],
+          "sources": ["reddit", "creator blogs"]
+        },
+        {
+          "dimension": "tools-needed",
+          "description": "Editing, analytics, scheduling, collaboration tools",
+          "keywords": ["editing software", "analytics", "scheduling", "thumbnail", "seo"],
+          "sources": ["creator blogs", "product reviews", "reddit"]
+        }
+      ],
+      "estimatedTime": 20
+    }
+  ],
+  "desiredOutputFormat": {
+    "includeMarketSize": true,
+    "includeCompetitorBenchmarks": false,
+    "includeCustomerJourney": true,
+    "includePricingAnalysis": true,
+    "includeVisualScouting": false
+  }
+}

@@ -7,6 +7,10 @@ import { ControlPanel } from './ControlPanel';
 import { CycleTimeline } from './CycleTimeline';
 import { StagePanel } from './StagePanel';
 import { QuestionModal } from './QuestionModal';
+import { ExportButton } from './ExportButton';
+import { CompetitiveMatrix } from './CompetitiveMatrix';
+import { useCompetitiveIntelligence } from '../hooks/useCompetitiveIntelligence';
+import { setActiveCompetitiveMatrix } from '../utils/competitiveMatrixStore';
 import {
   getResearchModelConfig, getResearchLimits, getBrainTemperature, setBrainTemperature,
   getAllBrainTempDefaults
@@ -95,6 +99,30 @@ export function Dashboard({ embedded = false }: DashboardProps) {
   const isRunning = systemStatus === 'running';
   const [selectedStage, setSelectedStage] = useState<StageName | null>(null);
   const [viewingCycleIdx, setViewingCycleIdx] = useState<number | null>(null); // null = follow currentCycle
+  const [rightTab, setRightTab] = useState<'pipeline' | 'competitors'>('pipeline');
+
+  // Competitive intelligence — scoped to the active campaign
+  const {
+    matrix: competitiveMatrix,
+    loading: competitiveLoading,
+    competitorStatuses,
+    insights: competitiveInsights,
+    error: competitiveError,
+    analyzeCompetitors,
+    addCompetitor,
+    removeCompetitor,
+    refreshMatrix,
+  } = useCompetitiveIntelligence({
+    campaignId: campaign?.id ?? '__none__',
+    brand: campaign?.brand ?? '',
+    researchFindings: (currentCycle?.researchFindings ?? {}) as Record<string, unknown>,
+  });
+
+  // Sync competitive matrix into the module-level store so the research
+  // pipeline can read it without prop-drilling through useCycleLoop.
+  useEffect(() => {
+    setActiveCompetitiveMatrix(competitiveMatrix);
+  }, [competitiveMatrix]);
 
   // Keep viewingCycleIdx pointing at the latest cycle when running
   useEffect(() => {
@@ -140,7 +168,46 @@ export function Dashboard({ embedded = false }: DashboardProps) {
 
           {/* ── RIGHT PANEL ── */}
           <div className={`flex-1 flex flex-col min-h-0 min-w-0 border-l ${isDarkMode ? 'border-white/[0.08]' : 'border-black/[0.06]'}`}>
-            {error && (
+            {/* ── Tab bar ── */}
+            <div className={`flex-shrink-0 flex items-center gap-1 px-4 py-2 border-b ${isDarkMode ? 'border-white/[0.08]' : 'border-black/[0.06]'}`}>
+              <button
+                onClick={() => setRightTab('pipeline')}
+                className={`text-[11px] font-medium px-2.5 py-1 rounded-md transition-colors ${
+                  rightTab === 'pipeline'
+                    ? (isDarkMode ? 'bg-white/[0.10] text-white/[0.87]' : 'bg-black/[0.07] text-zinc-900')
+                    : (isDarkMode ? 'text-white/[0.40] hover:text-white/[0.65]' : 'text-zinc-400 hover:text-zinc-600')
+                }`}
+              >
+                Pipeline
+              </button>
+              <button
+                onClick={() => setRightTab('competitors')}
+                className={`text-[11px] font-medium px-2.5 py-1 rounded-md transition-colors flex items-center gap-1.5 ${
+                  rightTab === 'competitors'
+                    ? (isDarkMode ? 'bg-white/[0.10] text-white/[0.87]' : 'bg-black/[0.07] text-zinc-900')
+                    : (isDarkMode ? 'text-white/[0.40] hover:text-white/[0.65]' : 'text-zinc-400 hover:text-zinc-600')
+                }`}
+              >
+                Competitors
+                {competitiveMatrix && competitiveMatrix.competitors.length > 0 && (
+                  <span className={`text-[9px] px-1 py-0.5 rounded font-semibold ${
+                    (() => {
+                      const topThreat = [...competitiveMatrix.competitors].sort((a, b) => b.threatLevel - a.threatLevel)[0];
+                      if (topThreat?.threatLevel === 3) return isDarkMode ? 'bg-red-500/20 text-red-400' : 'bg-red-100 text-red-600';
+                      if (topThreat?.threatLevel === 2) return isDarkMode ? 'bg-orange-500/20 text-orange-400' : 'bg-orange-100 text-orange-600';
+                      return isDarkMode ? 'bg-white/[0.10] text-white/[0.55]' : 'bg-zinc-100 text-zinc-500';
+                    })()
+                  }`}>
+                    {competitiveMatrix.competitors.length}
+                  </span>
+                )}
+                {competitiveLoading && (
+                  <span className="w-2.5 h-2.5 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                )}
+              </button>
+            </div>
+
+            {error && rightTab === 'pipeline' && (
               <div className={`flex-shrink-0 px-5 py-2 flex items-center gap-2 text-xs border-b ${
                 isDarkMode ? 'bg-red-950/20 border-red-900/30 text-red-400' : 'bg-red-50 border-red-100 text-red-600'
               }`}>
@@ -148,15 +215,39 @@ export function Dashboard({ embedded = false }: DashboardProps) {
                 <span className="opacity-70">{error}</span>
               </div>
             )}
-            {displayedCycle ? (
-              <StagePanel
-                cycle={displayedCycle}
-                isRunning={isRunning && displayedCycle.id === currentCycle?.id}
-                isDarkMode={isDarkMode}
-                viewStage={selectedStage}
-              />
+
+            {rightTab === 'pipeline' ? (
+              displayedCycle ? (
+                <StagePanel
+                  cycle={displayedCycle}
+                  isRunning={isRunning && displayedCycle.id === currentCycle?.id}
+                  isDarkMode={isDarkMode}
+                  viewStage={selectedStage}
+                />
+              ) : (
+                <StartScreen isDarkMode={isDarkMode} />
+              )
             ) : (
-              <StartScreen isDarkMode={isDarkMode} />
+              <div className="flex-1 overflow-y-auto min-h-0">
+                <CompetitiveMatrix
+                  matrix={competitiveMatrix ?? {
+                    brand: campaign?.brand ?? '',
+                    competitors: [],
+                    marketGaps: [],
+                    positioningOpportunities: [],
+                    directThreats: [],
+                    timestamp: 0,
+                  }}
+                  insights={competitiveInsights}
+                  competitorStatuses={competitorStatuses}
+                  loading={competitiveLoading}
+                  error={competitiveError}
+                  isDark={isDarkMode}
+                  onAddCompetitor={addCompetitor}
+                  onRemoveCompetitor={removeCompetitor}
+                  onRefresh={refreshMatrix}
+                />
+              </div>
             )}
           </div>
         </div>
@@ -542,6 +633,13 @@ function LeftPanel({
             </button>
           )}
         </div>
+
+        {/* Export PDF button — shown when a cycle has data */}
+        {displayedCycle && (
+          <div className={`px-3 pb-2 border-t ${isDark ? 'border-white/[0.05]' : 'border-black/[0.04]'}`} style={{ paddingTop: 8 }}>
+            <ExportButton campaign={campaign} cycle={displayedCycle} isDark={isDark} />
+          </div>
+        )}
 
         {/* Service health dot */}
         <div className="flex justify-center py-2 flex-shrink-0">

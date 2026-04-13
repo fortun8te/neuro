@@ -1,0 +1,177 @@
+{
+  "id": "ecommerce",
+  "name": "E-commerce Research",
+  "description": "Customer pain points, seasonal trends, marketplace dynamics, and competitive pricing",
+  "category": "b2c",
+  "icon": "🛍️",
+  "targetAudience": "Brands selling products online (direct-to-consumer, marketplaces, dropshipping)",
+  "bestFor": "Seasonal campaigns, product launches, marketplace expansion, conversion optimization",
+  "suggestedPreset": "NR",
+  "estimatedTotalTime": 90,
+  "exampleBrands": ["Shopify sellers", "Amazon brands", "MVMT", "Warby Parker", "Allbirds"],
+  "keywords": ["ecommerce", "retail", "shopping", "conversion", "cart abandonment", "product"],
+  "sections": [
+    {
+      "sectionId": "customer-pain-points",
+      "title": "Customer Pain Points & Shopping Friction",
+      "description": "What frustrates online shoppers and blocks purchases",
+      "initialQueries": [
+        "why customers abandon online shopping cart 2025",
+        "biggest frustrations online shopping reddit",
+        "what stops people from buying online"
+      ],
+      "focusAreas": [
+        {
+          "dimension": "checkout-friction",
+          "description": "Payment, shipping, complexity barriers",
+          "keywords": ["checkout", "payment", "shipping cost", "guest checkout", "returns"],
+          "sources": ["reddit", "reviews", "ecommerce blogs"]
+        },
+        {
+          "dimension": "product-selection-struggle",
+          "description": "Finding right product, comparison, decision paralysis",
+          "keywords": ["reviews", "comparison", "specifications", "size guide", "returns"],
+          "sources": ["reddit", "amazon reviews", "product pages"]
+        },
+        {
+          "dimension": "trust-concerns",
+          "description": "Fake products, scams, counterfeit, authenticity",
+          "keywords": ["authenticity", "counterfeit", "fake", "scam", "real reviews"],
+          "sources": ["reddit", "reviews", "ecommerce forums"]
+        },
+        {
+          "dimension": "shipping-satisfaction",
+          "description": "Delivery expectations, speed, cost concerns",
+          "keywords": ["shipping", "delivery time", "tracking", "damaged", "lost package"],
+          "sources": ["reviews", "reddit", "complaint sites"]
+        }
+      ],
+      "estimatedTime": 25
+    },
+    {
+      "sectionId": "seasonal-trends",
+      "title": "Seasonal Trends & Shopping Behavior",
+      "description": "When customers buy, what drives peaks, seasonal differences",
+      "initialQueries": [
+        "seasonal ecommerce shopping trends 2025",
+        "holiday shopping behavior patterns analysis",
+        "peak shopping seasons by category"
+      ],
+      "focusAreas": [
+        {
+          "dimension": "holiday-peaks",
+          "description": "Black Friday, Cyber Monday, holiday season patterns",
+          "keywords": ["black friday", "cyber monday", "holiday shopping", "gift buying"],
+          "sources": ["retail blogs", "industry reports", "reddit"]
+        },
+        {
+          "dimension": "category-seasonality",
+          "description": "When different product categories sell best",
+          "keywords": ["seasonal products", "back-to-school", "summer", "winter", "spring"],
+          "sources": ["ecommerce blogs", "amazon trends", "industry data"]
+        },
+        {
+          "dimension": "post-holiday-patterns",
+          "description": "New Year resolutions, tax refunds, return season",
+          "keywords": ["new year", "january", "tax refund", "returns season"],
+          "sources": ["retail reports", "blogs", "reddit"]
+        }
+      ],
+      "estimatedTime": 20
+    },
+    {
+      "sectionId": "marketplace-dynamics",
+      "title": "Marketplace Dynamics & Platform Strategy",
+      "description": "Amazon, Etsy, Shopify ecosystem, seller challenges",
+      "initialQueries": [
+        "Amazon FBA seller challenges 2025",
+        "Etsy vs Shopify seller comparison",
+        "marketplace algorithm changes impact on sellers"
+      ],
+      "focusAreas": [
+        {
+          "dimension": "algorithm-visibility",
+          "description": "How to get visibility on Amazon, Etsy, TikTok Shop",
+          "keywords": ["amazon a9", "etsy search", "algorithm", "ranking", "visibility"],
+          "sources": ["seller blogs", "reddit", "platform updates"]
+        },
+        {
+          "dimension": "seller-complaints",
+          "description": "Biggest pain points for marketplace sellers",
+          "keywords": ["fees", "algorithm change", "competition", "counterfeit", "suspension"],
+          "sources": ["reddit", "seller forums", "seller blogs"]
+        },
+        {
+          "dimension": "platform-policies",
+          "description": "Changes in policies, return windows, seller requirements",
+          "keywords": ["policy change", "minimum review", "seller rating", "requirements"],
+          "sources": ["official platforms", "seller blogs", "announcements"]
+        }
+      ],
+      "estimatedTime": 20
+    },
+    {
+      "sectionId": "pricing-competitive",
+      "title": "Competitive Pricing & Positioning",
+      "description": "Price elasticity, competitor pricing, perceived value",
+      "initialQueries": [
+        "price sensitivity by product category 2025",
+        "how customers perceive price quality relationship",
+        "competitor pricing analysis strategy"
+      ],
+      "focusAreas": [
+        {
+          "dimension": "price-points",
+          "description": "Optimal price ranges for different segments",
+          "keywords": ["price sensitivity", "sweet spot", "premiumization", "budget brand"],
+          "sources": ["competitor pricing", "market research", "reviews"]
+        },
+        {
+          "dimension": "discount-effectiveness",
+          "description": "When discounts drive sales vs. brand damage",
+          "keywords": ["discount", "coupon", "sale", "perceived value", "brand positioning"],
+          "sources": ["ecommerce blogs", "marketing research", "case studies"]
+        },
+        {
+          "dimension": "shipping-pricing",
+          "description": "Free shipping, shipping thresholds, customer sensitivity",
+          "keywords": ["free shipping", "threshold", "cost", "willingness to pay"],
+          "sources": ["studies", "blogs", "reddit"]
+        }
+      ],
+      "estimatedTime": 20
+    },
+    {
+      "sectionId": "customer-retention",
+      "title": "Customer Retention & Loyalty",
+      "description": "Repeat purchase drivers, loyalty programs, customer lifetime value",
+      "initialQueries": [
+        "what drives repeat purchases ecommerce",
+        "loyalty program effectiveness comparison",
+        "customer retention strategies that work"
+      ],
+      "focusAreas": [
+        {
+          "dimension": "repeat-triggers",
+          "description": "What makes customers buy again",
+          "keywords": ["repeat purchase", "subscription", "consumable", "replacement"],
+          "sources": ["blogs", "case studies", "reddit"]
+        },
+        {
+          "dimension": "loyalty-programs",
+          "description": "Points, VIP tiers, exclusive access effectiveness",
+          "keywords": ["loyalty", "vip", "points", "rewards", "exclusive"],
+          "sources": ["ecommerce blogs", "case studies"]
+        }
+      ],
+      "estimatedTime": 15
+    }
+  ],
+  "desiredOutputFormat": {
+    "includeMarketSize": true,
+    "includeCompetitorBenchmarks": true,
+    "includeCustomerJourney": true,
+    "includePricingAnalysis": true,
+    "includeVisualScouting": true
+  }
+}

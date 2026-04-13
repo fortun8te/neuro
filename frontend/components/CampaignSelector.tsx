@@ -3,10 +3,13 @@ import { motion } from 'framer-motion';
 import { useCampaign } from '../context/CampaignContext';
 import { useTheme } from '../context/ThemeContext';
 import { QuickChatBuilder } from './QuickChatBuilder';
+import { TemplateSelector } from './TemplateSelector';
 import { SIMPLETICS_PRESET } from '../utils/presetCampaigns';
 import { storage } from '../utils/storage';
+import { useResearchTemplate } from '../hooks/useResearchTemplate';
+import type { ResearchTemplate } from '../types/template';
 
-type Tab = 'preset' | 'detailed' | 'chat';
+type Tab = 'preset' | 'detailed' | 'chat' | 'templates';
 
 interface ImageMetadata {
   uid: string;
@@ -367,6 +370,7 @@ export function CampaignSelector() {
 
   const TABS: { key: Tab; label: string }[] = [
     { key: 'preset', label: 'Preset' },
+    { key: 'templates', label: 'Templates' },
     { key: 'detailed', label: 'Detailed' },
     { key: 'chat', label: 'Chat' },
   ];
@@ -436,6 +440,14 @@ export function CampaignSelector() {
             campaign={campaign}
             onSelect={handlePresetSelect}
             onResetResearch={resetResearch}
+          />
+        )}
+
+        {activeTab === 'templates' && (
+          <TemplatesTab
+            campaign={campaign}
+            isDarkMode={isDarkMode}
+            setActiveTab={setActiveTab}
           />
         )}
 
@@ -787,6 +799,144 @@ function PresetTab({
             </button>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Templates Tab — Research Template Selection
+ */
+function TemplatesTab({
+  campaign,
+  isDarkMode,
+  setActiveTab,
+}: {
+  campaign: Campaign | null;
+  isDarkMode: boolean;
+  setActiveTab: (tab: Tab) => void;
+}) {
+  const { applyTemplate, getInitialQueries } = useResearchTemplate();
+  const { updateCampaign } = useCampaign();
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+
+  const handleTemplateSelect = async (template: ResearchTemplate) => {
+    if (!campaign) return;
+
+    const updatedCampaign = applyTemplate(campaign, template);
+    await updateCampaign(updatedCampaign);
+    setShowTemplateSelector(false);
+
+    // Show message
+    const initialQueries = getInitialQueries(template);
+    console.log(`Applied template: ${template.name}`);
+    console.log(`Initial queries (${initialQueries.length}):`, initialQueries);
+  };
+
+  const appliedTemplate = campaign?.presetData?.templateId
+    ? campaign.presetData.templateId as string
+    : null;
+
+  return (
+    <div className={`max-h-[calc(100vh-280px)] overflow-y-auto ${isDarkMode ? 'bg-zinc-900' : 'bg-white'}`}>
+      {showTemplateSelector && (
+        <TemplateSelector
+          isDarkMode={isDarkMode}
+          onSelectTemplate={handleTemplateSelect}
+          onDismiss={() => setShowTemplateSelector(false)}
+        />
+      )}
+
+      <div className="p-6 space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold mb-2">Research Templates</h3>
+          <p className={`text-xs mb-4 ${isDarkMode ? 'text-white/[0.6]' : 'text-black/[0.6]'}`}>
+            Pre-configured research strategies tailored to specific industries. Select a template to auto-populate your campaign with industry-specific research dimensions and initial search queries.
+          </p>
+        </div>
+
+        {!appliedTemplate && (
+          <button
+            onClick={() => setShowTemplateSelector(true)}
+            className={`w-full py-3 px-4 rounded-lg font-medium text-sm transition ${
+              isDarkMode
+                ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                : 'bg-blue-500 hover:bg-blue-600 text-white'
+            }`}
+          >
+            Browse Templates
+          </button>
+        )}
+
+        {appliedTemplate && campaign && (
+          <div className={`p-4 rounded-lg border-2 ${
+            isDarkMode
+              ? 'bg-green-950/20 border-green-700/30'
+              : 'bg-green-50 border-green-200'
+          }`}>
+            <p className={`text-xs font-semibold mb-2 ${isDarkMode ? 'text-green-400' : 'text-green-700'}`}>
+              Template Applied
+            </p>
+            <p className="text-sm mb-3">
+              <span className="font-medium">{campaign.presetData?.templateName}</span>
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowTemplateSelector(true)}
+                className={`flex-1 px-3 py-2 rounded text-xs font-medium transition ${
+                  isDarkMode
+                    ? 'bg-white/[0.1] hover:bg-white/[0.15] text-white'
+                    : 'bg-black/[0.05] hover:bg-black/[0.1] text-black'
+                }`}
+              >
+                Change Template
+              </button>
+              <button
+                onClick={async () => {
+                  if (campaign) {
+                    const { presetData, ...rest } = campaign;
+                    const newPresetData = { ...presetData };
+                    delete newPresetData.templateId;
+                    delete newPresetData.templateName;
+                    delete newPresetData.templateAppliedAt;
+                    delete newPresetData.templateSections;
+                    await updateCampaign({ ...rest, presetData: newPresetData });
+                  }
+                }}
+                className={`flex-1 px-3 py-2 rounded text-xs font-medium transition ${
+                  isDarkMode
+                    ? 'bg-white/[0.1] hover:bg-red-950/20 text-red-400'
+                    : 'bg-black/[0.05] hover:bg-red-50 text-red-600'
+                }`}
+              >
+                Remove Template
+              </button>
+            </div>
+          </div>
+        )}
+
+        {campaign?.presetData?.templateSections && (
+          <div className="mt-6 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wider opacity-60">Research Sections</p>
+            <div className="space-y-2">
+              {campaign.presetData.templateSections.map((section: any, idx: number) => (
+                <div
+                  key={section.sectionId}
+                  className={`p-3 rounded-lg text-xs ${
+                    isDarkMode
+                      ? 'bg-white/[0.05] border border-white/[0.1]'
+                      : 'bg-black/[0.02] border border-black/[0.1]'
+                  }`}
+                >
+                  <p className="font-medium mb-2">{section.title}</p>
+                  <p className={`text-[11px] ${isDarkMode ? 'text-white/[0.5]' : 'text-black/[0.5]'}`}>
+                    {section.focusAreas.length} focus areas
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

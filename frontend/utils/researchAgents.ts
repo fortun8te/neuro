@@ -1083,7 +1083,7 @@ export const orchestrator = {
                   case 'synthesis_done':
                     if (event.patterns.length) onProgressUpdate?.(`[Visual Scout] Patterns: ${event.patterns.slice(0, 2).join('; ')}\n`);
                     if (event.gaps.length) onProgressUpdate?.(`[Visual Scout] Gaps: ${event.gaps.slice(0, 2).join('; ')}\n`);
-                    visualProgressStore.setSynthesisStatus('done', event.patterns, event.gaps);
+                    visualProgressStore.setSynthesisStatus('done', event.patterns, event.gaps, event.colorPatterns);
                     break;
                 }
               }
@@ -1392,7 +1392,7 @@ AD_SCOUT: [ad library URLs if ad creative analysis missing]` : ''}`;
                     if (event.type === 'analysis_start') { onChunk?.(`[${label}] Analyzing visual ${event.index + 1}/${event.total}...\n`); visualProgressStore.setAnalyzing(event.url); }
                     if (event.type === 'analysis_done' && event.findings) { onChunk?.(`[${label}] → tone=${event.findings.tone || '?'}, colors=${(event.findings.colors || []).slice(0, 2).join(', ') || '?'}\n`); visualProgressStore.setAnalyzed(event.url, event.findings); }
                     if (event.type === 'synthesis_start') { onChunk?.(`[${label}] Synthesizing ${event.count} sites...\n`); visualProgressStore.setSynthesisStatus('running'); }
-                    if (event.type === 'synthesis_done') { visualProgressStore.setSynthesisStatus('done', event.patterns, event.gaps); }
+                    if (event.type === 'synthesis_done') { visualProgressStore.setSynthesisStatus('done', event.patterns, event.gaps, event.colorPatterns); }
                   }
                 );
                 state._visualFindings = visualFindings;

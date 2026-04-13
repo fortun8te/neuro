@@ -1,0 +1,134 @@
+FACT CHECKING SYSTEM - PHASE D - FILE LOCATIONS
+================================================
+
+NEW FILES CREATED:
+==================
+
+Types:
+  /Users/mk/Downloads/nomads/frontend/types/factCheck.ts
+    - FactClaim interface (extracted claim metadata)
+    - FactCheckResult interface (verdict + evidence)
+    - FactCheckReport interface (complete report)
+    - FlaggedClaim interface (authority issues)
+    - SourceAuthority interface (domain ratings)
+
+Core Engine:
+  /Users/mk/Downloads/nomads/frontend/utils/factChecker.ts
+    - extractClaimables(findings) → FactClaim[]
+    - verifySingleClaim(claim) → FactCheckResult (private)
+    - verifyClaimsInBatch(claims, onProgress, signal, concurrency) → FactCheckResult[]
+    - flagUnlikelyExperts(findings) → FlaggedClaim[]
+    - factCheckFindings(findings, onProgress, signal) → FactCheckReport
+
+Integration Utilities:
+  /Users/mk/Downloads/nomads/frontend/utils/factCheckIntegration.ts
+    - getVerifiedClaimsContext(findings) → VerifiedClaimsContext
+    - buildFactCheckGuidance(findings) → string (prompt text)
+    - scoreConceptByClaims(conceptText, findings) → ClaimUsageScore
+    - generateDisclaimerForUnverified(findings) → string
+    - getCredibilityBadge(findings) → badge metadata
+
+Tests:
+  /Users/mk/Downloads/nomads/frontend/utils/__tests__/factChecker.test.ts
+    - 13 unit test cases (extraction, verification, flagging, metadata)
+
+Documentation:
+  /Users/mk/Downloads/nomads/frontend/utils/FACTCHECK_SYSTEM.md
+    - Complete technical guide (280 lines)
+    - Architecture overview with diagrams
+    - File-by-file function documentation
+    - Integration points and examples
+    - Performance notes and future enhancements
+
+Meta Files:
+  /Users/mk/Downloads/nomads/FACTCHECK_PHASE_D_SUMMARY.md
+    - Implementation summary with statistics
+    - Features, design philosophy, performance metrics
+    
+  /Users/mk/Downloads/nomads/FACTCHECK_INTEGRATION_CHECKLIST.md
+    - Complete implementation checklist
+    - Build status and deployment notes
+    - Verification checklist and success criteria
+
+MODIFIED FILES:
+===============
+
+Type Definitions:
+  /Users/mk/Downloads/nomads/frontend/types/index.ts
+    - Added: factCheckReport?: FactCheckReport to ResearchFindings
+
+UI Components:
+  /Users/mk/Downloads/nomads/frontend/components/ResearchOutput.tsx
+    - Added: 'factcheck' to SectionKind type
+    - Added: Fact-check output parser
+    - Added: Shield icon with checkmark
+    - Fixed: Line 164 truthy check
+
+Hooks:
+  /Users/mk/Downloads/nomads/frontend/hooks/useOrchestratedResearch.ts
+    - Added: Phase 5 fact-check call (after audit trail)
+    - Added: Non-blocking error handling
+    - Added: Progress streaming to UI
+
+QUICK REFERENCE:
+================
+
+Main Function Flow:
+  useOrchestratedResearch.ts
+    ↓ (Phase 5)
+  factChecker.factCheckFindings()
+    ├→ extractClaimables() → FactClaim[]
+    ├→ verifyClaimsInBatch() → FactCheckResult[]
+    └→ flagUnlikelyExperts() → FlaggedClaim[]
+    ↓
+  ResearchFindings.factCheckReport = FactCheckReport
+    ↓
+  UI: ResearchOutput.tsx parses [FACT CHECK] output
+    ↓
+  Downstream: Make/Test stages use factCheckIntegration utilities
+
+Integration Points:
+  - Make stage: buildFactCheckGuidance() for prompt injection
+  - Test stage: scoreConceptByClaims() for ranking penalties
+  - UI: ResearchOutput.tsx auto-parses fact-check messages
+  - Audit: recordResearchSource() logs all sources checked
+
+Key Exports:
+  From factChecker.ts:
+    export function extractClaimables(findings: ResearchFindings): FactClaim[]
+    export async function verifyClaimsInBatch(...): Promise<FactCheckResult[]>
+    export function flagUnlikelyExperts(findings: ResearchFindings): FlaggedClaim[]
+    export async function factCheckFindings(...): Promise<FactCheckReport>
+
+  From factCheckIntegration.ts:
+    export function getVerifiedClaimsContext(findings: ResearchFindings): VerifiedClaimsContext
+    export function buildFactCheckGuidance(findings: ResearchFindings): string
+    export function scoreConceptByClaims(conceptText: string, findings: ResearchFindings): ClaimUsageScore
+    export function generateDisclaimerForUnverified(findings: ResearchFindings): string
+    export function getCredibilityBadge(findings: ResearchFindings): { score, label, color, icon }
+
+Test Coverage:
+  - Extract statistical claims from objections
+  - Extract positioning claims from competitors
+  - Extract verbatim quotes with numbers
+  - Filter subjective/opinion content
+  - Extract timeline claims from purchase journey
+  - Flag Reddit for medical claims
+  - Flag unattributed statistics
+  - Skip very short claims
+  - Assign unique IDs to claims
+  - Track source section + index metadata
+
+Total Lines of Code:
+  factChecker.ts: 357 lines
+  factCheckIntegration.ts: 218 lines
+  factCheck.ts (types): 128 lines
+  Tests: 220 lines
+  Documentation: 280 + 250 + 280 = 810 lines
+  Total: ~1,800 lines (code + tests + docs)
+
+Zero TypeScript errors introduced (excluding pre-existing)
+All imports properly resolved
+Non-blocking pipeline integration
+Ready for downstream stages
+

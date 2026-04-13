@@ -1,0 +1,140 @@
+{
+  "id": "saas",
+  "name": "SaaS Research",
+  "description": "Deep analysis of enterprise adoption, pricing strategy, competitive landscape, and integration ecosystem",
+  "category": "saas",
+  "icon": "🚀",
+  "targetAudience": "SaaS companies launching new features or entering new markets",
+  "bestFor": "Positioning announcements, feature releases, market expansion campaigns",
+  "suggestedPreset": "NR",
+  "estimatedTotalTime": 90,
+  "exampleBrands": ["Figma", "Slack", "Notion", "Stripe", "HubSpot"],
+  "keywords": ["saas", "enterprise", "b2b", "software", "integration", "pricing"],
+  "sections": [
+    {
+      "sectionId": "enterprise-adoption",
+      "title": "Enterprise Adoption Landscape",
+      "description": "How enterprises evaluate and adopt SaaS solutions",
+      "initialQueries": [
+        "how enterprises evaluate SaaS tools 2025",
+        "enterprise software decision criteria procurement",
+        "SaaS adoption barriers enterprise buyers"
+      ],
+      "focusAreas": [
+        {
+          "dimension": "evaluation-criteria",
+          "description": "What criteria enterprises use to evaluate software",
+          "keywords": ["security", "compliance", "sso", "integration", "support", "roi"],
+          "sources": ["blogs", "reviews", "whitepapers"]
+        },
+        {
+          "dimension": "buying-committee",
+          "description": "Who influences purchase decisions in enterprises",
+          "keywords": ["cto", "cfo", "procurement", "security team", "decision maker"],
+          "sources": ["blogs", "case studies", "reddit"]
+        },
+        {
+          "dimension": "implementation-concerns",
+          "description": "Biggest worries during implementation",
+          "keywords": ["migration", "training", "integration", "downtime", "cost"],
+          "sources": ["reddit", "reviews", "forums"]
+        }
+      ],
+      "estimatedTime": 25
+    },
+    {
+      "sectionId": "pricing-strategy",
+      "title": "Pricing Strategy & Models",
+      "description": "How competitors price and what resonates with enterprises",
+      "initialQueries": [
+        "SaaS pricing strategy per-user vs value-based 2025",
+        "competitive pricing benchmarks software tools",
+        "enterprise SaaS pricing objections negotiation"
+      ],
+      "focusAreas": [
+        {
+          "dimension": "pricing-models",
+          "description": "Per-seat, value-based, freemium, usage-based",
+          "keywords": ["per-user", "consumption", "freemium", "value-based", "flat-fee"],
+          "sources": ["competitor websites", "blogs", "pricing pages"]
+        },
+        {
+          "dimension": "discount-patterns",
+          "description": "What discount levels and contract lengths are common",
+          "keywords": ["annual discount", "multi-year", "volume pricing", "negotiation"],
+          "sources": ["sales conversations", "reddit", "g2 reviews"]
+        },
+        {
+          "dimension": "pricing-objections",
+          "description": "Common objections and how to overcome them",
+          "keywords": ["too expensive", "roi calculation", "budget approval", "vat"],
+          "sources": ["reddit", "reviews", "sales blogs"]
+        }
+      ],
+      "estimatedTime": 20
+    },
+    {
+      "sectionId": "competitive-positioning",
+      "title": "Competitive Landscape & Gaps",
+      "description": "How competitors position, where differentiation opportunities exist",
+      "initialQueries": [
+        "best alternatives to [competitor] 2025",
+        "comparison [product category] features",
+        "what customers complain about [competitor]"
+      ],
+      "focusAreas": [
+        {
+          "dimension": "feature-positioning",
+          "description": "Core features and how competitors differentiate",
+          "keywords": ["unique feature", "core offering", "integration", "automation"],
+          "sources": ["competitor websites", "product blogs", "comparisons"]
+        },
+        {
+          "dimension": "customer-satisfaction",
+          "description": "Satisfaction levels and churn drivers",
+          "keywords": ["satisfied", "disappointed", "switching", "churn", "complaints"],
+          "sources": ["g2 reviews", "reddit", "trustpilot"]
+        },
+        {
+          "dimension": "market-positioning",
+          "description": "How category is positioning in marketing",
+          "keywords": ["positioning", "messaging", "target market", "value prop"],
+          "sources": ["blogs", "ads", "case studies"]
+        }
+      ],
+      "estimatedTime": 25
+    },
+    {
+      "sectionId": "integration-ecosystem",
+      "title": "Integration Ecosystem & Partnerships",
+      "description": "What integrations exist, which matter most, partnership opportunities",
+      "initialQueries": [
+        "SaaS integrations most important 2025",
+        "Zapier most used apps integrations",
+        "API marketplace integrations and partnerships"
+      ],
+      "focusAreas": [
+        {
+          "dimension": "critical-integrations",
+          "description": "Which integrations are deal-breakers or must-haves",
+          "keywords": ["crm", "database", "communication", "accounting", "scheduling"],
+          "sources": ["product reviews", "blogs", "integration marketplaces"]
+        },
+        {
+          "dimension": "partnership-models",
+          "description": "Reseller, implementation partner, strategic alliances",
+          "keywords": ["partner program", "reseller", "implementation partner", "referral"],
+          "sources": ["company websites", "partner pages", "blogs"]
+        }
+      ],
+      "estimatedTime": 20
+    }
+  ],
+  "desiredOutputFormat": {
+    "includeMarketSize": true,
+    "includeCompetitorBenchmarks": true,
+    "includeCustomerJourney": true,
+    "includePricingAnalysis": true,
+    "includeVisualScouting": false
+  }
+}

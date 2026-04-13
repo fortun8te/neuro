@@ -9,6 +9,8 @@ import { getResearchModelConfig, getResearchLimits, getActiveResearchPreset, get
 import { createResearchAudit, buildResearchAuditTrail, recordResearchModel } from '../utils/researchAudit';
 import { SemanticCompressionEngine } from '../utils/semanticContextCompression';
 import type { Campaign, ResearchFindings, VisualFindings } from '../types';
+import { matrixToResearchTopics, generatePositioningRecommendations } from '../utils/competitiveIntelligence';
+import { getActiveCompetitiveMatrix } from '../utils/competitiveMatrixStore';
 
 interface OrchestratedResearchResult {
   processedOutput: string;
@@ -113,6 +115,12 @@ export function useOrchestratedResearch() {
     if (enableWebSearch && !signal?.aborted) {
       onProgress?.('[PHASE 1] Web Research — Gathering real-world intelligence\n\n');
 
+      // ── Inject competitive matrix topics if available ──
+      const competitiveMatrix = getActiveCompetitiveMatrix();
+      const competitiveTopics = competitiveMatrix && competitiveMatrix.competitors.length > 0
+        ? matrixToResearchTopics(competitiveMatrix)
+        : [];
+
       const researchGoals = [
         'Find VERBATIM customer language — how real people describe this problem on Reddit, forums, Trustpilot (NOT brand language)',
         'Research competitor ADVERTISING — Meta Ad Library, ad hooks, what visuals/angles are running now',
@@ -123,7 +131,18 @@ export function useOrchestratedResearch() {
         'Find competitor STRUCTURAL WEAKNESSES — what can they NEVER claim?',
         'Analyze pricing strategies, willingness-to-pay, and value perception',
         'Research ADJACENT NICHES — what approaches from other industries could work here?',
+        // High-priority topics from competitive matrix (injected at end; orchestrator picks most relevant)
+        ...competitiveTopics,
       ];
+
+      // Announce competitive context if present
+      if (competitiveMatrix && competitiveMatrix.competitors.length > 0) {
+        onProgress?.(`[COMPETITIVE CONTEXT] ${competitiveMatrix.competitors.length} tracked competitors feeding ${competitiveTopics.length} high-priority research topics\n`);
+        const recs = generatePositioningRecommendations(competitiveMatrix);
+        if (recs.length > 0) {
+          onProgress?.(`[POSITIONING ANGLES] ${recs.slice(0, 3).join(' | ')}\n\n`);
+        }
+      }
 
       const orchestratorState: OrchestratorState = {
         campaign,
@@ -480,6 +499,27 @@ Ready for: Brand DNA → Persona DNA → Angles`;
     if (auditTrail) {
       researchFindings.auditTrail = auditTrail;
       onProgress?.(`\n[AUDIT] Research provenance: ${auditTrail.totalSources} sources, ${auditTrail.totalTokensGenerated} tokens generated\n`);
+    }
+
+    // ──────────────────────────────────────────────────
+    // PHASE 5: Fact Check — Validate claims
+    // ──────────────────────────────────────────────────
+    if (!signal?.aborted && researchFindings.objections?.length > 0) {
+      try {
+        const { factCheckFindings } = await import('../utils/factChecker');
+        const factCheckReport = await factCheckFindings(
+          researchFindings,
+          (msg) => {
+            councilOutput += msg;
+            onProgress?.(msg);
+          },
+          signal
+        );
+        researchFindings.factCheckReport = factCheckReport;
+      } catch (err) {
+        console.warn('[useOrchestratedResearch] Fact check failed:', err);
+        onProgress?.(`[FACT CHECK] Skipped due to error\n`);
+      }
     }
 
     // ──────────────────────────────────────────────────

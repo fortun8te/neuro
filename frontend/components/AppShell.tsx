@@ -15,6 +15,8 @@ import { LoginScreen } from './LoginScreen';
 import { AgentPanel } from './AgentPanel';
 import { HomeScreen } from './HomeScreen';
 import TaskManager from './TaskManager';
+import { MonitoringDashboard, SystemHealthBadge } from './MonitoringDashboard';
+import { useSystemHealth } from '../hooks/useSystemHealth';
 import { SettingsIcon, LogOutIcon, ChevronDown, SidebarIcon } from './Icons';
 import BlobAvatar, { getAgentColor } from './BlobAvatar';
 import { getUserAvatarSeed, getUserAvatarColor, getUserInitials } from './UserAvatar';
@@ -129,7 +131,8 @@ export function AppShell() {
     return parts[0] === 'neuro' && parts[1] ? parts[1] : null;
   })();
 
-  const [activeView, setActiveView] = useState<'chat' | 'tasks'>('chat');
+  const [activeView, setActiveView] = useState<'chat' | 'tasks' | 'system'>('chat');
+  const { health: sysHealth } = useSystemHealth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showHome, setShowHome] = useState(!urlChatId);
   const [showSettings, setShowSettings] = useState(false);
@@ -555,37 +558,41 @@ export function AppShell() {
             </svg>
           </button>
 
-          {/* Chat / Tasks toggle */}
+          {/* Chat / Tasks / System toggle */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 2, background: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', borderRadius: 8, padding: 2 }}>
-            <button
-              onClick={() => setActiveView('chat')}
-              style={{
-                fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 6,
-                background: activeView === 'chat' ? (isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)') : 'transparent',
-                color: activeView === 'chat' ? (isDarkMode ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.8)') : (isDarkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)'),
-                border: 'none', cursor: 'pointer', transition: 'all 0.15s ease',
-                fontFamily: FONT_FAMILY,
-              }}
-            >Chat</button>
-            <button
-              onClick={() => setActiveView('tasks')}
-              style={{
-                fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 6,
-                background: activeView === 'tasks' ? (isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)') : 'transparent',
-                color: activeView === 'tasks' ? (isDarkMode ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.8)') : (isDarkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)'),
-                border: 'none', cursor: 'pointer', transition: 'all 0.15s ease',
-                fontFamily: FONT_FAMILY,
-              }}
-            >Tasks</button>
+            {(['chat', 'tasks', 'system'] as const).map(view => (
+              <button
+                key={view}
+                onClick={() => setActiveView(view)}
+                style={{
+                  fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 6,
+                  background: activeView === view ? (isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)') : 'transparent',
+                  color: activeView === view ? (isDarkMode ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.8)') : (isDarkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)'),
+                  border: 'none', cursor: 'pointer', transition: 'all 0.15s ease',
+                  fontFamily: FONT_FAMILY,
+                  textTransform: 'capitalize',
+                }}
+              >
+                {view}
+              </button>
+            ))}
           </div>
 
           <div style={{ flex: 1 }} />
+
+          {/* System health badge in header */}
+          <SystemHealthBadge
+            activeTasks={sysHealth.globalActiveTasks}
+            overallStatus={sysHealth.overallStatus}
+          />
         </div>
 
         {/* Page content — explicit flex-1 + minHeight:0 so children get a definite height */}
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {!user && !authLoading ? (
             <LoginScreen onLogin={() => {}} onSignup={() => {}} />
+          ) : activeView === 'system' ? (
+            <MonitoringDashboard />
           ) : activeView === 'tasks' ? (
             <TaskManager isDarkMode={isDarkMode} />
           ) : showHome ? (
