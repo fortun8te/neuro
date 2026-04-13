@@ -463,7 +463,7 @@ async function compressFindings(
 // Researcher Agent — web search + compress + synthesize
 // ─────────────────────────────────────────────────────────────
 
-export const researcherAgent = {
+const researcherAgent = {
   async research(query: ResearchQuery, onChunk?: (chunk: string) => void, signal?: AbortSignal, knowledgeSummary?: string): Promise<ResearchResult> {
     try {
       onChunk?.(`Searching: "${query.topic}"...\n`);
@@ -630,7 +630,7 @@ Tag all claims [Source: LLM]. No web data available.`;
  * marked as [LLM inference]. This prevents naked claims from
  * leaking into downstream stages.
  */
-export function groundSources(text: string): string {
+function groundSources(text: string): string {
   if (!text) return text;
 
   const lines = text.split('\n');
@@ -1226,7 +1226,7 @@ export const orchestrator = {
 // Reflection Agent — 150% bar gap detection
 // ─────────────────────────────────────────────────────────────
 
-export const reflectionAgent = {
+const reflectionAgent = {
   /**
    * 3 reflection perspectives — sequential, each builds on the previous.
    * 1. Devil's Advocate — find where research is WRONG, biased, based on assumptions

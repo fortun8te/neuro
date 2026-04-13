@@ -27,6 +27,17 @@ import { INFRASTRUCTURE } from '../config/infrastructure';
 // Screenshot Cache — prevent duplicate fetches
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * In-memory cache for competitor website screenshots
+ *
+ * Stores base64 JPEG images + dimensions with 30-minute TTL.
+ * Keyed by normalized hostname+pathname (safe filesystem-compatible string).
+ *
+ * Reduces duplicate Playwright screenshots during visual scouting rounds.
+ * Entries automatically expire after CACHE_TTL_MS (30 min).
+ *
+ * Type: Map<string (cache key), {image_base64, width, height, timestamp}>
+ */
 const screenshotCache = new Map<string, {
   image_base64: string;
   width: number;
@@ -36,6 +47,22 @@ const screenshotCache = new Map<string, {
 
 const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
+/**
+ * Generates filesystem-safe cache key from URL
+ *
+ * Normalizes URL hostname + pathname into alphanumeric string.
+ * Replaces non-alphanumeric characters with underscore.
+ * Truncates to 100 chars to prevent cache key length issues.
+ *
+ * @param url - Competitor website URL (e.g., "https://example.com/pricing")
+ * @returns string - Cache key (e.g., "example_com_pricing")
+ *
+ * Example:
+ * ```
+ * const key = getCacheKey("https://stripe.com/pricing?tab=usage");
+ * // Returns: "stripe_com_pricing"
+ * ```
+ */
 function getCacheKey(url: string): string {
   try {
     const u = new URL(url);
@@ -45,6 +72,18 @@ function getCacheKey(url: string): string {
   }
 }
 
+/**
+ * Retrieves screenshot from cache if available and not expired
+ *
+ * Checks TTL timestamp. If entry is older than 30 minutes, deletes and returns null.
+ *
+ * @param url - Competitor website URL
+ * @returns {image_base64, width, height} | null - Cached screenshot or null if expired/missing
+ *
+ * Side effects:
+ * - Deletes expired entries from cache
+ * - No external I/O
+ */
 function getScreenshotFromCache(url: string) {
   const key = getCacheKey(url);
   const cached = screenshotCache.get(key);
@@ -55,6 +94,19 @@ function getScreenshotFromCache(url: string) {
   return null;
 }
 
+/**
+ * Stores screenshot in cache with current timestamp
+ *
+ * Called after successful Playwright screenshot capture.
+ * Entry will expire after CACHE_TTL_MS (30 min) on next getScreenshotFromCache() call.
+ *
+ * @param url - Competitor website URL
+ * @param data - {image_base64, width, height} - Screenshot data
+ *
+ * Side effects:
+ * - Writes to in-memory Map
+ * - Increases memory usage by ~size of base64 image
+ */
 function setScreenshotCache(url: string, data: { image_base64: string; width: number; height: number }) {
   const key = getCacheKey(url);
   screenshotCache.set(key, { ...data, timestamp: Date.now() });
